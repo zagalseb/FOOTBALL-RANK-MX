@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — Data Viewer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Mismas CSS variables que covercero_live.html */
+    :root {
+      --bg:      #0a0a0a;
+      --bg2:     #111111;
+      --bg3:     #1a1a1a;
+      --border:  #222222;
+      --border2: #2a2a2a;
+      --text:    #f0f0f0;
+      --text2:   #999999;
+      --text3:   #555555;
+      --accent:  #c8a96e;
+      --accent-bg: rgba(200,169,110,0.08);
+      --red:     #e05c5c;
+      --green:   #5cb85c;
+      --orange:  #e0875c;
+      --yellow:  #e0c45c;
+      --purple:  #9b59b6;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .page-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.05em;
+    }
+
+    .page-meta {
+      font-size: 11px;
+      color: var(--text3);
+    }
+
+    .refresh-btn {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text2);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      padding: 6px 12px;
+      cursor: pointer;
+      transition: color 0.1s, border-color 0.1s;
+    }
+
+    .refresh-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* Table section */
+    .table-section {
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .table-header:hover {
+      background: var(--bg3);
+    }
+
+    .table-toggle {
+      font-size: 10px;
+      color: var(--text3);
+      width: 14px;
+    }
+
+    .table-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .table-count {
+      font-size: 11px;
+      color: var(--text3);
+    }
+
+    .table-body {
+      overflow-x: auto;
+    }
+
+    /* Spreadsheet table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      white-space: nowrap;
+    }
+
+    thead tr {
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border2);
+    }
+
+    th {
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+    }
+
+    th:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      background: var(--bg3);
+      border-right: 2px solid var(--border2);
+    }
+
+    td {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text2);
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    td:first-child {
+      position: sticky;
+      left: 0;
+      background: var(--bg2);
+      color: var(--text3);
+      font-weight: 600;
+      border-right: 2px solid var(--border2);
+      z-index: 1;
+    }
+
+    tbody tr:hover td {
+      background: var(--accent-bg);
+    }
+
+    tbody tr:hover td:first-child {
+      background: var(--accent-bg);
+    }
+
+    /* Cell value colors by type */
+    .cell-null    { color: var(--text3); font-style: italic; }
+    .cell-bool-t  { color: var(--green); }
+    .cell-bool-f  { color: var(--red); }
+    .cell-number  { color: var(--accent); }
+    .cell-player  { color: var(--text); }
+    .cell-type    { color: var(--yellow); font-weight: 600; }
+    .cell-result  { color: var(--orange); }
+
+    /* Play type badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .badge-RUSH    { background: rgba(92,184,92,0.15);  color: #5cb85c; }
+    .badge-PASS    { background: rgba(200,169,110,0.15); color: #c8a96e; }
+    .badge-PENALTY { background: rgba(224,92,92,0.15);  color: #e05c5c; }
+    .badge-KICK    { background: rgba(155,89,182,0.15); color: #9b59b6; }
+    .badge-PAT_TRY { background: rgba(224,196,92,0.15); color: #e0c45c; }
+    .badge-PUNT    { background: rgba(153,153,153,0.15); color: #999; }
+
+    .empty-state {
+      padding: 32px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <div>
+      <div class="page-title">Cover Cero — Data Viewer</div>
+      <div class="page-meta" id="page-meta">Leyendo de localStorage</div>
+    </div>
+    <button class="refresh-btn" id="btn-refresh">↺ Refresh</button>
+  </div>
+
+  <div id="section-plays" class="table-section"></div>
+  <div id="section-events" class="table-section"></div>
+
+  <script type="module">
+    import { plays, gameEvents, loadPlays, loadGameEvents } from './engine.js'
+
+    // ── Load data ──────────────────────────────────────────────────────────────
+
+    function loadAll() {
+      plays.length = 0
+      gameEvents.length = 0
+      loadPlays()
+      loadGameEvents()
+      renderAll()
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+
+    const _collapsed = { plays: false, events: false }
+
+    function renderAll() {
+      document.getElementById('page-meta').textContent =
+        `${plays.length} jugadas · ${gameEvents.length} eventos · ${new Date().toLocaleTimeString()}`
+      renderSection('plays',  plays,      'plays',  'PLAYS')
+      renderSection('events', gameEvents, 'events', 'GAME_EVENTS')
+    }
+
+    function renderSection(domId, data, key, label) {
+      const el = document.getElementById(`section-${domId}`)
+      if (!el) return
+
+      const isCollapsed = _collapsed[key]
+      const count = data.length
+
+      el.innerHTML = `
+        <div class="table-header" id="toggle-${key}">
+          <span class="table-toggle">${isCollapsed ? '▶' : '▼'}</span>
+          <span class="table-name">${label}</span>
+          <span class="table-count">${count} row${count !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="table-body" id="body-${key}"
+          style="display:${isCollapsed ? 'none' : 'block'}">
+        </div>
+      `
+
+      document.getElementById(`toggle-${key}`).addEventListener('click', () => {
+        _collapsed[key] = !_collapsed[key]
+        renderAll()
+      })
+
+      if (!isCollapsed) {
+        const bodyEl = document.getElementById(`body-${key}`)
+        if (count === 0) {
+          bodyEl.innerHTML = '<div class="empty-state">Sin datos</div>'
+        } else {
+          bodyEl.innerHTML = buildTable(data)
+        }
+      }
+    }
+
+    // ── Build table ────────────────────────────────────────────────────────────
+
+    // Get all columns that have at least one non-null value across all rows.
+    // Priority columns always shown first if present.
+    const PRIORITY_COLS = [
+      'seq', 'play_id', 'game_id', 'play_type', 'quarter', 'clock',
+      'possession', 'down', 'distance', 'field_pos',
+      'score_home', 'score_away', 'submitted_at',
+      'event_id', 'event_type', 'occurred_at',
+    ]
+
+    function getActiveCols(data) {
+      const allKeys = new Set()
+      data.forEach(row => Object.keys(row).forEach(k => allKeys.add(k)))
+
+      // Filter to keys that have at least one non-null, non-undefined value
+      const active = [...allKeys].filter(k =>
+        data.some(row => row[k] != null && row[k] !== '')
+      )
+
+      // Sort: priority first, then alphabetical
+      const prioritySet = new Set(PRIORITY_COLS)
+      const priority = PRIORITY_COLS.filter(k => active.includes(k))
+      const rest = active
+        .filter(k => !prioritySet.has(k))
+        .sort()
+
+      return [...priority, ...rest]
+    }
+
+    function buildTable(data) {
+      const cols = getActiveCols(data)
+
+      const thead = `
+        <thead>
+          <tr>
+            <th>#</th>
+            ${cols.map(c => `<th>${c}</th>`).join('')}
+          </tr>
+        </thead>
+      `
+
+      const tbody = `
+        <tbody>
+          ${data.map((row, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              ${cols.map(c => `<td>${formatCell(c, row[c])}</td>`).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+      `
+
+      return `<table>${thead}${tbody}</table>`
+    }
+
+    // ── Cell formatter ─────────────────────────────────────────────────────────
+
+    function formatCell(key, val) {
+      if (val == null || val === '') {
+        return '<span class="cell-null">—</span>'
+      }
+
+      // Play type badge
+      if (key === 'play_type' || key === 'event_type') {
+        return `<span class="badge badge-${val}">${val}</span>`
+      }
+
+      // Boolean
+      if (typeof val === 'boolean') {
+        return val
+          ? '<span class="cell-bool-t">✓ true</span>'
+          : '<span class="cell-bool-f">✗ false</span>'
+      }
+
+      // Timestamps
+      if (key === 'submitted_at' || key === 'occurred_at') {
+        return `<span class="cell-number">${new Date(val).toLocaleTimeString()}</span>`
+      }
+
+      // Numbers
+      if (typeof val === 'number') {
+        const cls = key === 'net_yards'
+          ? (val >= 0 ? 'cell-bool-t' : 'cell-bool-f')
+          : 'cell-number'
+        return `<span class="${cls}">${val}</span>`
+      }
+
+      // Field position object
+      if (key === 'field_pos' || key.endsWith('_at') || key.endsWith('_los') ||
+          key.endsWith('_pos')) {
+        if (typeof val === 'object' && val.team != null) {
+          return `<span class="cell-player">${val.team} ${val.yard}</span>`
+        }
+      }
+
+      // Player object
+      if (typeof val === 'object' && val.number != null) {
+        const name = val.name ? ` ${val.name}` : ''
+        return `<span class="cell-player">#${val.number}${name}</span>`
+      }
+
+      // Array of players
+      if (Array.isArray(val)) {
+        return val.map(v => {
+          if (typeof v === 'object' && v.number != null) {
+            return `#${v.number}${v.name ? ' ' + v.name : ''}`
+          }
+          return String(v)
+        }).join(', ')
+      }
+
+      // Penalty infraction object { code, label }
+      if (typeof val === 'object' && val.code != null) {
+        return `<span class="cell-type">${val.code}</span> ${val.label}`
+      }
+
+      // teams object — skip, too verbose
+      if (key === 'teams') {
+        return `<span class="cell-null">{…}</span>`
+      }
+
+      // Generic object
+      if (typeof val === 'object') {
+        return `<span class="cell-null">${JSON.stringify(val).slice(0, 40)}</span>`
+      }
+
+      // Result / pass_result strings
+      if (key === 'result' || key.endsWith('_result')) {
+        return `<span class="cell-result">${val}</span>`
+      }
+
+      // play_id / event_id — truncate UUID
+      if (key === 'play_id' || key === 'event_id') {
+        return `<span class="cell-null">${String(val).slice(0, 8)}…</span>`
+      }
+
+      // Default string
+      return String(val)
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+
+    document.getElementById('btn-refresh').addEventListener('click', loadAll)
+    loadAll()
+  </script>
+</body>
+</html>

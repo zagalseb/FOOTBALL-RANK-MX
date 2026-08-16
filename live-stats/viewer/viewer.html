@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>Cover Cero · Viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html, body { margin:0; padding:0; background:#0d1117; font-family:"Inter",-apple-system,sans-serif; color:#e8eaed; }
+  *, *::before, *::after { box-sizing:border-box; }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 4px rgba(248,81,73,0.2); }
+    50%      { box-shadow: 0 0 0 8px rgba(248,81,73,0.04); }
+  }
+  @keyframes shimmer {
+    0%,100% { opacity:0.35; }
+    50%      { opacity:0.7; }
+  }
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#30363d; border-radius:3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+const SB_URL = 'https://hqjxblblbmahqltjikfy.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M';
+const HDRS = {
+  'apikey': SB_KEY,
+  'Authorization': 'Bearer ' + SB_KEY,
+  'Accept-Profile': 'covercero',
+  'Content-Profile': 'covercero',
+};
+
+const gameId = new URLSearchParams(location.search).get('game_id');
+
+async function sbFetch(path) {
+  const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: HDRS });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function fmtWeek(w) {
+  if (!w) return '';
+  if (w === 'QF') return 'Cuartos de Final';
+  if (w === 'SF') return 'Semifinales';
+  if (w === 'F') return 'Final';
+  if (w === 'TEST') return 'TEST';
+  return `Semana ${w}`;
+}
+
+function fmtDate(kickoff, hora) {
+  const DAYS   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  if (!kickoff) return hora ? hora.slice(0,5) : '';
+  const d = new Date(kickoff);
+  const t = hora ? hora.slice(0,5) : `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${t}`;
+}
+
+function computeDrives(plays) {
+  const drives = [];
+  let cur = null;
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue;
+    if (!cur || cur.possession !== p.possession) {
+      if (cur) drives.push(cur);
+      cur = { possession: p.possession, plays: [] };
+    }
+    cur.plays.push(p);
+  }
+  if (cur && cur.plays.length) drives.push(cur);
+  return drives;
+}
+
+function driveResult(plays) {
+  if (!plays.length) return null;
+  const last = plays[plays.length - 1];
+  if (last.is_touchdown) return 'TD';
+  if (last.play_type === 'KICK' && last.result === 'good') return 'FG';
+  if (last.play_type === 'PUNT') return 'PUNT';
+  if (last.result === 'interception') return 'INT';
+  if (last.result === 'fumble') return 'FUMBLE';
+  return null;
+}
+
+// ── TeamLogo ────────────────────────────────────────────────────────────────
+function TeamLogo({ team, size = 72 }) {
+  const [err, setErr] = useState(false);
+  const abbr  = (team?.abreviatura || '??').slice(0,2).toUpperCase();
+  const color = team?.color_principal || '#444';
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      background: '#fff', padding: Math.round(size * 0.08),
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.35)', flexShrink: 0,
+    }}>
+      {team?.logo_url && !err
+        ? <img src={team.logo_url} onError={() => setErr(true)}
+            style={{ width:'100%', height:'100%', objectFit:'contain' }} alt={abbr} />
+        : <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize: size*0.32, color, lineHeight:1 }}>{abbr}</span>
+      }
+    </div>
+  );
+}
+
+// ── FieldStrip ──────────────────────────────────────────────────────────────
+function FieldStrip({ possession, fieldPos, home, away }) {
+  const homeAbbr = home?.abreviatura || '';
+  const awayAbbr = away?.abreviatura || '';
+  const ballTeam = fieldPos?.team;
+  const ballYard = fieldPos?.yard ?? 50;
+  // pctFromLeft: 0 = away endzone, 100 = home endzone
+  const pct = ballTeam === homeAbbr ? 100 - ballYard : ballYard;
+  const possColor = possession === homeAbbr
+    ? (home?.color_principal || '#3b82f6')
+    : (away?.color_principal || '#f97316');
+  return (
+    <div style={{ position:'relative', flex:1, height:52, background:'#1a6b3c', borderRadius:3, overflow:'hidden', minWidth:260 }}>
+      <div style={{ position:'absolute', left:0, top:0, bottom:0, width:'10%', background: away?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
+        <span style={{ color: away?.color_texto||'#fff', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{awayAbbr}</span>
+      </div>
+      <div style={{ position:'absolute', right:0, top:0, bottom:0, width:'10%', background: home?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
+        <span style={{ color: home?.color_texto||'#fff', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{homeAbbr}</span>
+      </div>
+      <div style={{ position:'absolute', left:'10%', right:'10%', top:0, bottom:0 }}>
+        {[10,20,30,40,50,40,30,20,10].map((n,i) => (
+          <div key={i} style={{ position:'absolute', left:`${(i+1)*10}%`, top:0, bottom:0 }}>
+            <div style={{ width:1, height:'100%', background:'rgba(255,255,255,0.4)' }} />
+            <div style={{ position:'absolute', top:'50%', left:0, transform:'translate(-50%,-50%)', color:'rgba(255,255,255,0.7)', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:8 }}>{n}</div>
+          </div>
+        ))}
+        <div style={{ position:'absolute', top:0, bottom:0, left:`${pct}%`, transform:'translateX(-50%)', zIndex:3 }}>
+          <div style={{ width:0, height:0, borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:`9px solid ${possColor}`, marginLeft:'-6px' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ScoresPanel ─────────────────────────────────────────────────────────────
+function ScoresPanel({ games, currentId }) {
+  return (
+    <div style={{ display:'flex', gap:8, overflowX:'auto', padding:'8px 0', scrollbarWidth:'none' }}>
+      {games.map(g => {
+        const active  = g.id === currentId;
+        const isLive  = g.status === 'live';
+        const isFinal = g.status === 'final';
+        const ha = g.home?.abreviatura || '?';
+        const aa = g.away?.abreviatura || '?';
+        const sh = g.score_home ?? '—';
+        const sa = g.score_away ?? '—';
+        return (
+          <a key={g.id} href={`viewer.html?game_id=${g.id}`} style={{
+            display:'flex', flexDirection:'column', alignItems:'center', gap:5,
+            padding:'7px 12px', borderRadius:6, textDecoration:'none', flexShrink:0,
+            background: active ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${active ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.07)'}`,
+            minWidth:120,
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:5, fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#e8eaed', fontWeight:600 }}>
+              {g.away?.logo_url && <img src={g.away.logo_url} style={{ width:16, height:16, objectFit:'contain' }} alt={aa} />}
+              <span>{aa}</span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700 }}>{sa}</span>
+              <span style={{ color:'#484f58', fontSize:10 }}>·</span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700 }}>{sh}</span>
+              <span>{ha}</span>
+              {g.home?.logo_url && <img src={g.home.logo_url} style={{ width:16, height:16, objectFit:'contain' }} alt={ha} />}
+            </div>
+            <span style={{
+              fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight:700, letterSpacing:0.5,
+              padding:'1px 6px', borderRadius:3,
+              color: isLive ? '#f85149' : isFinal ? '#8b949e' : '#3fb950',
+              background: isLive ? 'rgba(248,81,73,0.12)' : isFinal ? 'rgba(139,148,158,0.08)' : 'rgba(63,185,80,0.1)',
+            }}>
+              {isLive ? '● EN VIVO' : isFinal ? 'FINAL' : (g.hora ? g.hora.slice(0,5) : '—')}
+            </span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── StatBar ──────────────────────────────────────────────────────────────────
+function StatBar({ label, homeVal, awayVal, homeColor, awayColor }) {
+  const total = (homeVal + awayVal) || 1;
+  const awayPct = (awayVal / total) * 100;
+  return (
+    <div style={{ marginBottom:14 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5, fontFamily:"'JetBrains Mono',monospace", fontSize:13 }}>
+        <span style={{ fontWeight:700, color:awayColor }}>{awayVal}</span>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'#8b949e', fontWeight:500 }}>{label}</span>
+        <span style={{ fontWeight:700, color:homeColor }}>{homeVal}</span>
+      </div>
+      <div style={{ display:'flex', height:5, borderRadius:2, overflow:'hidden', background: homeColor }}>
+        <div style={{ width:`${awayPct}%`, background:awayColor, height:'100%' }} />
+      </div>
+    </div>
+  );
+}
+
+// ── IndividualStats ──────────────────────────────────────────────────────────
+function IndividualStats({ title, rows, cols }) {
+  if (!rows.length) return null;
+  return (
+    <div style={{ marginBottom:18 }}>
+      <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:11, color:'#484f58', letterSpacing:1.5, marginBottom:6, textTransform:'uppercase' }}>{title}</div>
+      {rows.map((r, i) => r.isHeader
+        ? (
+          <div key={i} style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:12, color:r.color, letterSpacing:0.5, padding:'6px 0 3px', display:'flex', alignItems:'center', gap:5 }}>
+            <span style={{ width:7, height:7, borderRadius:'50%', background:r.color, display:'inline-block' }} />
+            {r.name}
+          </div>
+        ) : (
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:4, padding:'3px 0 3px 14px', borderTop:'1px solid rgba(48,54,61,0.4)' }}>
+            <span style={{ flex:1, fontFamily:"'Inter',sans-serif", color:'#c9d1d9', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</span>
+            {r.vals.map((v, j) => (
+              <span key={j} style={{ fontFamily:"'JetBrains Mono',monospace", color: j===r.vals.length-1 && v>0 ? '#3fb950' : '#8b949e', minWidth:28, textAlign:'right', fontSize:11 }}>{v}</span>
+            ))}
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+// ── SkeletonLoader ───────────────────────────────────────────────────────────
+function SkeletonLoader() {
+  const B = ({ w, h=14 }) => (
+    <div style={{ width:w, height:h, background:'#21262d', borderRadius:3, animation:'shimmer 1.5s infinite', marginBottom:8 }} />
+  );
+  return (
+    <div style={{ minHeight:'100vh', background:'#0d1117' }}>
+      <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'13px 20px' }}><B w={180} h={20} /></div>
+      <div style={{ padding:'28px 24px', maxWidth:900, margin:'0 auto' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:24, alignItems:'center' }}>
+          <div><B w="70%" h={72} /><B w="50%" h={20} /></div>
+          <div style={{ textAlign:'center', minWidth:200 }}><B w={120} h={16} /><B w={180} h={70} /></div>
+          <div><B w="70%" h={72} /><B w="50%" h={20} /></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
+function App() {
+  const [game,      setGame]      = useState(null);
+  const [plays,     setPlays]     = useState([]);
+  const [weekGames, setWeekGames] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [loadErr,   setLoadErr]   = useState(null);
+  const [scoresOpen,setScoresOpen]= useState(false);
+  const [driveFilt, setDriveFilt] = useState('ALL');
+
+  // ── initial load ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!gameId) { setLoading(false); return; }
+    (async () => {
+      try {
+        const teamFields = 'nombre_corto,abreviatura,Escuela,color_principal,color_texto,logo_url';
+        const [gArr, pArr] = await Promise.all([
+          sbFetch(`games?select=*,home:home_team_id(${teamFields}),away:away_team_id(${teamFields})&id=eq.${encodeURIComponent(gameId)}&limit=1`),
+          sbFetch(`plays?select=*&game_id=eq.${encodeURIComponent(gameId)}&order=seq.asc`),
+        ]);
+        const g = gArr[0] || null;
+        setGame(g);
+        setPlays(pArr || []);
+        if (g?.semana) {
+          const wArr = await sbFetch(`games?select=id,status,score_home,score_away,hora,home:home_team_id(nombre_corto,abreviatura,logo_url),away:away_team_id(nombre_corto,abreviatura,logo_url)&semana=eq.${encodeURIComponent(g.semana)}&order=kickoff.asc.nullslast`);
+          setWeekGames(wArr || []);
+        }
+      } catch (e) {
+        setLoadErr(e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // ── realtime ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!gameId || !game) return;
+    let sbClient;
+    (async () => {
+      try {
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        sbClient = createClient(SB_URL, SB_KEY, { db: { schema: 'covercero' } });
+        sbClient.channel('viewer-plays')
+          .on('postgres_changes', {
+            event: 'INSERT', schema: 'covercero', table: 'plays',
+            filter: `game_id=eq.${gameId}`,
+          }, payload => {
+            setPlays(prev => [...prev, payload.new]);
+          })
+          .subscribe();
+      } catch (e) {
+        console.warn('[viewer] realtime init failed:', e.message);
+      }
+    })();
+    return () => { if (sbClient) sbClient.removeAllChannels(); };
+  }, [game?.id]);
+
+  // ── no game_id ──────────────────────────────────────────────────────────────
+  if (!gameId) return (
+    <div style={{ minHeight:'100vh', background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Barlow Condensed',sans-serif" }}>
+      <div style={{ fontSize:26, fontWeight:700, color:'#8b949e', letterSpacing:1 }}>No se especificó un partido.</div>
+      <a href="index.html" style={{ color:'#3b82f6', fontSize:15, textDecoration:'none' }}>← Todos los partidos</a>
+    </div>
+  );
+
+  if (loading) return <SkeletonLoader />;
+
+  if (loadErr || !game) return (
+    <div style={{ minHeight:'100vh', background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Barlow Condensed',sans-serif" }}>
+      <div style={{ fontSize:26, fontWeight:700, color:'#f85149' }}>Partido no encontrado</div>
+      {loadErr && <div style={{ fontSize:12, color:'#484f58', fontFamily:"'JetBrains Mono',monospace" }}>{loadErr}</div>}
+      <a href="index.html" style={{ color:'#3b82f6', fontSize:15, textDecoration:'none' }}>← Todos los partidos</a>
+    </div>
+  );
+
+  const { home, away } = game;
+  const homeAbbr  = home?.abreviatura || '';
+  const awayAbbr  = away?.abreviatura || '';
+  const homeColor = home?.color_principal || '#3b82f6';
+  const awayColor = away?.color_principal || '#f97316';
+  const isLive    = game.status === 'live';
+  const isFinal   = game.status === 'final';
+
+  // ── derived from plays ───────────────────────────────────────────────────────
+  const lastPlay  = plays.length ? plays[plays.length - 1] : null;
+  const scoreHome = lastPlay?.score_home ?? game.score_home ?? 0;
+  const scoreAway = lastPlay?.score_away ?? game.score_away ?? 0;
+
+  // Per-quarter cumulative scores
+  function qScores(teamKey) {
+    const out = [0,0,0,0];
+    let prev = { home:0, away:0 };
+    for (let q = 1; q <= 4; q++) {
+      const qp = plays.filter(p => p.quarter === q);
+      if (qp.length) {
+        const lp = qp[qp.length - 1];
+        const sh = lp.score_home ?? prev.home;
+        const sa = lp.score_away ?? prev.away;
+        out[q-1] = teamKey === 'home' ? sh - prev.home : sa - prev.away;
+        prev = { home: sh, away: sa };
+      }
+    }
+    return out;
+  }
+  const qScoreHome = qScores('home');
+  const qScoreAway = qScores('away');
+
+  // Drives
+  const drives = useMemo(() => computeDrives(plays), [plays]);
+
+  // Situation from last non-GAME_CTRL play
+  const sitPlay = [...plays].reverse().find(p => p.play_type !== 'GAME_CTRL');
+  const situation = sitPlay ? {
+    possession: sitPlay.possession,
+    down: sitPlay.down,
+    distance: sitPlay.distance,
+    field_pos: sitPlay.field_pos,
+  } : null;
+
+  // Current drive summary
+  const currentDrive  = drives.length ? drives[drives.length - 1] : null;
+  const drivePlayCount = currentDrive?.plays.length || 0;
+  const driveYards    = currentDrive?.plays.reduce((a,p) => a + (p.net_yards||0), 0) || 0;
+
+  // ── stats ────────────────────────────────────────────────────────────────────
+  const { teamStats, passers, rushers, receivers } = useMemo(() => {
+    const ts = {
+      [homeAbbr]: { rush:0, pass:0, total:0 },
+      [awayAbbr]: { rush:0, pass:0, total:0 },
+    };
+    const pa = {}, ru = {}, re = {};
+
+    for (const p of plays) {
+      const t = p.possession;
+      if (!ts[t]) continue;
+
+      if (p.play_type === 'RUSH') {
+        const yds = p.net_yards || 0;
+        ts[t].rush += yds; ts[t].total += yds;
+        const key = p.carried_by || 'Desconocido';
+        if (!ru[t]) ru[t] = {};
+        if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0 };
+        ru[t][key].att++;
+        ru[t][key].yds += yds;
+        if (p.is_touchdown) ru[t][key].td++;
+      }
+
+      if (p.play_type === 'PASS') {
+        const key = p.passed_by || 'Desconocido';
+        if (!pa[t]) pa[t] = {};
+        if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0 };
+        pa[t][key].att++;
+        if (p.result === 'complete') {
+          const yds = p.net_yards || 0;
+          ts[t].pass += yds; ts[t].total += yds;
+          pa[t][key].comp++;
+          pa[t][key].yds += yds;
+          if (p.is_touchdown) pa[t][key].td++;
+          if (p.received_by) {
+            const rk = p.received_by;
+            if (!re[t]) re[t] = {};
+            if (!re[t][rk]) re[t][rk] = { rec:0, yds:0, td:0 };
+            re[t][rk].rec++;
+            re[t][rk].yds += yds;
+            if (p.is_touchdown) re[t][rk].td++;
+          }
+        }
+      }
+    }
+    return { teamStats: ts, passers: pa, rushers: ru, receivers: re };
+  }, [plays, homeAbbr, awayAbbr]);
+
+  function buildRows(dataMap, cols, keyFn) {
+    const rows = [];
+    for (const abbr of [awayAbbr, homeAbbr]) {
+      const td = dataMap[abbr];
+      if (!td || !Object.keys(td).length) continue;
+      const color = abbr === homeAbbr ? homeColor : awayColor;
+      rows.push({ isHeader: true, name: abbr, color });
+      Object.entries(td).forEach(([name, d]) => {
+        rows.push({ name, vals: keyFn(d) });
+      });
+    }
+    return rows;
+  }
+
+  const passRows = buildRows(passers,  ['ATT','COMP','YDS','TD'], d => [d.att, d.comp, d.yds, d.td]);
+  const rushRows = buildRows(rushers,  ['ATT','YDS','TD'],        d => [d.att, d.yds, d.td]);
+  const recRows  = buildRows(receivers,['REC','YDS','TD'],        d => [d.rec, d.yds, d.td]);
+
+  // Filtered drives for PBP
+  const filteredDrives = driveFilt === 'ALL'
+    ? drives
+    : drives.filter(d => d.possession === driveFilt);
+
+  return (
+    <div style={{ minHeight:'100vh', background:'#0d1117', fontFamily:"'Inter',sans-serif", color:'#e8eaed' }}>
+
+      {/* ── UTILBAR ─────────────────────────────────────────────────────────── */}
+      <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'10px 20px', display:'flex', alignItems:'center', gap:14, position:'sticky', top:0, zIndex:100 }}>
+        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:20, color:'#e8eaed', letterSpacing:1, flexShrink:0 }}>
+          COVER<span style={{ fontWeight:300 }}>CERO</span>
+        </span>
+        <div style={{ width:1, height:18, background:'#30363d' }} />
+        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', letterSpacing:0.3, flexShrink:0 }}>
+          {game.liga ? `${game.liga} · ` : ''}{fmtWeek(game.semana)}
+        </span>
+
+        {/* Scores toggle — centered */}
+        <div style={{ flex:1, display:'flex', justifyContent:'center' }}>
+          {weekGames.length > 0 && (
+            <button onClick={() => setScoresOpen(o => !o)} style={{
+              background:'transparent', border:'1px solid #30363d', borderRadius:5,
+              color:'#8b949e', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700,
+              fontSize:12, letterSpacing:1, padding:'4px 14px', cursor:'pointer',
+            }}>
+              SCORES {scoresOpen ? '▲' : '▼'}
+            </button>
+          )}
+        </div>
+
+        <a href="index.html" style={{ color:'#8b949e', fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, fontWeight:600, textDecoration:'none', letterSpacing:0.3, flexShrink:0 }}>
+          ← Todos los partidos
+        </a>
+      </div>
+
+      {/* ── SCORES PANEL ────────────────────────────────────────────────────── */}
+      {scoresOpen && weekGames.length > 0 && (
+        <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'0 20px' }}>
+          <ScoresPanel games={weekGames} currentId={gameId} />
+        </div>
+      )}
+
+      {/* ── SCOREBOARD HERO ─────────────────────────────────────────────────── */}
+      <div style={{ background:'#0d1117', padding:'28px 20px 20px', borderBottom:'1px solid #21262d' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:16, maxWidth:920, margin:'0 auto', alignItems:'center' }}>
+
+          {/* Away */}
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            <TeamLogo team={away} size={72} />
+            <div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'#e8eaed' }}>
+                {away?.nombre_corto || awayAbbr}
+              </div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', marginTop:2, letterSpacing:0.4 }}>
+                {away?.Escuela || ''}
+              </div>
+            </div>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:awayColor, marginLeft:'auto', fontVariantNumeric:'tabular-nums' }}>
+              {scoreAway}
+            </div>
+          </div>
+
+          {/* Center */}
+          <div style={{ textAlign:'center', minWidth:190 }}>
+            {isLive && (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, marginBottom:10 }}>
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'#f85149', display:'inline-block', animation:'pulse 1.5s infinite' }} />
+                <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, letterSpacing:2, color:'#f85149' }}>EN VIVO</span>
+                {lastPlay?.quarter && (
+                  <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, color:'#8b949e', border:'1.5px solid #30363d', padding:'1px 8px', borderRadius:3 }}>
+                    Q{lastPlay.quarter}
+                  </span>
+                )}
+                {lastPlay?.clock && (
+                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, fontSize:15, color:'#e8eaed' }}>
+                    {lastPlay.clock}
+                  </span>
+                )}
+              </div>
+            )}
+            {isFinal && (
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:15, letterSpacing:2, color:'#8b949e', marginBottom:10 }}>FINAL</div>
+            )}
+            {!isLive && !isFinal && (
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', marginBottom:10 }}>
+                {fmtDate(game.kickoff, game.hora)}
+              </div>
+            )}
+
+            {/* Quarter score table */}
+            <table style={{ width:'100%', borderCollapse:'collapse', fontVariantNumeric:'tabular-nums', tableLayout:'fixed' }}>
+              <thead>
+                <tr>
+                  <th style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:10, color:'#484f58', padding:'2px 2px', fontWeight:600, letterSpacing:0.5, textAlign:'left' }}></th>
+                  {['1','2','3','4'].map(q => (
+                    <th key={q} style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:10, color:'#484f58', padding:'2px 2px', fontWeight:600, letterSpacing:0.5 }}>{q}</th>
+                  ))}
+                  <th style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:10, color:'#e8eaed', padding:'2px 2px', fontWeight:700 }}>T</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { abbr: awayAbbr, qs: qScoreAway, total: scoreAway, color: awayColor },
+                  { abbr: homeAbbr, qs: qScoreHome, total: scoreHome, color: homeColor },
+                ].map(row => (
+                  <tr key={row.abbr}>
+                    <td style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:12, color:row.color, padding:'4px 2px', textAlign:'left' }}>{row.abbr}</td>
+                    {row.qs.map((q, i) => (
+                      <td key={i} style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, padding:'4px 2px', textAlign:'center', color:'#c9d1d9' }}>{q}</td>
+                    ))}
+                    <td style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:16, textAlign:'center', color:row.color }}>{row.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Timeouts */}
+            <div style={{ display:'flex', justifyContent:'space-between', marginTop:8, padding:'0 2px' }}>
+              <div style={{ display:'flex', gap:4 }}>{[0,1,2].map(i => <span key={i} style={{ fontSize:9, color:awayColor }}>●</span>)}</div>
+              <div style={{ display:'flex', gap:4 }}>{[0,1,2].map(i => <span key={i} style={{ fontSize:9, color:homeColor }}>●</span>)}</div>
+            </div>
+          </div>
+
+          {/* Home */}
+          <div style={{ display:'flex', alignItems:'center', gap:14, justifyContent:'flex-end' }}>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:homeColor, marginRight:'auto', fontVariantNumeric:'tabular-nums' }}>
+              {scoreHome}
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'#e8eaed' }}>
+                {home?.nombre_corto || homeAbbr}
+              </div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', marginTop:2, letterSpacing:0.4 }}>
+                {home?.Escuela || ''}
+              </div>
+            </div>
+            <TeamLogo team={home} size={72} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── SITUATION STRIP (live only) ──────────────────────────────────────── */}
+      {isLive && situation && (
+        <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'12px 20px', display:'flex', alignItems:'center', gap:18, flexWrap:'wrap' }}>
+          <div style={{
+            display:'flex', alignItems:'center', gap:7, color:'#fff',
+            padding:'6px 12px', borderRadius:3, flexShrink:0,
+            background: situation.possession === homeAbbr ? homeColor : awayColor,
+            fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, letterSpacing:1,
+          }}>
+            <span>●</span>
+            <span>POSESIÓN · {situation.possession}</span>
+          </div>
+
+          {situation.down > 0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:9, letterSpacing:1.4, color:'#484f58', fontWeight:600 }}>DOWN &amp; DIST</div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:20, color:'#e8eaed', lineHeight:1 }}>
+                {['','1°','2°','3°','4°'][situation.down] || `${situation.down}°`} &amp; {situation.distance}
+              </div>
+            </div>
+          )}
+
+          {situation.field_pos && (
+            <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:9, letterSpacing:1.4, color:'#484f58', fontWeight:600 }}>POSICIÓN</div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:20, color:'#e8eaed', lineHeight:1 }}>
+                {situation.field_pos.team} {situation.field_pos.yard}
+              </div>
+            </div>
+          )}
+
+          {drivePlayCount > 0 && (
+            <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:9, letterSpacing:1.4, color:'#484f58', fontWeight:600 }}>DRIVE</div>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:600, fontSize:16, color:'#e8eaed', lineHeight:1 }}>
+                {drivePlayCount} jug · {driveYards} yds
+              </div>
+            </div>
+          )}
+
+          <FieldStrip possession={situation.possession} fieldPos={situation.field_pos} home={home} away={away} />
+        </div>
+      )}
+
+      {/* ── BODY ──────────────────────────────────────────────────────────────── */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:16, padding:'16px 20px', maxWidth:1200, margin:'0 auto', alignItems:'start' }}>
+
+        {/* LEFT — Play by play */}
+        <div style={{ background:'#161b22', border:'1px solid #21262d', borderRadius:6, overflow:'hidden' }}>
+          {/* Header + filter */}
+          <div style={{ padding:'12px 16px', borderBottom:'1px solid #21262d', display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:18, color:'#e8eaed', letterSpacing:0.5 }}>Jugada por jugada</span>
+            <div style={{ display:'flex', gap:5, marginLeft:'auto' }}>
+              {[['ALL','Todos'], [awayAbbr, awayAbbr], [homeAbbr, homeAbbr]].map(([val, label]) => (
+                <button key={val} onClick={() => setDriveFilt(val)} style={{
+                  background: driveFilt===val ? 'rgba(59,130,246,0.12)' : 'transparent',
+                  border: `1px solid ${driveFilt===val ? 'rgba(59,130,246,0.35)' : '#30363d'}`,
+                  borderRadius:4, color: driveFilt===val ? '#3b82f6' : '#8b949e',
+                  fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:12, letterSpacing:0.3,
+                  padding:'3px 10px', cursor:'pointer',
+                }}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Drives list */}
+          {plays.length === 0
+            ? (
+              <div style={{ padding:'48px 24px', textAlign:'center', color:'#484f58', fontFamily:"'Barlow Condensed',sans-serif", fontSize:17 }}>
+                El partido no ha comenzado
+              </div>
+            )
+            : filteredDrives.length === 0
+              ? (
+                <div style={{ padding:'40px 24px', textAlign:'center', color:'#484f58', fontFamily:"'Barlow Condensed',sans-serif", fontSize:15 }}>
+                  Sin drives para este filtro
+                </div>
+              )
+              : [...filteredDrives].reverse().map((drive, di) => {
+                  const driveNum   = filteredDrives.length - di;
+                  const isHome     = drive.possession === homeAbbr;
+                  const dColor     = isHome ? homeColor : awayColor;
+                  const dPassYds   = drive.plays.filter(p => p.play_type==='PASS' && p.result==='complete').reduce((a,p) => a+(p.net_yards||0), 0);
+                  const dRushYds   = drive.plays.filter(p => p.play_type==='RUSH').reduce((a,p) => a+(p.net_yards||0), 0);
+                  const dYds       = dPassYds + dRushYds;
+                  const dRes       = driveResult(drive.plays);
+                  return (
+                    <div key={di} style={{ borderBottom:'1px solid #21262d' }}>
+                      {/* Drive header */}
+                      <div style={{ padding:'9px 16px', background:'rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:9 }}>
+                        <span style={{ width:9, height:9, borderRadius:'50%', background:dColor, display:'inline-block', flexShrink:0 }} />
+                        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, color:dColor, letterSpacing:0.3 }}>{drive.possession}</span>
+                        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:12, color:'#484f58' }}>Drive {driveNum}</span>
+                        {dRes && (
+                          <span style={{
+                            fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:10,
+                            padding:'1px 6px', borderRadius:3,
+                            background: dRes==='TD' ? 'rgba(63,185,80,0.15)' : 'rgba(139,148,158,0.08)',
+                            color: dRes==='TD' ? '#3fb950' : '#8b949e',
+                          }}>{dRes}</span>
+                        )}
+                        <span style={{ marginLeft:'auto', fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:'#484f58' }}>
+                          {drive.plays.length} jug · {dYds} yds
+                        </span>
+                      </div>
+                      {/* Plays */}
+                      {drive.plays.map((p, pi) => (
+                        <div key={pi} style={{
+                          padding:'8px 16px 8px 26px', borderTop:'1px solid rgba(48,54,61,0.35)',
+                          display:'flex', alignItems:'flex-start', gap:10,
+                          background: p.is_scoring ? 'rgba(63,185,80,0.05)' : 'transparent',
+                        }}>
+                          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:'#484f58', minWidth:52, flexShrink:0, paddingTop:2 }}>
+                            Q{p.quarter}{p.clock ? ` ${p.clock}` : ''}
+                          </span>
+                          <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color: p.is_scoring ? '#3fb950' : '#c9d1d9', lineHeight:1.45 }}>
+                            {p.description || p.play_type}
+                          </span>
+                          {p.net_yards != null && p.play_type !== 'GAME_CTRL' && (
+                            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: p.net_yards >= 0 ? '#3fb950' : '#f85149', fontWeight:600, flexShrink:0 }}>
+                              {p.net_yards >= 0 ? '+' : ''}{p.net_yards}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })
+          }
+        </div>
+
+        {/* RIGHT — Stats */}
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+
+          {/* Team stat bars */}
+          <div style={{ background:'#161b22', border:'1px solid #21262d', borderRadius:6, padding:'14px 16px' }}>
+            <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:18, color:'#e8eaed', letterSpacing:0.5, marginBottom:12 }}>Estadísticas</div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>
+              <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:13, color:awayColor }}>{awayAbbr}</span>
+              <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:13, color:homeColor }}>{homeAbbr}</span>
+            </div>
+            <StatBar label="Yardas terrestres" homeVal={teamStats[homeAbbr]?.rush||0}  awayVal={teamStats[awayAbbr]?.rush||0}  homeColor={homeColor} awayColor={awayColor} />
+            <StatBar label="Yardas aéreas"     homeVal={teamStats[homeAbbr]?.pass||0}  awayVal={teamStats[awayAbbr]?.pass||0}  homeColor={homeColor} awayColor={awayColor} />
+            <StatBar label="Yardas totales"    homeVal={teamStats[homeAbbr]?.total||0} awayVal={teamStats[awayAbbr]?.total||0} homeColor={homeColor} awayColor={awayColor} />
+          </div>
+
+          {/* Individual stats */}
+          {plays.length > 0 && (passRows.length > 0 || rushRows.length > 0 || recRows.length > 0) && (
+            <div style={{ background:'#161b22', border:'1px solid #21262d', borderRadius:6, padding:'14px 16px' }}>
+              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:18, color:'#e8eaed', letterSpacing:0.5, marginBottom:14 }}>Individuales</div>
+              <IndividualStats title="PASSING"   rows={passRows} cols={['ATT','COMP','YDS','TD']} />
+              <IndividualStats title="RUSHING"   rows={rushRows} cols={['ATT','YDS','TD']} />
+              <IndividualStats title="RECEIVING" rows={recRows}  cols={['REC','YDS','TD']} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

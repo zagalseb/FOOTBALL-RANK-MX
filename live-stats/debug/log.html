@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero · Play Log</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg2: #13161b;
+      --bg3: #1a1e25;
+      --border: #252a33;
+      --border2: #2e3540;
+      --text: #e8eaed;
+      --text2: #8a95a3;
+      --text3: #4a5568;
+      --accent: #3b82f6;
+      --accent-bg: rgba(59,130,246,0.12);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.12);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234,179,8,0.12);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.12);
+      --orange: #f97316;
+      --orange-bg: rgba(249,115,22,0.12);
+      --purple: #a855f7;
+      --purple-bg: rgba(168,85,247,0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header__brand {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+
+    .header__divider {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+    }
+
+    .header__title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+    }
+
+    .header__actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header__refresh {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: var(--text3);
+    }
+
+    .btn-clear {
+      background: var(--red-bg);
+      border: 1px solid var(--red);
+      color: var(--red);
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-clear:hover {
+      background: rgba(239,68,68,0.22);
+    }
+
+    /* ── SUMMARY BAR ── */
+    .summary {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .summary__stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .summary__label {
+      font-size: 9px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .summary__value {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .summary__value--small {
+      font-size: 13px;
+    }
+
+    /* ── TABLE ── */
+    .table-wrap {
+      padding: 20px 24px;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+    }
+
+    thead tr {
+      border-bottom: 1px solid var(--border2);
+    }
+
+    thead th {
+      padding: 8px 12px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    tbody tr:hover {
+      background: var(--bg2);
+    }
+
+    tbody td {
+      padding: 10px 12px;
+      color: var(--text2);
+      white-space: nowrap;
+    }
+
+    tbody td:first-child {
+      color: var(--text3);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: 0.03em;
+    }
+
+    .badge-rush    { background: var(--green-bg);  color: var(--green);  }
+    .badge-pass    { background: var(--accent-bg); color: var(--accent); }
+    .badge-penalty { background: var(--yellow-bg); color: var(--yellow); }
+    .badge-punt    { background: var(--purple-bg); color: var(--purple); }
+    .badge-kick    { background: var(--purple-bg); color: var(--purple); }
+    .badge-pat_try { background: var(--orange-bg); color: var(--orange); }
+    .badge-default { background: var(--bg3);       color: var(--text2);  }
+
+    /* Result badges */
+    .badge-tackle  { background: var(--yellow-bg); color: var(--yellow); }
+    .badge-oob     { background: var(--accent-bg); color: var(--accent); }
+    .badge-eop     { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+    .badge-fumble  { background: var(--orange-bg); color: var(--orange); }
+    .badge-safety  { background: var(--red-bg);    color: var(--red);    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--text3);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+    }
+
+    .empty-state strong {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 8px;
+      color: var(--text2);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <span class="header__brand">COVER CERO LIVE</span>
+    <div class="header__divider"></div>
+    <span class="header__title">Play Log</span>
+    <div class="header__actions">
+      <span class="header__refresh" id="refresh-status">—</span>
+      <button class="btn-clear" id="btn-clear">Clear all plays</button>
+    </div>
+  </header>
+
+  <div class="summary" id="summary-bar">
+    <div class="summary__stat">
+      <span class="summary__label">Total Plays</span>
+      <span class="summary__value" id="stat-total">0</span>
+    </div>
+    <div class="summary__stat">
+      <span class="summary__label">Last Play</span>
+      <span class="summary__value summary__value--small" id="stat-last">—</span>
+    </div>
+  </div>
+
+  <div id="main-content"></div>
+
+  <script>
+    const TYPE_BADGE = {
+      RUSH: 'badge-rush', PASS: 'badge-pass', PENALTY: 'badge-penalty',
+      PUNT: 'badge-punt', KICK: 'badge-kick', PAT_TRY: 'badge-pat_try',
+    }
+
+    const RESULT_BADGE = {
+      tackle: 'badge-tackle',
+      oob:    'badge-oob',
+      eop:    'badge-eop',
+      fumble: 'badge-fumble',
+      safety: 'badge-safety',
+    }
+
+    const RESULT_LABEL = {
+      tackle: 'Tackle', oob: 'OOB', eop: 'EOP', fumble: 'Fumble', safety: 'Safety',
+    }
+
+    const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
+
+    function formatTime(ts) {
+      if (!ts) return '—'
+      const d = new Date(ts)
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }
+
+    function playerLabel(p) {
+      if (!p) return '—'
+      return p.name ? `#${p.number} ${p.name}` : `#${p.number}`
+    }
+
+    function render() {
+      const raw = localStorage.getItem('covercero_plays')
+      const plays = raw ? JSON.parse(raw) : []
+      const total = plays.length
+
+      document.getElementById('stat-total').textContent = total
+      document.getElementById('stat-last').textContent = total
+        ? formatTime(plays[plays.length - 1].submitted_at)
+        : '—'
+
+      const content = document.getElementById('main-content')
+
+      if (!total) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <strong>No plays recorded</strong>
+            Open Cover Cero Live and press R to add a rush play.
+          </div>
+        `
+        return
+      }
+
+      const rows = [...plays].reverse().map(p => {
+        const typeBadge = TYPE_BADGE[p.play_type] || 'badge-default'
+        const fp = p.field_pos ? `${p.field_pos.team} ${p.field_pos.yard}` : '—'
+        const dn = DOWN_LABELS[p.down] || p.down || '—'
+        const byVal = p.rush_by || p.pass_by || null
+        const byCell = byVal ? playerLabel(Array.isArray(byVal) ? byVal[0] : byVal) : '—'
+        const resultCell = p.result
+          ? `<span class="badge ${RESULT_BADGE[p.result] || 'badge-default'}">${RESULT_LABEL[p.result] || p.result}</span>`
+          : '—'
+        return `
+          <tr>
+            <td>${p.seq}</td>
+            <td>Q${p.quarter || '—'}</td>
+            <td>${p.clock || '—'}</td>
+            <td>${p.possession || '—'}</td>
+            <td>${fp}</td>
+            <td>${dn}</td>
+            <td>${p.distance || '—'}</td>
+            <td><span class="badge ${typeBadge}">${p.play_type}</span></td>
+            <td>${byCell}</td>
+            <td>${resultCell}</td>
+          </tr>
+        `
+      }).join('')
+
+      content.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Q</th>
+                <th>Clock</th>
+                <th>Pos</th>
+                <th>Field</th>
+                <th>Dn</th>
+                <th>Dist</th>
+                <th>Type</th>
+                <th>By</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `
+
+      document.getElementById('refresh-status').textContent =
+        'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    }
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      if (confirm('Delete all recorded plays?')) {
+        localStorage.removeItem('covercero_plays')
+        render()
+      }
+    })
+
+    render()
+    setInterval(render, 2000)
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+Los logos de los equipos vienen con estos nombres dentro
+de la carpeta "Logos"
+
+Águilas Blancas.png 
+Auténticos Tigres.png
+Aztecas UDLAP.png
+Borregos CCM.png
+Borregos CEM.png
+Borregos GDL.png
+Borregos MTY.png
+Borregos Puebla.png
+Burros Blancos.png
+Leones Anáhuac.png
+Linces México.png
+Pumas Acatlán.png
+Pumas CU.png
+Zorros CETYS.png

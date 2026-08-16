@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — ONEFA 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent:    #e63329;
+      --text:      #111827;
+      --text2:     #6b7280;
+      --text3:     #9ca3af;
+      --border:    #e5e7eb;
+      --border2:   #d1d5db;
+      --bg:        #f9fafb;
+      --card-bg:   #ffffff;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .site-header {
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .site-header__inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+    }
+
+    .brand { text-decoration: none; display: flex; align-items: baseline; gap: 10px; }
+
+    .brand__name {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.03em;
+    }
+
+    .brand__name span { color: var(--accent); }
+
+    .brand__league {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text3);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* ── WEEK TABS BAR ── */
+    .week-bar {
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 60px;
+      z-index: 90;
+    }
+
+    .week-bar__inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    .week-tabs {
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .week-tabs::-webkit-scrollbar { display: none; }
+
+    .week-tab {
+      flex-shrink: 0;
+      height: 44px;
+      padding: 0 16px;
+      border: none;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      cursor: pointer;
+      transition: color 0.12s, border-color 0.12s;
+      white-space: nowrap;
+      letter-spacing: -0.01em;
+    }
+
+    .week-tab:hover { color: var(--text); }
+
+    .week-tab--active {
+      color: var(--text);
+      border-bottom-color: var(--text);
+    }
+
+    .week-tab--test { color: var(--text3); font-style: italic; }
+    .week-tab--test.week-tab--active { color: var(--text2); border-bottom-color: var(--text3); }
+
+    /* ── MAIN CONTAINER ── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 20px 60px;
+    }
+
+    /* ── WEEK HEADING ── */
+    .week-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .week-heading__title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .week-heading__count {
+      font-size: 13px;
+      color: var(--text3);
+    }
+
+    .test-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      background: #f3f4f6;
+      color: var(--text3);
+      border: 1px solid var(--border2);
+      border-radius: 4px;
+      padding: 1px 7px;
+      letter-spacing: 0.08em;
+      vertical-align: middle;
+    }
+
+    /* ── GAME GRID ── */
+    .games-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    @media (min-width: 600px)  { .games-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 960px)  { .games-grid { grid-template-columns: repeat(3, 1fr); } }
+
+    /* ── GAME CARD ── */
+    .game-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: box-shadow 0.15s, transform 0.12s;
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .game-card:hover {
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+
+    .game-card:active {
+      transform: translateY(0);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Card status strip */
+    .card-status {
+      padding: 9px 14px 8px;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      align-items: center;
+      min-height: 36px;
+    }
+
+    .badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fca5a5;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .badge-live__dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #dc2626;
+      animation: livepulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes livepulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.3; transform: scale(0.7); }
+    }
+
+    .badge-final {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text3);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .badge-scheduled {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text2);
+    }
+
+    /* Card body — teams */
+    .card-body {
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .card-team {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    /* Logo */
+    .logo-wrap {
+      position: relative;
+      width: 52px;
+      height: 52px;
+      flex-shrink: 0;
+    }
+
+    .logo-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .logo-fallback {
+      display: none;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .logo-wrap.img-error img { display: none; }
+    .logo-wrap.img-error .logo-fallback { display: flex; }
+
+    .card-team__name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      text-align: center;
+      line-height: 1.25;
+      max-width: 90px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Center: score or vs */
+    .card-center {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding: 0 4px;
+    }
+
+    .card-score {
+      font-size: 34px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+      min-width: 30px;
+      text-align: center;
+      letter-spacing: -0.03em;
+    }
+
+    .card-score--dim { color: var(--text3); }
+
+    .card-dash {
+      font-size: 20px;
+      font-weight: 300;
+      color: var(--border2);
+    }
+
+    .card-vs {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text3);
+      padding: 0 8px;
+    }
+
+    /* Card footer — venue */
+    .card-footer {
+      padding: 6px 14px 12px;
+      font-size: 11px;
+      color: var(--text3);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow: hidden;
+    }
+
+    .card-footer__venue {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── SKELETON ── */
+    .skeleton-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      height: 148px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .skel {
+      background: linear-gradient(90deg, #f3f4f6 25%, #e9eaec 50%, #f3f4f6 75%);
+      background-size: 200% 100%;
+      border-radius: 6px;
+      animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ── EMPTY / ERROR ── */
+    .state-box {
+      padding: 56px 20px;
+      text-align: center;
+      color: var(--text3);
+    }
+
+    .state-box__icon  { font-size: 40px; margin-bottom: 14px; }
+    .state-box__title { font-size: 17px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+    .state-box__msg   { font-size: 13px; color: var(--text3); margin-bottom: 20px; }
+
+    .btn-retry {
+      display: inline-block;
+      background: var(--text);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 22px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-retry:hover { opacity: 0.82; }
+
+    @media (max-width: 400px) {
+      .card-score { font-size: 26px; }
+      .logo-wrap  { width: 42px; height: 42px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="/">
+        <span class="brand__name">Cover<span>Cero</span></span>
+        <span class="brand__league">ONEFA 2026</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- WEEK TABS -->
+  <div class="week-bar" id="week-bar" style="display:none">
+    <div class="week-bar__inner">
+      <div class="week-tabs" id="week-tabs"></div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="container">
+    <div id="week-heading"></div>
+    <div id="games-container">
+      <div class="games-grid">
+        <div class="skeleton-card">
+          <div class="skel" style="height:12px;width:55%"></div>
+          <div class="skel" style="flex:1"></div>
+          <div class="skel" style="height:12px;width:35%"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skel" style="height:12px;width:65%"></div>
+          <div class="skel" style="flex:1"></div>
+          <div class="skel" style="height:12px;width:40%"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skel" style="height:12px;width:50%"></div>
+          <div class="skel" style="flex:1"></div>
+          <div class="skel" style="height:12px;width:45%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL  = 'https://hqjxblblbmahqltjikfy.supabase.co'
+    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M'
+
+    const SB_HEADERS = {
+      'apikey':          SUPABASE_ANON,
+      'Authorization':   'Bearer ' + SUPABASE_ANON,
+      'Accept-Profile':  'covercero',
+      'Content-Profile': 'covercero',
+    }
+
+    // Canonical week order
+    const WEEK_ORDER = ['TEST','1','2','3','4','5','6','7','8','9','10','QF','SF','F']
+
+    const WEEK_LABEL = {
+      'TEST': 'TEST',
+      '1':'Semana 1','2':'Semana 2','3':'Semana 3','4':'Semana 4','5':'Semana 5',
+      '6':'Semana 6','7':'Semana 7','8':'Semana 8','9':'Semana 9','10':'Semana 10',
+      'QF':'Cuartos de Final','SF':'Semifinales','F':'Final',
+    }
+
+    const WEEK_TAB = {
+      'TEST':'TEST',
+      '1':'S1','2':'S2','3':'S3','4':'S4','5':'S5',
+      '6':'S6','7':'S7','8':'S8','9':'S9','10':'S10',
+      'QF':'QF','SF':'SF','F':'F',
+    }
+
+    // ── State ────────────────────────────────────────────────────────────────
+
+    let allGames   = []
+    let activeWeek = null
+
+    // ── Fetch ─────────────────────────────────────────────────────────────────
+
+    async function fetchGames() {
+      const qs = new URLSearchParams({
+        select: '*,home:home_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url),away:away_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url)',
+        order:  'kickoff.asc.nullslast',
+      })
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/games?${qs}`, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    }
+
+    // ── Week helpers ──────────────────────────────────────────────────────────
+
+    function computeWeeks(games) {
+      const present = new Set(games.map(g => g.semana).filter(Boolean))
+      return WEEK_ORDER.filter(w => present.has(w))
+    }
+
+    function findInitialWeek(games, weeks) {
+      if (!weeks.length) return null
+      const now = Date.now()
+
+      // 1. Live game?
+      const live = games.find(g => g.status === 'live')
+      if (live) return live.semana
+
+      // 2. Next future game
+      const future = games
+        .filter(g => g.kickoff && new Date(g.kickoff).getTime() > now)
+        .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff))
+      if (future.length) return future[0].semana
+
+      // 3. Last non-TEST week with games
+      for (let i = weeks.length - 1; i >= 0; i--) {
+        if (weeks[i] !== 'TEST') return weeks[i]
+      }
+      return weeks[weeks.length - 1]
+    }
+
+    // ── Date helpers ──────────────────────────────────────────────────────────
+
+    function formatKickoff(iso, horaLocal) {
+      if (!iso) return null
+      const d = new Date(iso)
+      const DAYS   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+      const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+      const timeStr = horaLocal ? horaLocal.slice(0, 5) : `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`
+      return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${timeStr}`
+    }
+
+    // ── HTML safety ───────────────────────────────────────────────────────────
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    }
+
+    // ── Render helpers ────────────────────────────────────────────────────────
+
+    function renderLogo(team) {
+      const abbr  = esc(team?.abreviatura || '?')
+      const bg    = esc(team?.color_principal || '#e5e7eb')
+      const tx    = esc(team?.color_texto || '#6b7280')
+      const src   = team?.logo_url ? esc(team.logo_url) : ''
+      const imgTag = src
+        ? `<img src="${src}" alt="${abbr}" loading="lazy"
+               onerror="this.closest('.logo-wrap').classList.add('img-error')">`
+        : ''
+      return `<div class="logo-wrap${src ? '' : ' img-error'}">
+        ${imgTag}
+        <div class="logo-fallback" style="background:${bg};color:${tx}">${abbr}</div>
+      </div>`
+    }
+
+    function renderStatus(game) {
+      if (game.status === 'live') {
+        return `<div class="badge-live"><span class="badge-live__dot"></span>EN VIVO</div>`
+      }
+      if (game.status === 'final') {
+        return `<span class="badge-final">FINAL</span>`
+      }
+      const t = formatKickoff(game.kickoff, game.hora)
+      if (t) return `<span class="badge-scheduled">${esc(t)}</span>`
+      return `<span class="badge-scheduled" style="color:var(--text3)">Por confirmar</span>`
+    }
+
+    function renderCard(game) {
+      const showScore = game.status === 'live' || game.status === 'final'
+      const hs = game.score_home ?? 0
+      const as = game.score_away ?? 0
+
+      // Dim losing side for final games (draw = both normal)
+      const hDim = showScore && game.status === 'final' && hs < as
+      const aDim = showScore && game.status === 'final' && as < hs
+
+      const homeName = esc(game.home?.nombre_corto || 'Local')
+      const awayName = esc(game.away?.nombre_corto || 'Visitante')
+
+      const center = showScore
+        ? `<div class="card-center">
+             <span class="card-score${hDim ? ' card-score--dim' : ''}">${hs}</span>
+             <span class="card-dash">—</span>
+             <span class="card-score${aDim ? ' card-score--dim' : ''}">${as}</span>
+           </div>`
+        : `<span class="card-vs">vs</span>`
+
+      const footer = game.sede
+        ? `<div class="card-footer">
+             <span style="font-size:10px;flex-shrink:0">📍</span>
+             <span class="card-footer__venue">${esc(game.sede)}</span>
+           </div>`
+        : ''
+
+      return `<div class="game-card" data-id="${esc(game.id)}"
+          role="button" tabindex="0"
+          aria-label="${homeName} vs ${awayName}">
+        <div class="card-status">${renderStatus(game)}</div>
+        <div class="card-body">
+          <div class="card-team">
+            ${renderLogo(game.home)}
+            <span class="card-team__name">${homeName}</span>
+          </div>
+          ${center}
+          <div class="card-team">
+            ${renderLogo(game.away)}
+            <span class="card-team__name">${awayName}</span>
+          </div>
+        </div>
+        ${footer}
+      </div>`
+    }
+
+    // ── Render week tabs ───────────────────────────────────────────────────────
+
+    function renderTabs(weeks) {
+      const container = document.getElementById('week-tabs')
+      container.innerHTML = weeks.map(w => {
+        const isTest = w === 'TEST'
+        const cls = ['week-tab', isTest ? 'week-tab--test' : '', w === activeWeek ? 'week-tab--active' : '']
+          .filter(Boolean).join(' ')
+        return `<button class="${cls}" data-w="${esc(w)}">${esc(WEEK_TAB[w] || w)}</button>`
+      }).join('')
+
+      container.querySelectorAll('.week-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeWeek = btn.dataset.w
+          renderTabs(weeks)
+          renderGames()
+        })
+      })
+
+      const active = container.querySelector('.week-tab--active')
+      if (active) active.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+    }
+
+    // ── Render games for active week ───────────────────────────────────────────
+
+    function renderGames() {
+      const weekGames = allGames.filter(g => g.semana === activeWeek)
+      const label     = WEEK_LABEL[activeWeek] || activeWeek
+      const isTest    = activeWeek === 'TEST'
+
+      document.getElementById('week-heading').innerHTML = `
+        <div class="week-heading">
+          <span class="week-heading__title">${esc(label)}</span>
+          ${isTest ? '<span class="test-badge">TEST</span>' : ''}
+          <span class="week-heading__count">${weekGames.length} partido${weekGames.length !== 1 ? 's' : ''}</span>
+        </div>`
+
+      const container = document.getElementById('games-container')
+
+      if (!weekGames.length) {
+        container.innerHTML = `<div class="state-box">
+          <div class="state-box__icon">📅</div>
+          <div class="state-box__title">Sin partidos</div>
+          <div class="state-box__msg">No hay juegos programados para esta semana.</div>
+        </div>`
+        return
+      }
+
+      container.innerHTML = `<div class="games-grid">${weekGames.map(renderCard).join('')}</div>`
+
+      container.querySelectorAll('.game-card').forEach(card => {
+        const go = () => {
+          location.href = `viewer.html?game_id=${encodeURIComponent(card.dataset.id)}`
+        }
+        card.addEventListener('click', go)
+        card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() } })
+      })
+    }
+
+    // ── Error state ────────────────────────────────────────────────────────────
+
+    function showError(msg) {
+      document.getElementById('games-container').innerHTML = `
+        <div class="state-box">
+          <div class="state-box__icon">⚠️</div>
+          <div class="state-box__title">Error de conexión</div>
+          <div class="state-box__msg">${esc(msg)}</div>
+          <button class="btn-retry" id="btn-retry">↺ Reintentar</button>
+        </div>`
+      document.getElementById('btn-retry')?.addEventListener('click', init)
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+
+    async function init() {
+      allGames   = []
+      activeWeek = null
+      document.getElementById('week-bar').style.display = 'none'
+      document.getElementById('week-heading').innerHTML = ''
+      document.getElementById('games-container').innerHTML = `
+        <div class="games-grid">
+          ${[55,65,50].map(w => `
+            <div class="skeleton-card">
+              <div class="skel" style="height:12px;width:${w}%"></div>
+              <div class="skel" style="flex:1"></div>
+              <div class="skel" style="height:12px;width:${w - 15}%"></div>
+            </div>`).join('')}
+        </div>`
+
+      try {
+        allGames = await fetchGames()
+      } catch (err) {
+        console.error('[Cover Cero] Error loading games:', err)
+        showError('No se pudieron cargar los partidos. Verifica tu conexión.')
+        return
+      }
+
+      if (!allGames.length) {
+        document.getElementById('games-container').innerHTML = `
+          <div class="state-box">
+            <div class="state-box__icon">🏈</div>
+            <div class="state-box__title">Sin partidos registrados</div>
+            <div class="state-box__msg">El calendario aún no tiene partidos para mostrar.</div>
+          </div>`
+        return
+      }
+
+      const weeks = computeWeeks(allGames)
+      activeWeek  = findInitialWeek(allGames, weeks)
+
+      document.getElementById('week-bar').style.display = ''
+      renderTabs(weeks)
+      renderGames()
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

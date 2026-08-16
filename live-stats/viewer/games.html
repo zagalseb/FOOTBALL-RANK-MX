@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — Operador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d0f12;
+      --bg2:      #13161b;
+      --bg3:      #1a1e25;
+      --border:   #252a33;
+      --border2:  #2e3540;
+      --text:     #e8eaed;
+      --text2:    #8a95a3;
+      --text3:    #4a5568;
+      --accent:   #3b82f6;
+      --accent-bg: rgba(59,130,246,0.15);
+      --green:    #22c55e;
+      --green-bg: rgba(34,197,94,0.12);
+      --red:      #ef4444;
+      --red-bg:   rgba(239,68,68,0.12);
+      --mono:     'IBM Plex Mono', monospace;
+      --sans:     'IBM Plex Sans', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header__logo {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: 0.05em;
+    }
+
+    .header__logo span {
+      color: var(--accent);
+    }
+
+    .header__divider {
+      width: 1px;
+      height: 18px;
+      background: var(--border2);
+    }
+
+    .header__sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ── FILTER TABS ── */
+    .filter-bar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .tab {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      padding: 12px 14px 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab--active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── CONTENT ── */
+    .content {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 24px 20px;
+    }
+
+    /* ── GAME TABLE ── */
+    .game-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .game-table th {
+      background: var(--bg3);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text3);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 9px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .game-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .game-table tr:last-child td { border-bottom: none; }
+
+    .game-table tbody tr {
+      background: var(--bg2);
+      transition: background 0.1s;
+    }
+
+    .game-table tbody tr:hover { background: var(--bg3); }
+
+    /* ── WEEK BADGE ── */
+    .week-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--bg3);
+      color: var(--text2);
+      border: 1px solid var(--border2);
+      white-space: nowrap;
+    }
+
+    .week-badge--test {
+      background: rgba(168,85,247,0.12);
+      color: #a855f7;
+      border-color: rgba(168,85,247,0.25);
+    }
+
+    /* ── DATE CELL ── */
+    .date-cell {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text2);
+      white-space: nowrap;
+    }
+
+    /* ── MATCHUP ── */
+    .matchup {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .team-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .team-chip__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .matchup__vs {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text3);
+      padding: 0 2px;
+    }
+
+    /* ── SEDE ── */
+    .sede-cell {
+      font-size: 12px;
+      color: var(--text2);
+      max-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── STATUS BADGE ── */
+    .status-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-badge--live {
+      background: var(--red-bg);
+      color: var(--red);
+    }
+
+    .status-badge--live::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--red);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    .status-badge--scheduled {
+      background: var(--bg3);
+      color: var(--text2);
+    }
+
+    .status-badge--final {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
+    /* ── ACTION BUTTON ── */
+    .action-btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 14px;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      display: inline-block;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .action-btn:active { transform: scale(0.97); }
+
+    .action-btn--continue {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .action-btn--continue:hover { opacity: 0.88; }
+
+    .action-btn--start {
+      background: var(--green);
+      color: #0d0f12;
+    }
+
+    .action-btn--start:hover { opacity: 0.88; }
+
+    .action-btn--log {
+      background: var(--bg3);
+      color: var(--text2);
+      border: 1px solid var(--border2);
+    }
+
+    .action-btn--log:hover { color: var(--text); border-color: var(--text3); }
+
+    /* ── SKELETON ── */
+    .skeleton-row td {
+      padding: 13px 14px;
+    }
+
+    .skel {
+      height: 14px;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--bg3) 25%, var(--border) 50%, var(--bg3) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ── EMPTY / ERROR ── */
+    .state-msg {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--text3);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .state-msg__sub {
+      margin-top: 8px;
+      font-size: 11px;
+      opacity: 0.6;
+    }
+
+    .retry-btn {
+      margin-top: 16px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-bg);
+      border: 1px solid rgba(59,130,246,0.3);
+      border-radius: 5px;
+      padding: 6px 16px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+
+    .retry-btn:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header__logo">COVER<span>CERO</span></div>
+    <div class="header__divider"></div>
+    <div class="header__sub">Operador</div>
+  </header>
+
+  <!-- FILTER TABS -->
+  <nav class="filter-bar" id="filter-bar">
+    <button class="tab tab--active" data-tab="all">Todos</button>
+    <button class="tab" data-tab="live">En vivo</button>
+    <button class="tab" data-tab="upcoming">Próximos</button>
+    <button class="tab" data-tab="final">Finalizados</button>
+    <button class="tab" data-tab="test">TEST</button>
+  </nav>
+
+  <!-- CONTENT -->
+  <div class="content">
+    <table class="game-table" id="game-table">
+      <thead>
+        <tr>
+          <th>Sem.</th>
+          <th>Fecha / Hora</th>
+          <th>Partido</th>
+          <th>Sede</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        <!-- Skeletons -->
+        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:120px"></div></td><td><div class="skel" style="width:180px"></div></td><td><div class="skel" style="width:100px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
+        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:140px"></div></td><td><div class="skel" style="width:160px"></div></td><td><div class="skel" style="width:80px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
+        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:130px"></div></td><td><div class="skel" style="width:200px"></div></td><td><div class="skel" style="width:110px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const SB_URL  = 'https://hqjxblblbmahqltjikfy.supabase.co'
+    const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M'
+
+    const SB_HEADERS = {
+      'apikey':          SB_KEY,
+      'Authorization':   'Bearer ' + SB_KEY,
+      'Accept-Profile':  'covercero',
+      'Content-Profile': 'covercero',
+    }
+
+    const DAYS   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+    const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+
+    let allGames  = []
+    let activeTab = 'all'
+
+    // ── Fetch ──────────────────────────────────────────────────────────────────
+
+    async function fetchGames() {
+      const url = `${SB_URL}/rest/v1/games` +
+        `?select=*,home:home_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url)` +
+        `,away:away_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url)` +
+        `&order=kickoff.asc.nullslast`
+
+      const res = await fetch(url, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    }
+
+    async function load() {
+      try {
+        allGames = await fetchGames()
+        renderTable()
+      } catch (err) {
+        console.error(err)
+        showError()
+      }
+    }
+
+    // ── Filter ─────────────────────────────────────────────────────────────────
+
+    function filteredGames() {
+      const now = new Date()
+      switch (activeTab) {
+        case 'live':     return allGames.filter(g => g.status === 'live')
+        case 'upcoming': return allGames.filter(g => g.status === 'scheduled' && (!g.kickoff || new Date(g.kickoff) >= now))
+        case 'final':    return allGames.filter(g => g.status === 'final')
+        case 'test':     return allGames.filter(g => g.semana === 'TEST')
+        default:         return allGames
+      }
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+
+    function formatWeek(semana) {
+      if (!semana) return '—'
+      if (semana === 'TEST') return '<span class="week-badge week-badge--test">TEST</span>'
+      const label = { 'QF': 'QF', 'SF': 'SF', 'F': 'F' }[semana] || `S${semana}`
+      return `<span class="week-badge">${label}</span>`
+    }
+
+    function formatDate(kickoff, hora) {
+      if (!kickoff && !hora) return '—'
+      let dateStr = '—'
+      if (kickoff) {
+        const d = new Date(kickoff)
+        dateStr = `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`
+      }
+      const timeStr = hora ? hora.slice(0, 5) : ''
+      return timeStr ? `${dateStr} · ${timeStr}` : dateStr
+    }
+
+    function teamChip(team) {
+      if (!team) return '<span style="color:var(--text3)">—</span>'
+      const color = team.color_principal || '#4a5568'
+      const abbr  = team.abreviatura || team.nombre_corto || '?'
+      return `<span class="team-chip">
+        <span class="team-chip__dot" style="background:${color}"></span>
+        ${abbr}
+      </span>`
+    }
+
+    function statusBadge(status) {
+      switch (status) {
+        case 'live':      return '<span class="status-badge status-badge--live">EN VIVO</span>'
+        case 'final':     return '<span class="status-badge status-badge--final">FINAL</span>'
+        case 'scheduled': return '<span class="status-badge status-badge--scheduled">PROGRAMADO</span>'
+        default:          return `<span class="status-badge status-badge--scheduled">${(status || '—').toUpperCase()}</span>`
+      }
+    }
+
+    function actionBtn(game) {
+      const href = `covercero_live.html?game_id=${encodeURIComponent(game.id)}`
+      switch (game.status) {
+        case 'live':
+          return `<a class="action-btn action-btn--continue" href="${href}">Continuar →</a>`
+        case 'final':
+          return `<a class="action-btn action-btn--log" href="${href}">Ver log</a>`
+        default:
+          return `<a class="action-btn action-btn--start" href="${href}">Iniciar →</a>`
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('table-body')
+      const games = filteredGames()
+
+      if (games.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6">
+          <div class="state-msg">No hay partidos en este filtro.<div class="state-msg__sub">Cambia la pestaña o agrega partidos al sistema.</div></div>
+        </td></tr>`
+        return
+      }
+
+      tbody.innerHTML = games.map(g => `
+        <tr>
+          <td>${formatWeek(g.semana)}</td>
+          <td><span class="date-cell">${formatDate(g.kickoff, g.hora)}</span></td>
+          <td>
+            <div class="matchup">
+              ${teamChip(g.home)}
+              <span class="matchup__vs">vs</span>
+              ${teamChip(g.away)}
+            </div>
+          </td>
+          <td><span class="sede-cell" title="${g.sede || ''}">${g.sede || '—'}</span></td>
+          <td>${statusBadge(g.status)}</td>
+          <td>${actionBtn(g)}</td>
+        </tr>
+      `).join('')
+    }
+
+    function showError() {
+      document.getElementById('table-body').innerHTML = `<tr><td colspan="6">
+        <div class="state-msg">
+          Error al cargar los partidos.
+          <div class="state-msg__sub">Verifica la conexión y vuelve a intentar.</div>
+          <button class="retry-btn" onclick="load()">↺ Reintentar</button>
+        </div>
+      </td></tr>`
+    }
+
+    // ── Tabs ───────────────────────────────────────────────────────────────────
+
+    document.getElementById('filter-bar').addEventListener('click', e => {
+      const btn = e.target.closest('.tab')
+      if (!btn) return
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab--active'))
+      btn.classList.add('tab--active')
+      activeTab = btn.dataset.tab
+      renderTable()
+    })
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+
+    load()
+  </script>
+
+</body>
+</html>
