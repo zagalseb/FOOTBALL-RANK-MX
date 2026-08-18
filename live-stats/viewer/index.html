@@ -458,16 +458,8 @@
     </div>
   </div>
 
-  <script>
-    const SUPABASE_URL  = 'https://hqjxblblbmahqltjikfy.supabase.co'
-    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M'
-
-    const SB_HEADERS = {
-      'apikey':          SUPABASE_ANON,
-      'Authorization':   'Bearer ' + SUPABASE_ANON,
-      'Accept-Profile':  'covercero',
-      'Content-Profile': 'covercero',
-    }
+  <script type="module">
+    import { SUPABASE_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
 
     // Canonical week order
     const WEEK_ORDER = ['TEST','1','2','3','4','5','6','7','8','9','10','QF','SF','F']

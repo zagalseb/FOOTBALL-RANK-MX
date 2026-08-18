@@ -390,16 +390,8 @@
     </table>
   </div>
 
-  <script>
-    const SB_URL  = 'https://hqjxblblbmahqltjikfy.supabase.co'
-    const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M'
-
-    const SB_HEADERS = {
-      'apikey':          SB_KEY,
-      'Authorization':   'Bearer ' + SB_KEY,
-      'Accept-Profile':  'covercero',
-      'Content-Profile': 'covercero',
-    }
+  <script type="module">
+    import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
 
     const DAYS   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
     const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -429,6 +421,7 @@
         showError()
       }
     }
+    window.load = load
 
     // ── Filter ─────────────────────────────────────────────────────────────────
 

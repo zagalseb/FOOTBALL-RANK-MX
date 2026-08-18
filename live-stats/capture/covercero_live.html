@@ -1166,6 +1166,7 @@
     import { renderAddPlay } from './wizard.js'
     import { loadPlays, plays, savePlays, gameState, onPlaySubmitted,
              setSupabaseClient, setGameId, getGameId, onSyncStatus } from './engine.js'
+    import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
 
     const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
 
@@ -1195,12 +1196,10 @@
       document.getElementById('gameid-display').textContent = _activeGameId
 
       // Fetch game + teams from Supabase
-      const SB_URL  = 'https://hqjxblblbmahqltjikfy.supabase.co'
-      const SB_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M'
       try {
         const res = await fetch(
-          `${SB_URL}/rest/v1/games?select=*,home:home_team_id(nombre_corto,abreviatura),away:away_team_id(nombre_corto,abreviatura)&id=eq.${encodeURIComponent(_activeGameId)}&limit=1`,
-          { headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY, 'Accept-Profile': 'covercero', 'Content-Profile': 'covercero' } }
+          `${SUPABASE_URL}/rest/v1/games?select=*,home:home_team_id(nombre_corto,abreviatura),away:away_team_id(nombre_corto,abreviatura)&id=eq.${encodeURIComponent(_activeGameId)}&limit=1`,
+          { headers: SUPABASE_HEADERS }
         )
         if (res.ok) {
           const [game] = await res.json()
@@ -1208,9 +1207,9 @@
             const homeAbbr = game.home.abreviatura || game.home.nombre_corto
             const awayAbbr = game.away.abreviatura || game.away.nombre_corto
             gameState.teams.home.name   = homeAbbr
-            gameState.teams.home.prefix = homeAbbr[0].toUpperCase()
+            gameState.teams.home.abreviatura = homeAbbr.toUpperCase()
             gameState.teams.away.name   = awayAbbr
-            gameState.teams.away.prefix = awayAbbr[0].toUpperCase()
+            gameState.teams.away.abreviatura = awayAbbr.toUpperCase()
             gameState.possession        = homeAbbr
             gameState.field_pos         = { team: homeAbbr, yard: 35 }
           }

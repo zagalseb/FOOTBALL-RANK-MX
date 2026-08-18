@@ -1,3 +1,5 @@
+import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
+
 // ── Game state ────────────────────────────────────────────────────────────────
 
 export const gameState = {
@@ -10,10 +12,10 @@ export const gameState = {
   distance: 10,
   score: { home: 0, away: 0 },
   // Teams config — home attacks toward yard 100, away attacks toward yard 0.
-  // prefix: single char used for shorthand input (e.g. "M40" → MTY 40)
+  // abreviatura: real team abbreviation (from Supabase) used for shorthand input (e.g. "CCM40" → CCM 40)
   teams: {
-    home: { name: 'MTY', prefix: 'M' },
-    away: { name: 'UANL', prefix: 'U' },
+    home: { name: 'MTY', abreviatura: 'MTY' },
+    away: { name: 'UANL', abreviatura: 'UANL' },
   },
 }
 
@@ -154,19 +156,13 @@ async function _syncPlayToSupabase(play) {
     submitted_at: new Date(play.submitted_at).toISOString(),
   }
 
-  const SUPABASE_URL  = 'https://hqjxblblbmahqltjikfy.supabase.co'
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M'
-
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/plays`, {
       method: 'POST',
       headers: {
-        'apikey':          SUPABASE_ANON,
-        'Authorization':   `Bearer ${SUPABASE_ANON}`,
-        'Content-Type':    'application/json',
-        'Prefer':          'return=minimal',
-        'Accept-Profile':  'covercero',
-        'Content-Profile': 'covercero',
+        ...SUPABASE_HEADERS,
+        'Content-Type': 'application/json',
+        'Prefer':       'return=minimal',
       },
       body: JSON.stringify(row),
     })
@@ -235,8 +231,8 @@ export function parseATInput(raw, teams) {
   let teamName = null
   let yardStr  = null
 
-  const hp = teams.home.prefix.toUpperCase()
-  const ap = teams.away.prefix.toUpperCase()
+  const hp = teams.home.abreviatura.toUpperCase()
+  const ap = teams.away.abreviatura.toUpperCase()
 
   if (s.startsWith(hp)) {
     teamName = teams.home.name

@@ -333,13 +333,13 @@ export function renderATField(config) {
           ? `<div class="at-feedback at-feedback--valid">${posLabel} · <span class="at-net">${netLabel}</span></div>`
           : `<div class="at-feedback at-feedback--invalid">Posición inválida</div>`
       : `<div class="at-feedback at-feedback--hint">
-            Escribe posición: <code>${teams.home.prefix}40</code> · <code>${teams.away.prefix}30</code> · o solo <code>40</code> para campo local
+            Escribe posición: <code>${teams.home.abreviatura}40</code> · <code>${teams.away.abreviatura}30</code> · o solo <code>40</code> para campo local
           </div>`
 
     const hintLine = `
       <div class="at-team-hint">
-        <span class="at-team-chip">${teams.home.prefix} = ${teams.home.name}</span>
-        <span class="at-team-chip">${teams.away.prefix} = ${teams.away.name}</span>
+        <span class="at-team-chip">${teams.home.abreviatura} = ${teams.home.name}</span>
+        <span class="at-team-chip">${teams.away.abreviatura} = ${teams.away.name}</span>
         <span class="at-snap-chip">Snap: ${snapPos.team} ${snapPos.yard}</span>
       </div>`
 
@@ -349,7 +349,7 @@ export function renderATField(config) {
         <div class="at-input-row">
           <input id="at-input" class="at-input${td ? ' at-input--td' : ''}" type="text"
             inputmode="text" autocomplete="off"
-            placeholder="${teams.home.prefix}40 · ${teams.away.prefix}30 · 40"
+            placeholder="${teams.home.abreviatura}40 · ${teams.away.abreviatura}30 · 40"
             value="${rawInput}" spellcheck="false">
         </div>
         ${feedbackHTML}
@@ -386,7 +386,7 @@ export function renderATField(config) {
 
     if (e.key.length === 1) {
       e.preventDefault()
-      rawInput = (rawInput + e.key).slice(0, 4)  // max "U50" = 3 chars, "M50" = 3
+      rawInput = (rawInput + e.key).slice(0, 6)  // max "CCM50" = 5 chars
       rebuild()
       return
     }
@@ -666,12 +666,12 @@ function _rebuildGameCtrlForm() {
     bodyHTML = `
       <div class="at-field">
         <div class="at-team-hint">
-          <span class="at-team-chip">${teams.home.prefix} = ${teams.home.name}</span>
-          <span class="at-team-chip">${teams.away.prefix} = ${teams.away.name}</span>
+          <span class="at-team-chip">${teams.home.abreviatura} = ${teams.home.name}</span>
+          <span class="at-team-chip">${teams.away.abreviatura} = ${teams.away.name}</span>
         </div>
         <div class="at-input-row">
           <input id="gc-at" class="at-input" type="text" inputmode="text"
-            autocomplete="off" placeholder="${teams.home.prefix}40 · ${teams.away.prefix}30 · 40"
+            autocomplete="off" placeholder="${teams.home.abreviatura}40 · ${teams.away.abreviatura}30 · 40"
             value="${state.at_raw}" spellcheck="false">
         </div>
         ${fb}
@@ -811,12 +811,12 @@ function _rebuildGameCtrlForm() {
         </div>
         <div class="at-team-hint">Field Position</div>
         <div class="at-team-hint">
-          <span class="at-team-chip">${teams.home.prefix} = ${teams.home.name}</span>
-          <span class="at-team-chip">${teams.away.prefix} = ${teams.away.name}</span>
+          <span class="at-team-chip">${teams.home.abreviatura} = ${teams.home.name}</span>
+          <span class="at-team-chip">${teams.away.abreviatura} = ${teams.away.name}</span>
         </div>
         <div class="at-input-row">
           <input id="gc-at" class="at-input" type="text" inputmode="text"
-            autocomplete="off" placeholder="${teams.home.prefix}40 · ${teams.away.prefix}30 · 40"
+            autocomplete="off" placeholder="${teams.home.abreviatura}40 · ${teams.away.abreviatura}30 · 40"
             value="${state.at_raw}" spellcheck="false">
         </div>
         ${fb}

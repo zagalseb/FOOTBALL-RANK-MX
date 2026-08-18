@@ -33,18 +33,17 @@
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo } = React;
 
-const SB_URL = 'https://hqjxblblbmahqltjikfy.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxanhibGJsYm1haHFsdGppa2Z5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NzI4NjMsImV4cCI6MjA5NDQ0ODg2M30.4NbgHPtA88Of-kIB-gwrr-Ry1_IxJF43cl4peLPEU_M';
-const HDRS = {
-  'apikey': SB_KEY,
-  'Authorization': 'Bearer ' + SB_KEY,
-  'Accept-Profile': 'covercero',
-  'Content-Profile': 'covercero',
-};
+let SB_URL, SB_KEY, HDRS;
+const configReady = import('../../shared/supabase/supabase_config.js').then(m => {
+  SB_URL = m.SUPABASE_URL;
+  SB_KEY = m.SUPABASE_ANON_KEY;
+  HDRS = m.SUPABASE_HEADERS;
+});
 
 const gameId = new URLSearchParams(location.search).get('game_id');
 
 async function sbFetch(path) {
+  await configReady;
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: HDRS });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -296,6 +295,7 @@ function App() {
     let sbClient;
     (async () => {
       try {
+        await configReady;
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
         sbClient = createClient(SB_URL, SB_KEY, { db: { schema: 'covercero' } });
         sbClient.channel('viewer-plays')
