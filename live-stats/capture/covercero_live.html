@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cover Cero Live</title>
+  <title>Cover Cero Stats</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
@@ -237,6 +237,35 @@
 
     .possession-bar__dot {
       color: var(--text3);
+    }
+
+    .final-banner {
+      display: none;
+      background: var(--red-bg);
+      border-bottom: 1px solid var(--red);
+      padding: 14px 24px;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      flex-shrink: 0;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .final-banner--visible {
+      display: flex;
+    }
+
+    .final-banner__tag {
+      color: var(--red);
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+    }
+
+    .final-banner__score {
+      color: var(--text);
+      font-weight: 600;
+      font-size: 18px;
     }
 
     .wizard-area {
@@ -1136,7 +1165,7 @@
 
   <!-- TOP BAR -->
   <header class="topbar">
-    <span class="topbar__brand">COVER CERO LIVE</span>
+    <span class="topbar__brand">COVER CERO STATS</span>
     <div class="topbar__divider"></div>
     <a class="topbar__back" href="games.html">← Partidos</a>
     <div class="topbar__divider"></div>
@@ -1174,7 +1203,7 @@
       <button class="nav-btn nav-btn--active">Add Play</button>
       <button class="nav-btn">Reports</button>
       <button class="nav-btn">Rosters</button>
-      <button class="nav-btn">Setup</button>
+      <button class="nav-btn" id="nav-setup">Setup</button>
     </nav>
   </header>
 
@@ -1191,6 +1220,10 @@
 
     <!-- CONTENT -->
     <div class="content">
+      <div class="final-banner" id="final-banner">
+        <span class="final-banner__tag">FINAL</span>
+        <span class="final-banner__score" id="final-banner-score"></span>
+      </div>
       <div class="possession-bar">
         <span class="possession-bar__text" id="poss-team">MTY</span>
         <span class="possession-bar__dot">·</span>
@@ -1210,7 +1243,8 @@
   <script type="module">
     import { renderAddPlay, renderEditPlay } from './wizard.js'
     import { loadPlays, plays, gameState, onPlaySubmitted,
-             setSupabaseClient, setGameId, getGameId, onSyncStatus } from './engine.js'
+             setSupabaseClient, setGameId, getGameId, onSyncStatus,
+             loadRoster, setRosters, playerShortLabel } from './engine.js'
     import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
 
     const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
@@ -1257,6 +1291,12 @@
             gameState.teams.away.abreviatura = awayAbbr.toUpperCase()
             gameState.possession        = homeAbbr
             gameState.field_pos         = { team: homeAbbr, yard: 35 }
+
+            const [homeRoster, awayRoster] = await Promise.all([
+              loadRoster(game.home_team_id),
+              loadRoster(game.away_team_id),
+            ])
+            setRosters(homeRoster, awayRoster)
           }
         }
       } catch (e) {
@@ -1273,6 +1313,10 @@
         error:   '⚠ Error sync',
         offline: '⚠ Offline — datos locales, pueden estar desactualizados',
       }[status] || ''
+    })
+
+    document.getElementById('nav-setup')?.addEventListener('click', () => {
+      location.href = 'setup.html'
     })
 
     // ── Init ───────────────────────────────────────────────────────────────────
@@ -1314,13 +1358,12 @@
     function _playShortText(p) {
       const TYPE_LABEL = {
         RUSH: () => {
-          const num  = p.rush_by ? `#${p.rush_by.number}` : '—'
-          const name = p.rush_by?.name || ''
+          const who  = p.rush_by ? playerShortLabel(p.rush_by) : '—'
           const yds  = p.net_yards != null
             ? (p.net_yards >= 0 ? `+${p.net_yards}` : `${p.net_yards}`) + 'yds'
             : ''
           const res  = p.result ? p.result.toUpperCase() : ''
-          return [num, name, yds, res].filter(Boolean).join(' ')
+          return [who, yds, res].filter(Boolean).join(' ')
         },
         PASS: () => {
           const passer = p.pass_by ? `#${p.pass_by.number}` : '—'
@@ -1458,6 +1501,14 @@
       const awayPossBtn = document.getElementById('pb1')
       if (homePossBtn) homePossBtn.classList.toggle('active', teams.home.name === possession)
       if (awayPossBtn) awayPossBtn.classList.toggle('active', teams.away.name === possession)
+
+      // Final banner
+      const bannerEl = document.getElementById('final-banner')
+      const bannerScoreEl = document.getElementById('final-banner-score')
+      if (bannerEl) bannerEl.classList.toggle('final-banner--visible', gameState.ended)
+      if (bannerScoreEl && gameState.ended) {
+        bannerScoreEl.textContent = `${teams.home.name} ${score.home} — ${teams.away.name} ${score.away}`
+      }
     }
 
     renderSidebar()

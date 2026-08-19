@@ -11,6 +11,7 @@ export const gameState = {
   down: 1,
   distance: 10,
   score: { home: 0, away: 0 },
+  ended: false,
   // Teams config — home attacks toward yard 100, away attacks toward yard 0.
   // abreviatura: real team abbreviation (from Supabase) used for shorthand input (e.g. "CCM40" → CCM 40)
   teams: {
@@ -214,6 +215,41 @@ export async function syncPlayUpdate(play) {
   }
 }
 
+// PATCH games.status/score_home/score_away for the active game. Pass
+// status=null to update only the score (e.g. a manual Set Score correction)
+// without touching status. Reused by applyGameCtrl for both 'end_game'
+// (status → 'final') and 'set_score' (score only).
+async function syncGameStatus(status, scoreHome, scoreAway) {
+  if (!_gameId) return
+  if (_onSyncStatus) _onSyncStatus('saving')
+
+  const body = { score_home: scoreHome, score_away: scoreAway }
+  if (status != null) body.status = status
+
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/games?id=eq.${encodeURIComponent(_gameId)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          ...SUPABASE_HEADERS,
+          'Content-Type': 'application/json',
+          'Prefer':       'return=minimal',
+        },
+        body: JSON.stringify(body),
+      }
+    )
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      throw new Error(`HTTP ${res.status}${detail ? ` — ${detail}` : ''}`)
+    }
+    if (_onSyncStatus) _onSyncStatus('saved')
+  } catch (err) {
+    console.error('[Supabase syncGameStatus]', err)
+    if (_onSyncStatus) _onSyncStatus('error')
+  }
+}
+
 // Lets external code (e.g. the edit wizard) reuse the same "plays changed"
 // notification that normally fires after a new play is submitted.
 export function notifyPlaysChanged() {
@@ -296,19 +332,46 @@ export function clearPlays() {
 
 // ── Roster ────────────────────────────────────────────────────────────────────
 
-let roster = []
+let rosterHome = []
+let rosterAway = []
 
-export function getRoster() {
-  if (roster.length > 0) return roster
-  return Array.from({ length: 100 }, (_, i) => ({
-    number: i,
-    name: '',
-    position: '',
-  }))
+// Fetches a team's real roster from covercero.players. Returns [] (rather than
+// throwing) on failure so the wizard falls back to the generic 0-99 placeholder
+// instead of breaking play capture when offline or Setup hasn't been used yet.
+export async function loadRoster(teamId) {
+  if (!teamId) return []
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/players?team_id=eq.${encodeURIComponent(teamId)}&order=number.asc`,
+      { headers: SUPABASE_HEADERS }
+    )
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return await res.json()
+  } catch (err) {
+    console.error('[Cover Cero] loadRoster failed:', err)
+    return []
+  }
 }
 
-export function loadRoster(data) {
-  roster = data
+// Stores the home/away rosters fetched via loadRoster() so getRoster() can
+// serve the real list. Called once at init (see covercero_live.html).
+export function setRosters(home, away) {
+  rosterHome = home || []
+  rosterAway = away || []
+}
+
+// Returns the roster for whichever team currently has possession. Falls back
+// to a generic 0-99 placeholder (no names) if that team's real roster hasn't
+// been loaded — keeps the BY menu usable even without Setup data.
+export function getRoster() {
+  const side = gameState.possession === gameState.teams.home.name ? rosterHome : rosterAway
+  if (side.length > 0) return side
+  return Array.from({ length: 100 }, (_, i) => ({
+    number: i,
+    nombre: '',
+    apellido: '',
+    position: '',
+  }))
 }
 
 // ── Field position helpers ────────────────────────────────────────────────────
@@ -1070,9 +1133,20 @@ export const PUNT_BLOCK_RET_RESULT_BRANCHES = {
 
 // ── Play text formatter ───────────────────────────────────────────────────────
 
+// Shared short label for a captured player reference ({number, nombre, apellido}),
+// e.g. {number:22, nombre:'Juan', apellido:'Pérez'} → "#22 Pérez, J.".
+// Plays captured before rosters had real names (or any incomplete playerRef)
+// fall back to just "#{number}" instead of breaking.
+export function playerShortLabel(playerRef) {
+  if (!playerRef) return '—'
+  const { number, nombre, apellido } = playerRef
+  if (!apellido) return `#${number}`
+  const initial = nombre ? `, ${nombre.charAt(0).toUpperCase()}.` : ''
+  return `#${number} ${apellido}${initial}`
+}
+
 function _playerStr(p) {
-  if (!p) return '—'
-  return p.name ? `#${p.number} ${p.name}` : `#${p.number}`
+  return playerShortLabel(p)
 }
 
 function _playersStr(val) {
@@ -1150,9 +1224,7 @@ export function formatPlay(play) {
     if (play.fumble_at) {
       const fumbleAtStr = `${play.fumble_at.team} ${play.fumble_at.yard}`
       const recTeam = play.fumble_recovery_team || '—'
-      const recBy = play.fumble_recovered_by
-        ? ` #${play.fumble_recovered_by.number}${play.fumble_recovered_by.name ? ' ' + play.fumble_recovered_by.name : ''}`
-        : ''
+      const recBy = play.fumble_recovered_by ? ` ${playerShortLabel(play.fumble_recovered_by)}` : ''
 
       let fumbleResultStr = ''
       if (play.fumble_result) {
@@ -2140,7 +2212,9 @@ function _applyGameCtrlEventToState(state, event) {
       break
 
     case 'end_game':
-      // No muta el estado, solo se registra
+      // event: {} — marks the game as finished; score is left untouched here,
+      // it's whatever gameState.score already holds.
+      state.ended = true
       break
   }
 }
@@ -2161,6 +2235,12 @@ export function applyGameCtrl(action, data) {
   gameEvents.push(event)
   saveGameEvents()
   if (_onPlaySubmitted) _onPlaySubmitted()
+
+  if (action === 'end_game') {
+    syncGameStatus('final', gameState.score.home, gameState.score.away)
+  } else if (action === 'set_score') {
+    syncGameStatus(null, gameState.score.home, gameState.score.away)
+  }
 }
 
 // ── Derive next-play context from history ────────────────────────────────────

@@ -1,4 +1,4 @@
-import { setPlayField, resetCurrentPlay, getRoster, submitPlayWithSnap, currentPlay, plays, savePlays, syncPlayUpdate, notifyPlaysChanged, RESULT_OPTIONS, RESULT_BRANCHES, FUMBLE_RESULT_BRANCHES, FUMBLE_2_RESULT_BRANCHES, PASS_RESULT_OPTIONS, PASS_RESULT_BRANCHES, RETURN_RESULT_BRANCHES, PENALTY_RESULT_OPTIONS, PENALTY_DOWN_RESULT_OPTIONS, PENALTY_RESULT_BRANCHES, PENALTIES_LIST, KICK_TYPE_OPTIONS, KICKOFF_RESULT_OPTIONS, FG_RESULT_OPTIONS, FG_MISS_OPTIONS, FG_RETURN_RESULT_OPTIONS, KICK_TYPE_BRANCHES, KICKOFF_RESULT_BRANCHES, FG_RESULT_BRANCHES, FG_BLOCKED_RETURN_BRANCHES, KICK_RETURN_RESULT_BRANCHES, FG_RET_RESULT_BRANCHES, PAT_TYPE_OPTIONS, PAT_KICK_RESULT_OPTIONS, PAT_BLOCK_RESULT_OPTIONS, PAT_TYPE_BRANCHES, PAT_KICK_RESULT_BRANCHES, PUNT_RESULT_OPTIONS, PUNT_RESULT_BRANCHES, PUNT_BLOCK_RETURN_BRANCHES, PUNT_RETURN_RESULT_BRANCHES, PUNT_BLOCK_RET_RESULT_BRANCHES, parseATInput, isTouchdown, calcNetYards, gameState, formatPlay, deriveNextPlayContext, applyGameCtrl, GAME_CTRL_OPTIONS } from './engine.js'
+import { setPlayField, resetCurrentPlay, getRoster, submitPlayWithSnap, currentPlay, plays, savePlays, syncPlayUpdate, notifyPlaysChanged, RESULT_OPTIONS, RESULT_BRANCHES, FUMBLE_RESULT_BRANCHES, FUMBLE_2_RESULT_BRANCHES, PASS_RESULT_OPTIONS, PASS_RESULT_BRANCHES, RETURN_RESULT_BRANCHES, PENALTY_RESULT_OPTIONS, PENALTY_DOWN_RESULT_OPTIONS, PENALTY_RESULT_BRANCHES, PENALTIES_LIST, KICK_TYPE_OPTIONS, KICKOFF_RESULT_OPTIONS, FG_RESULT_OPTIONS, FG_MISS_OPTIONS, FG_RETURN_RESULT_OPTIONS, KICK_TYPE_BRANCHES, KICKOFF_RESULT_BRANCHES, FG_RESULT_BRANCHES, FG_BLOCKED_RETURN_BRANCHES, KICK_RETURN_RESULT_BRANCHES, FG_RET_RESULT_BRANCHES, PAT_TYPE_OPTIONS, PAT_KICK_RESULT_OPTIONS, PAT_BLOCK_RESULT_OPTIONS, PAT_TYPE_BRANCHES, PAT_KICK_RESULT_BRANCHES, PUNT_RESULT_OPTIONS, PUNT_RESULT_BRANCHES, PUNT_BLOCK_RETURN_BRANCHES, PUNT_RETURN_RESULT_BRANCHES, PUNT_BLOCK_RET_RESULT_BRANCHES, parseATInput, isTouchdown, calcNetYards, gameState, formatPlay, deriveNextPlayContext, applyGameCtrl, GAME_CTRL_OPTIONS, playerShortLabel } from './engine.js'
 
 // ── Keyboard context system ───────────────────────────────────────────────────
 // One listener, always active. Each screen replaces entries in KEYBOARD_CONTEXTS.
@@ -437,14 +437,14 @@ export function renderByMenu(config) {
   function rebuild() {
     const pillsHTML = selections.map((p, i) => `
       <span class="player-pill">
-        #${p.number}${p.position ? ' · ' + p.position : ''}${p.name ? ' · ' + p.name : ''}
+        ${playerShortLabel(p)}${p.position ? ' · ' + p.position : ''}
         <button class="player-pill__remove" data-idx="${i}">×</button>
       </span>
     `).join('')
 
     const playerBtns = roster.map(p => {
       const isSelected = selections.some(s => s.number === p.number)
-      const hasInfo = p.name || p.position
+      const hasInfo = p.nombre || p.apellido || p.position
       return `<button class="player-btn${isSelected ? ' player-btn--selected' : ''}" data-number="${p.number}">
         <span class="player-btn__num">${p.number}</span>
         ${hasInfo ? `<span class="player-btn__pos">${p.position || ''}</span>` : ''}
@@ -502,7 +502,13 @@ export function renderByMenu(config) {
   }
 
   function _selectPlayer(num) {
-    const player = roster.find(p => p.number === num) || { number: num, name: '', position: '' }
+    const rosterPlayer = roster.find(p => p.number === num)
+    // Only number/nombre/apellido/position get persisted onto the play — not
+    // the players-table id/team_id/created_at, which have no meaning once
+    // baked into a play's play_data.
+    const player = rosterPlayer
+      ? { number: rosterPlayer.number, nombre: rosterPlayer.nombre || '', apellido: rosterPlayer.apellido || '', position: rosterPlayer.position || '' }
+      : { number: num, nombre: '', apellido: '', position: '' }
     if (!multiple) { onComplete(player); return }
     if (selections.length >= 2 || selections.some(s => s.number === num)) return
     selections.push(player)
@@ -793,16 +799,22 @@ export function renderPenaltyCodeField(config) {
 // ── Play grid ─────────────────────────────────────────────────────────────────
 
 function _renderPlayGrid() {
+  // Game CTRL stays enabled even after end_game (e.g. to fix the score via
+  // Set Score) — only play-capture buttons are locked out.
+  const locked = gameState.ended
   _container().innerHTML = `
     <div class="wizard-area__title">Select Play Type</div>
     <div class="play-grid">
-      ${BUTTONS.map(btn => `
-        <button class="play-btn${btn.disabled ? ' play-btn--disabled' : ''}"
-          data-type="${btn.type}" ${btn.disabled ? 'disabled' : ''}>
+      ${BUTTONS.map(btn => {
+        const disabled = btn.disabled || (locked && btn.type !== 'GAME_CTRL')
+        return `
+        <button class="play-btn${disabled ? ' play-btn--disabled' : ''}"
+          data-type="${btn.type}" ${disabled ? 'disabled' : ''}>
           <span class="play-btn__label">${btn.label}</span>
           <span class="play-btn__key">${btn.key}</span>
         </button>
-      `).join('')}
+      `
+      }).join('')}
     </div>
   `
   _container().querySelectorAll('.play-btn:not([disabled])').forEach(btn => {
@@ -811,6 +823,7 @@ function _renderPlayGrid() {
 }
 
 function _onPlayTypeSelected(type) {
+  if (gameState.ended && type !== 'GAME_CTRL') return
   console.log('Play selected:', type)
   setPlayField('play_type', type)
 
@@ -1721,8 +1734,7 @@ function _renderProgress() {
 function _container() { return document.getElementById('wizard-container') }
 
 function _playerLabel(p) {
-  if (!p) return '—'
-  return p.name ? `#${p.number} ${p.name}` : `#${p.number}`
+  return playerShortLabel(p)
 }
 
 function _stepValueLabel(step) {

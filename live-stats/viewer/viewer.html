@@ -6,13 +6,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  html, body { margin:0; padding:0; background:#0d1117; font-family:"Inter",-apple-system,sans-serif; color:#e8eaed; }
+  :root {
+    --accent:    #e63329;
+    --text:      #111827;
+    --text2:     #6b7280;
+    --text3:     #9ca3af;
+    --border:    #e5e7eb;
+    --border2:   #d1d5db;
+    --bg:        #f9fafb;
+    --card-bg:   #ffffff;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+  }
+  html, body { margin:0; padding:0; background:var(--bg); font-family:"Inter",-apple-system,sans-serif; color:var(--text); }
   *, *::before, *::after { box-sizing:border-box; }
   @keyframes pulse {
-    0%,100% { box-shadow: 0 0 0 4px rgba(248,81,73,0.2); }
-    50%      { box-shadow: 0 0 0 8px rgba(248,81,73,0.04); }
+    0%,100% { box-shadow: 0 0 0 4px rgba(220,38,38,0.2); }
+    50%      { box-shadow: 0 0 0 8px rgba(220,38,38,0.04); }
   }
   @keyframes shimmer {
     0%,100% { opacity:0.35; }
@@ -20,7 +32,7 @@
   }
   ::-webkit-scrollbar { width:6px; height:6px; }
   ::-webkit-scrollbar-track { background:transparent; }
-  ::-webkit-scrollbar-thumb { background:#30363d; border-radius:3px; }
+  ::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
 </style>
 </head>
 <body>
@@ -40,6 +52,49 @@ const configReady = import('../../shared/supabase/supabase_config.js').then(m =>
   HDRS = m.SUPABASE_HEADERS;
 });
 
+// engine.js is the capture app's module — formatPlay() lives there and viewer.html
+// has no build step to import it statically, so we pull it in the same dynamic-import
+// pattern as supabase_config.js above. advanceGameState/applyFlags/gameState are
+// also pulled in to compute the true current score (see computeCurrentScore below) —
+// engineGameState is this viewer's own private instance of the module (a fresh
+// import() per page), never shared with the capture app running elsewhere.
+let formatPlay, advanceGameState, applyFlags, engineGameState, playerShortLabel;
+const engineReady = import('../capture/engine.js').then(m => {
+  formatPlay          = m.formatPlay;
+  advanceGameState     = m.advanceGameState;
+  applyFlags           = m.applyFlags;
+  engineGameState       = m.gameState;
+  playerShortLabel       = m.playerShortLabel;
+});
+
+// engine.js stores each play's score_home/score_away as the score BEFORE that
+// play was processed — the points a play itself scores only show up on the
+// *next* play's row (that's how the capture app's own deriveNextPlayContext()
+// keeps its live HUD correct). So when lastPlay is the actual scoring play,
+// naively reading its score_home/score_away undercounts. This replays
+// advanceGameState()/applyFlags() — the exact same functions the capture app
+// uses — on top of lastPlay's own baseline to get the real current score,
+// instead of duplicating scoring rules (TD/FG/PAT/safety/pick-six/...) here.
+function computeCurrentScore(lastPlay, fallbackHome, fallbackAway, homeAbbr, awayAbbr) {
+  if (!lastPlay) return { home: fallbackHome, away: fallbackAway };
+  engineGameState.teams = {
+    home: { name: homeAbbr, abreviatura: homeAbbr },
+    away: { name: awayAbbr, abreviatura: awayAbbr },
+  };
+  const state = {
+    quarter:    lastPlay.quarter,
+    clock:      lastPlay.clock,
+    possession: lastPlay.possession,
+    field_pos:  lastPlay.field_pos ? { ...lastPlay.field_pos } : null,
+    down:       lastPlay.down,
+    distance:   lastPlay.distance,
+    score:      { home: lastPlay.score_home ?? fallbackHome, away: lastPlay.score_away ?? fallbackAway },
+  };
+  advanceGameState(state, lastPlay);
+  applyFlags(state, lastPlay);
+  return state.score;
+}
+
 const gameId = new URLSearchParams(location.search).get('game_id');
 
 async function sbFetch(path) {
@@ -47,6 +102,15 @@ async function sbFetch(path) {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: HDRS });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// Supabase rows keep every play_type-specific field (pass_result, rush_by,
+// touchdown, teams, ...) nested inside the play_data jsonb column — only the
+// columns in engine.js's _MAIN_KEYS come back flat. Mirrors _rowToPlay() in
+// capture/engine.js, which does the same flattening for the capture app.
+function _flattenPlay(row) {
+  const { play_data, ...rest } = row;
+  return { ...rest, ...(play_data || {}) };
 }
 
 function fmtWeek(w) {
@@ -85,12 +149,24 @@ function computeDrives(plays) {
 function driveResult(plays) {
   if (!plays.length) return null;
   const last = plays[plays.length - 1];
-  if (last.is_touchdown) return 'TD';
-  if (last.play_type === 'KICK' && last.result === 'good') return 'FG';
+  if (last.touchdown) return 'TD';
+  if (last.play_type === 'KICK' && last.kick_type === 'field_goal' && last.fg_result === 'good') return 'FG';
   if (last.play_type === 'PUNT') return 'PUNT';
-  if (last.result === 'interception') return 'INT';
+  if (last.pass_result === 'intercepted') return 'INT';
   if (last.result === 'fumble') return 'FUMBLE';
   return null;
+}
+
+// playerLabel() — used to key the individual RUSHING/PASSING/RECEIVING
+// breakdown by player once rush_by/pass_by/received_by come back as real
+// {number, nombre, apellido} objects post-flatten. Delegates to the real
+// playerShortLabel() imported from capture/engine.js (same "#22 Pérez, J."
+// format used everywhere else) instead of duplicating that formatting here.
+// The typeof guard covers the brief window before engineReady resolves —
+// same pattern as the `formatPlay ? formatPlay(p) : ...` fallback below.
+function playerLabel(p) {
+  if (!p) return null;
+  return typeof playerShortLabel === 'function' ? playerShortLabel(p) : `#${p.number}`;
 }
 
 // ── TeamLogo ────────────────────────────────────────────────────────────────
@@ -101,14 +177,14 @@ function TeamLogo({ team, size = 72 }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: '#fff', padding: Math.round(size * 0.08),
+      background: 'var(--card-bg)', padding: Math.round(size * 0.08),
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.35)', flexShrink: 0,
+      border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', flexShrink: 0,
     }}>
       {team?.logo_url && !err
         ? <img src={team.logo_url} onError={() => setErr(true)}
             style={{ width:'100%', height:'100%', objectFit:'contain' }} alt={abbr} />
-        : <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize: size*0.32, color, lineHeight:1 }}>{abbr}</span>
+        : <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize: size*0.32, color, lineHeight:1 }}>{abbr}</span>
       }
     </div>
   );
@@ -128,16 +204,16 @@ function FieldStrip({ possession, fieldPos, home, away }) {
   return (
     <div style={{ position:'relative', flex:1, height:52, background:'#1a6b3c', borderRadius:3, overflow:'hidden', minWidth:260 }}>
       <div style={{ position:'absolute', left:0, top:0, bottom:0, width:'10%', background: away?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
-        <span style={{ color: away?.color_texto||'#fff', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{awayAbbr}</span>
+        <span style={{ color: away?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{awayAbbr}</span>
       </div>
       <div style={{ position:'absolute', right:0, top:0, bottom:0, width:'10%', background: home?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
-        <span style={{ color: home?.color_texto||'#fff', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{homeAbbr}</span>
+        <span style={{ color: home?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{homeAbbr}</span>
       </div>
       <div style={{ position:'absolute', left:'10%', right:'10%', top:0, bottom:0 }}>
         {[10,20,30,40,50,40,30,20,10].map((n,i) => (
           <div key={i} style={{ position:'absolute', left:`${(i+1)*10}%`, top:0, bottom:0 }}>
             <div style={{ width:1, height:'100%', background:'rgba(255,255,255,0.4)' }} />
-            <div style={{ position:'absolute', top:'50%', left:0, transform:'translate(-50%,-50%)', color:'rgba(255,255,255,0.7)', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:8 }}>{n}</div>
+            <div style={{ position:'absolute', top:'50%', left:0, transform:'translate(-50%,-50%)', color:'rgba(255,255,255,0.7)', fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:8 }}>{n}</div>
           </div>
         ))}
         <div style={{ position:'absolute', top:0, bottom:0, left:`${pct}%`, transform:'translateX(-50%)', zIndex:3 }}>
@@ -164,24 +240,25 @@ function ScoresPanel({ games, currentId }) {
           <a key={g.id} href={`viewer.html?game_id=${g.id}`} style={{
             display:'flex', flexDirection:'column', alignItems:'center', gap:5,
             padding:'7px 12px', borderRadius:6, textDecoration:'none', flexShrink:0,
-            background: active ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${active ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.07)'}`,
+            background: active ? 'rgba(17,24,39,0.06)' : 'var(--card-bg)',
+            border: `1px solid ${active ? 'rgba(17,24,39,0.25)' : 'var(--border)'}`,
             minWidth:120,
           }}>
-            <div style={{ display:'flex', alignItems:'center', gap:5, fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#e8eaed', fontWeight:600 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:5, fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text)', fontWeight:600 }}>
               {g.away?.logo_url && <img src={g.away.logo_url} style={{ width:16, height:16, objectFit:'contain' }} alt={aa} />}
               <span>{aa}</span>
-              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700 }}>{sa}</span>
-              <span style={{ color:'#484f58', fontSize:10 }}>·</span>
-              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:14, fontWeight:700 }}>{sh}</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700 }}>{sa}</span>
+              <span style={{ color:'var(--text3)', fontSize:10 }}>·</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700 }}>{sh}</span>
               <span>{ha}</span>
               {g.home?.logo_url && <img src={g.home.logo_url} style={{ width:16, height:16, objectFit:'contain' }} alt={ha} />}
             </div>
             <span style={{
-              fontFamily:"'JetBrains Mono',monospace", fontSize:9, fontWeight:700, letterSpacing:0.5,
-              padding:'1px 6px', borderRadius:3,
-              color: isLive ? '#f85149' : isFinal ? '#8b949e' : '#3fb950',
-              background: isLive ? 'rgba(248,81,73,0.12)' : isFinal ? 'rgba(139,148,158,0.08)' : 'rgba(63,185,80,0.1)',
+              fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, letterSpacing:0.5,
+              padding: isLive ? '1px 6px' : 0, borderRadius:3,
+              border: isLive ? '1px solid #fca5a5' : 'none',
+              color: isLive ? '#dc2626' : isFinal ? 'var(--text3)' : 'var(--text2)',
+              background: isLive ? '#fef2f2' : 'transparent',
             }}>
               {isLive ? '● EN VIVO' : isFinal ? 'FINAL' : (g.hora ? g.hora.slice(0,5) : '—')}
             </span>
@@ -198,9 +275,9 @@ function StatBar({ label, homeVal, awayVal, homeColor, awayColor }) {
   const awayPct = (awayVal / total) * 100;
   return (
     <div style={{ marginBottom:14 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5, fontFamily:"'JetBrains Mono',monospace", fontSize:13 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5, fontFamily:"'Inter',sans-serif", fontSize:13 }}>
         <span style={{ fontWeight:700, color:awayColor }}>{awayVal}</span>
-        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'#8b949e', fontWeight:500 }}>{label}</span>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'var(--text2)', fontWeight:500 }}>{label}</span>
         <span style={{ fontWeight:700, color:homeColor }}>{homeVal}</span>
       </div>
       <div style={{ display:'flex', height:5, borderRadius:2, overflow:'hidden', background: homeColor }}>
@@ -215,18 +292,24 @@ function IndividualStats({ title, rows, cols }) {
   if (!rows.length) return null;
   return (
     <div style={{ marginBottom:18 }}>
-      <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:11, color:'#484f58', letterSpacing:1.5, marginBottom:6, textTransform:'uppercase' }}>{title}</div>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:11, color:'var(--text3)', letterSpacing:1.5, marginBottom:6, textTransform:'uppercase' }}>{title}</div>
+      <div style={{ display:'flex', alignItems:'center', gap:4, padding:'0 0 4px 14px' }}>
+        <span style={{ flex:1 }} />
+        {cols.map((c, i) => (
+          <span key={i} style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:9, color:'var(--text3)', letterSpacing:0.5, minWidth:28, textAlign:'right' }}>{c}</span>
+        ))}
+      </div>
       {rows.map((r, i) => r.isHeader
         ? (
-          <div key={i} style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:12, color:r.color, letterSpacing:0.5, padding:'6px 0 3px', display:'flex', alignItems:'center', gap:5 }}>
+          <div key={i} style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:12, color:r.color, letterSpacing:0.5, padding:'6px 0 3px', display:'flex', alignItems:'center', gap:5 }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:r.color, display:'inline-block' }} />
             {r.name}
           </div>
         ) : (
-          <div key={i} style={{ display:'flex', alignItems:'center', gap:4, padding:'3px 0 3px 14px', borderTop:'1px solid rgba(48,54,61,0.4)' }}>
-            <span style={{ flex:1, fontFamily:"'Inter',sans-serif", color:'#c9d1d9', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</span>
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:4, padding:'3px 0 3px 14px', borderTop:'1px solid var(--border)' }}>
+            <span style={{ flex:1, fontFamily:"'Inter',sans-serif", color:'var(--text)', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.name}</span>
             {r.vals.map((v, j) => (
-              <span key={j} style={{ fontFamily:"'JetBrains Mono',monospace", color: j===r.vals.length-1 && v>0 ? '#3fb950' : '#8b949e', minWidth:28, textAlign:'right', fontSize:11 }}>{v}</span>
+              <span key={j} style={{ fontFamily:"'Inter',sans-serif", color: j===r.vals.length-1 && v>0 ? '#16a34a' : 'var(--text2)', minWidth:28, textAlign:'right', fontSize:11 }}>{v}</span>
             ))}
           </div>
         )
@@ -238,11 +321,11 @@ function IndividualStats({ title, rows, cols }) {
 // ── SkeletonLoader ───────────────────────────────────────────────────────────
 function SkeletonLoader() {
   const B = ({ w, h=14 }) => (
-    <div style={{ width:w, height:h, background:'#21262d', borderRadius:3, animation:'shimmer 1.5s infinite', marginBottom:8 }} />
+    <div style={{ width:w, height:h, background:'var(--border)', borderRadius:3, animation:'shimmer 1.5s infinite', marginBottom:8 }} />
   );
   return (
-    <div style={{ minHeight:'100vh', background:'#0d1117' }}>
-      <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'13px 20px' }}><B w={180} h={20} /></div>
+    <div style={{ minHeight:'100vh', background:'var(--bg)' }}>
+      <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'13px 20px' }}><B w={180} h={20} /></div>
       <div style={{ padding:'28px 24px', maxWidth:900, margin:'0 auto' }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:24, alignItems:'center' }}>
           <div><B w="70%" h={72} /><B w="50%" h={20} /></div>
@@ -273,10 +356,11 @@ function App() {
         const [gArr, pArr] = await Promise.all([
           sbFetch(`games?select=*,home:home_team_id(${teamFields}),away:away_team_id(${teamFields})&id=eq.${encodeURIComponent(gameId)}&limit=1`),
           sbFetch(`plays?select=*&game_id=eq.${encodeURIComponent(gameId)}&order=seq.asc`),
+          engineReady,
         ]);
         const g = gArr[0] || null;
         setGame(g);
-        setPlays(pArr || []);
+        setPlays((pArr || []).map(_flattenPlay));
         if (g?.semana) {
           const wArr = await sbFetch(`games?select=id,status,score_home,score_away,hora,home:home_team_id(nombre_corto,abreviatura,logo_url),away:away_team_id(nombre_corto,abreviatura,logo_url)&semana=eq.${encodeURIComponent(g.semana)}&order=kickoff.asc.nullslast`);
           setWeekGames(wArr || []);
@@ -303,7 +387,7 @@ function App() {
             event: 'INSERT', schema: 'covercero', table: 'plays',
             filter: `game_id=eq.${gameId}`,
           }, payload => {
-            setPlays(prev => [...prev, payload.new]);
+            setPlays(prev => [...prev, _flattenPlay(payload.new)]);
           })
           .subscribe();
       } catch (e) {
@@ -313,74 +397,17 @@ function App() {
     return () => { if (sbClient) sbClient.removeAllChannels(); };
   }, [game?.id]);
 
-  // ── no game_id ──────────────────────────────────────────────────────────────
-  if (!gameId) return (
-    <div style={{ minHeight:'100vh', background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Barlow Condensed',sans-serif" }}>
-      <div style={{ fontSize:26, fontWeight:700, color:'#8b949e', letterSpacing:1 }}>No se especificó un partido.</div>
-      <a href="index.html" style={{ color:'#3b82f6', fontSize:15, textDecoration:'none' }}>← Todos los partidos</a>
-    </div>
-  );
-
-  if (loading) return <SkeletonLoader />;
-
-  if (loadErr || !game) return (
-    <div style={{ minHeight:'100vh', background:'#0d1117', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Barlow Condensed',sans-serif" }}>
-      <div style={{ fontSize:26, fontWeight:700, color:'#f85149' }}>Partido no encontrado</div>
-      {loadErr && <div style={{ fontSize:12, color:'#484f58', fontFamily:"'JetBrains Mono',monospace" }}>{loadErr}</div>}
-      <a href="index.html" style={{ color:'#3b82f6', fontSize:15, textDecoration:'none' }}>← Todos los partidos</a>
-    </div>
-  );
-
-  const { home, away } = game;
+  // ── derived state (always computed, so hook order never changes across renders) ──
+  const { home, away } = game || {};
   const homeAbbr  = home?.abreviatura || '';
   const awayAbbr  = away?.abreviatura || '';
   const homeColor = home?.color_principal || '#3b82f6';
   const awayColor = away?.color_principal || '#f97316';
-  const isLive    = game.status === 'live';
-  const isFinal   = game.status === 'final';
+  const isLive    = game?.status === 'live';
+  const isFinal   = game?.status === 'final';
 
-  // ── derived from plays ───────────────────────────────────────────────────────
-  const lastPlay  = plays.length ? plays[plays.length - 1] : null;
-  const scoreHome = lastPlay?.score_home ?? game.score_home ?? 0;
-  const scoreAway = lastPlay?.score_away ?? game.score_away ?? 0;
-
-  // Per-quarter cumulative scores
-  function qScores(teamKey) {
-    const out = [0,0,0,0];
-    let prev = { home:0, away:0 };
-    for (let q = 1; q <= 4; q++) {
-      const qp = plays.filter(p => p.quarter === q);
-      if (qp.length) {
-        const lp = qp[qp.length - 1];
-        const sh = lp.score_home ?? prev.home;
-        const sa = lp.score_away ?? prev.away;
-        out[q-1] = teamKey === 'home' ? sh - prev.home : sa - prev.away;
-        prev = { home: sh, away: sa };
-      }
-    }
-    return out;
-  }
-  const qScoreHome = qScores('home');
-  const qScoreAway = qScores('away');
-
-  // Drives
   const drives = useMemo(() => computeDrives(plays), [plays]);
 
-  // Situation from last non-GAME_CTRL play
-  const sitPlay = [...plays].reverse().find(p => p.play_type !== 'GAME_CTRL');
-  const situation = sitPlay ? {
-    possession: sitPlay.possession,
-    down: sitPlay.down,
-    distance: sitPlay.distance,
-    field_pos: sitPlay.field_pos,
-  } : null;
-
-  // Current drive summary
-  const currentDrive  = drives.length ? drives[drives.length - 1] : null;
-  const drivePlayCount = currentDrive?.plays.length || 0;
-  const driveYards    = currentDrive?.plays.reduce((a,p) => a + (p.net_yards||0), 0) || 0;
-
-  // ── stats ────────────────────────────────────────────────────────────────────
   const { teamStats, passers, rushers, receivers } = useMemo(() => {
     const ts = {
       [homeAbbr]: { rush:0, pass:0, total:0 },
@@ -395,38 +422,96 @@ function App() {
       if (p.play_type === 'RUSH') {
         const yds = p.net_yards || 0;
         ts[t].rush += yds; ts[t].total += yds;
-        const key = p.carried_by || 'Desconocido';
+        const key = p.rush_by ? playerLabel(p.rush_by) : 'Desconocido';
         if (!ru[t]) ru[t] = {};
         if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0 };
         ru[t][key].att++;
         ru[t][key].yds += yds;
-        if (p.is_touchdown) ru[t][key].td++;
+        if (p.touchdown) ru[t][key].td++;
       }
 
       if (p.play_type === 'PASS') {
-        const key = p.passed_by || 'Desconocido';
+        const key = p.pass_by ? playerLabel(p.pass_by) : 'Desconocido';
         if (!pa[t]) pa[t] = {};
         if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0 };
         pa[t][key].att++;
-        if (p.result === 'complete') {
+        if (p.pass_result === 'complete') {
           const yds = p.net_yards || 0;
           ts[t].pass += yds; ts[t].total += yds;
           pa[t][key].comp++;
           pa[t][key].yds += yds;
-          if (p.is_touchdown) pa[t][key].td++;
+          if (p.touchdown) pa[t][key].td++;
           if (p.received_by) {
-            const rk = p.received_by;
+            const rk = playerLabel(p.received_by);
             if (!re[t]) re[t] = {};
             if (!re[t][rk]) re[t][rk] = { rec:0, yds:0, td:0 };
             re[t][rk].rec++;
             re[t][rk].yds += yds;
-            if (p.is_touchdown) re[t][rk].td++;
+            if (p.touchdown) re[t][rk].td++;
           }
         }
       }
     }
     return { teamStats: ts, passers: pa, rushers: ru, receivers: re };
   }, [plays, homeAbbr, awayAbbr]);
+
+  // ── no game_id ──────────────────────────────────────────────────────────────
+  if (!gameId) return (
+    <div style={{ minHeight:'100vh', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Inter',sans-serif" }}>
+      <div style={{ fontSize:26, fontWeight:700, color:'var(--text2)', letterSpacing:1 }}>No se especificó un partido.</div>
+      <a href="index.html" style={{ color:'var(--text2)', fontSize:15, textDecoration:'none' }}>← Todos los partidos</a>
+    </div>
+  );
+
+  if (loading) return <SkeletonLoader />;
+
+  if (loadErr || !game) return (
+    <div style={{ minHeight:'100vh', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Inter',sans-serif" }}>
+      <div style={{ fontSize:26, fontWeight:700, color:'#dc2626' }}>Partido no encontrado</div>
+      {loadErr && <div style={{ fontSize:12, color:'var(--text3)', fontFamily:"'Inter',sans-serif" }}>{loadErr}</div>}
+      <a href="index.html" style={{ color:'var(--text2)', fontSize:15, textDecoration:'none' }}>← Todos los partidos</a>
+    </div>
+  );
+
+  // ── derived from plays ───────────────────────────────────────────────────────
+  const lastPlay = plays.length ? plays[plays.length - 1] : null;
+  const { home: scoreHome, away: scoreAway } =
+    computeCurrentScore(lastPlay, game.score_home ?? 0, game.score_away ?? 0, homeAbbr, awayAbbr);
+
+  // Per-quarter cumulative scores. Same pre-play-snapshot issue as the main
+  // scoreboard: a quarter's last play can itself be the scoring play, so its
+  // stored score_home/score_away (pre-play) undercounts that quarter unless
+  // replayed through computeCurrentScore() the same way.
+  function qScores(teamKey) {
+    const out = [0,0,0,0];
+    let prev = { home:0, away:0 };
+    for (let q = 1; q <= 4; q++) {
+      const qp = plays.filter(p => p.quarter === q);
+      if (qp.length) {
+        const lp = qp[qp.length - 1];
+        const { home: sh, away: sa } = computeCurrentScore(lp, prev.home, prev.away, homeAbbr, awayAbbr);
+        out[q-1] = teamKey === 'home' ? sh - prev.home : sa - prev.away;
+        prev = { home: sh, away: sa };
+      }
+    }
+    return out;
+  }
+  const qScoreHome = qScores('home');
+  const qScoreAway = qScores('away');
+
+  // Situation from last non-GAME_CTRL play
+  const sitPlay = [...plays].reverse().find(p => p.play_type !== 'GAME_CTRL');
+  const situation = sitPlay ? {
+    possession: sitPlay.possession,
+    down: sitPlay.down,
+    distance: sitPlay.distance,
+    field_pos: sitPlay.field_pos,
+  } : null;
+
+  // Current drive summary
+  const currentDrive  = drives.length ? drives[drives.length - 1] : null;
+  const drivePlayCount = currentDrive?.plays.length || 0;
+  const driveYards    = currentDrive?.plays.reduce((a,p) => a + (p.net_yards||0), 0) || 0;
 
   function buildRows(dataMap, cols, keyFn) {
     const rows = [];
@@ -452,15 +537,15 @@ function App() {
     : drives.filter(d => d.possession === driveFilt);
 
   return (
-    <div style={{ minHeight:'100vh', background:'#0d1117', fontFamily:"'Inter',sans-serif", color:'#e8eaed' }}>
+    <div style={{ minHeight:'100vh', background:'var(--bg)', fontFamily:"'Inter',sans-serif", color:'var(--text)' }}>
 
       {/* ── UTILBAR ─────────────────────────────────────────────────────────── */}
-      <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'10px 20px', display:'flex', alignItems:'center', gap:14, position:'sticky', top:0, zIndex:100 }}>
-        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:20, color:'#e8eaed', letterSpacing:1, flexShrink:0 }}>
-          COVER<span style={{ fontWeight:300 }}>CERO</span>
+      <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'10px 20px', display:'flex', alignItems:'center', gap:14, position:'sticky', top:0, zIndex:100 }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:20, color:'var(--text)', letterSpacing:1, flexShrink:0 }}>
+          COVER<span style={{ color:'var(--accent)' }}>CERO</span>
         </span>
-        <div style={{ width:1, height:18, background:'#30363d' }} />
-        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', letterSpacing:0.3, flexShrink:0 }}>
+        <div style={{ width:1, height:18, background:'var(--border2)' }} />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', letterSpacing:0.3, flexShrink:0 }}>
           {game.liga ? `${game.liga} · ` : ''}{fmtWeek(game.semana)}
         </span>
 
@@ -468,8 +553,8 @@ function App() {
         <div style={{ flex:1, display:'flex', justifyContent:'center' }}>
           {weekGames.length > 0 && (
             <button onClick={() => setScoresOpen(o => !o)} style={{
-              background:'transparent', border:'1px solid #30363d', borderRadius:5,
-              color:'#8b949e', fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700,
+              background:'transparent', border:'1px solid var(--border2)', borderRadius:5,
+              color:'var(--text2)', fontFamily:"'Inter',sans-serif", fontWeight:700,
               fontSize:12, letterSpacing:1, padding:'4px 14px', cursor:'pointer',
             }}>
               SCORES {scoresOpen ? '▲' : '▼'}
@@ -477,34 +562,34 @@ function App() {
           )}
         </div>
 
-        <a href="index.html" style={{ color:'#8b949e', fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, fontWeight:600, textDecoration:'none', letterSpacing:0.3, flexShrink:0 }}>
+        <a href="index.html" style={{ color:'var(--text2)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, textDecoration:'none', letterSpacing:0.3, flexShrink:0 }}>
           ← Todos los partidos
         </a>
       </div>
 
       {/* ── SCORES PANEL ────────────────────────────────────────────────────── */}
       {scoresOpen && weekGames.length > 0 && (
-        <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'0 20px' }}>
+        <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'0 20px' }}>
           <ScoresPanel games={weekGames} currentId={gameId} />
         </div>
       )}
 
       {/* ── SCOREBOARD HERO ─────────────────────────────────────────────────── */}
-      <div style={{ background:'#0d1117', padding:'28px 20px 20px', borderBottom:'1px solid #21262d' }}>
+      <div style={{ background:'var(--bg)', padding:'28px 20px 20px', borderBottom:'1px solid var(--border)' }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:16, maxWidth:920, margin:'0 auto', alignItems:'center' }}>
 
           {/* Away */}
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <TeamLogo team={away} size={72} />
             <div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'#e8eaed' }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'var(--text)' }}>
                 {away?.nombre_corto || awayAbbr}
               </div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', marginTop:2, letterSpacing:0.4 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', marginTop:2, letterSpacing:0.4 }}>
                 {away?.Escuela || ''}
               </div>
             </div>
-            <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:awayColor, marginLeft:'auto', fontVariantNumeric:'tabular-nums' }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:awayColor, marginLeft:'auto', fontVariantNumeric:'tabular-nums' }}>
               {scoreAway}
             </div>
           </div>
@@ -513,25 +598,25 @@ function App() {
           <div style={{ textAlign:'center', minWidth:190 }}>
             {isLive && (
               <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, marginBottom:10 }}>
-                <span style={{ width:8, height:8, borderRadius:'50%', background:'#f85149', display:'inline-block', animation:'pulse 1.5s infinite' }} />
-                <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, letterSpacing:2, color:'#f85149' }}>EN VIVO</span>
+                <span style={{ width:8, height:8, borderRadius:'50%', background:'#dc2626', display:'inline-block', animation:'pulse 1.5s infinite' }} />
+                <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, letterSpacing:2, color:'#dc2626' }}>EN VIVO</span>
                 {lastPlay?.quarter && (
-                  <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, color:'#8b949e', border:'1.5px solid #30363d', padding:'1px 8px', borderRadius:3 }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:'var(--text2)', border:'1.5px solid var(--border2)', padding:'1px 8px', borderRadius:3 }}>
                     Q{lastPlay.quarter}
                   </span>
                 )}
                 {lastPlay?.clock && (
-                  <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, fontSize:15, color:'#e8eaed' }}>
+                  <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:600, fontSize:15, color:'var(--text)' }}>
                     {lastPlay.clock}
                   </span>
                 )}
               </div>
             )}
             {isFinal && (
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:15, letterSpacing:2, color:'#8b949e', marginBottom:10 }}>FINAL</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:15, letterSpacing:2, color:'var(--text2)', marginBottom:10 }}>FINAL</div>
             )}
             {!isLive && !isFinal && (
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', marginBottom:10 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', marginBottom:10 }}>
                 {fmtDate(game.kickoff, game.hora)}
               </div>
             )}
@@ -540,11 +625,11 @@ function App() {
             <table style={{ width:'100%', borderCollapse:'collapse', fontVariantNumeric:'tabular-nums', tableLayout:'fixed' }}>
               <thead>
                 <tr>
-                  <th style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:10, color:'#484f58', padding:'2px 2px', fontWeight:600, letterSpacing:0.5, textAlign:'left' }}></th>
+                  <th style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', padding:'2px 2px', fontWeight:600, letterSpacing:0.5, textAlign:'left' }}></th>
                   {['1','2','3','4'].map(q => (
-                    <th key={q} style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:10, color:'#484f58', padding:'2px 2px', fontWeight:600, letterSpacing:0.5 }}>{q}</th>
+                    <th key={q} style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', padding:'2px 2px', fontWeight:600, letterSpacing:0.5 }}>{q}</th>
                   ))}
-                  <th style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:10, color:'#e8eaed', padding:'2px 2px', fontWeight:700 }}>T</th>
+                  <th style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text)', padding:'2px 2px', fontWeight:700 }}>T</th>
                 </tr>
               </thead>
               <tbody>
@@ -553,11 +638,11 @@ function App() {
                   { abbr: homeAbbr, qs: qScoreHome, total: scoreHome, color: homeColor },
                 ].map(row => (
                   <tr key={row.abbr}>
-                    <td style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:12, color:row.color, padding:'4px 2px', textAlign:'left' }}>{row.abbr}</td>
+                    <td style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, color:row.color, padding:'4px 2px', textAlign:'left' }}>{row.abbr}</td>
                     {row.qs.map((q, i) => (
-                      <td key={i} style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, padding:'4px 2px', textAlign:'center', color:'#c9d1d9' }}>{q}</td>
+                      <td key={i} style={{ fontFamily:"'Inter',sans-serif", fontSize:12, padding:'4px 2px', textAlign:'center', color:'var(--text)' }}>{q}</td>
                     ))}
-                    <td style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:16, textAlign:'center', color:row.color }}>{row.total}</td>
+                    <td style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:16, textAlign:'center', color:row.color }}>{row.total}</td>
                   </tr>
                 ))}
               </tbody>
@@ -572,14 +657,14 @@ function App() {
 
           {/* Home */}
           <div style={{ display:'flex', alignItems:'center', gap:14, justifyContent:'flex-end' }}>
-            <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:homeColor, marginRight:'auto', fontVariantNumeric:'tabular-nums' }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:homeColor, marginRight:'auto', fontVariantNumeric:'tabular-nums' }}>
               {scoreHome}
             </div>
             <div style={{ textAlign:'right' }}>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'#e8eaed' }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'var(--text)' }}>
                 {home?.nombre_corto || homeAbbr}
               </div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:'#8b949e', marginTop:2, letterSpacing:0.4 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', marginTop:2, letterSpacing:0.4 }}>
                 {home?.Escuela || ''}
               </div>
             </div>
@@ -590,12 +675,12 @@ function App() {
 
       {/* ── SITUATION STRIP (live only) ──────────────────────────────────────── */}
       {isLive && situation && (
-        <div style={{ background:'#161b22', borderBottom:'1px solid #30363d', padding:'12px 20px', display:'flex', alignItems:'center', gap:18, flexWrap:'wrap' }}>
+        <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'12px 20px', display:'flex', alignItems:'center', gap:18, flexWrap:'wrap' }}>
           <div style={{
             display:'flex', alignItems:'center', gap:7, color:'#fff',
             padding:'6px 12px', borderRadius:3, flexShrink:0,
             background: situation.possession === homeAbbr ? homeColor : awayColor,
-            fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, letterSpacing:1,
+            fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, letterSpacing:1,
           }}>
             <span>●</span>
             <span>POSESIÓN · {situation.possession}</span>
@@ -603,8 +688,8 @@ function App() {
 
           {situation.down > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:9, letterSpacing:1.4, color:'#484f58', fontWeight:600 }}>DOWN &amp; DIST</div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:20, color:'#e8eaed', lineHeight:1 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, letterSpacing:1.4, color:'var(--text3)', fontWeight:600 }}>DOWN &amp; DIST</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1 }}>
                 {['','1°','2°','3°','4°'][situation.down] || `${situation.down}°`} &amp; {situation.distance}
               </div>
             </div>
@@ -612,8 +697,8 @@ function App() {
 
           {situation.field_pos && (
             <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:9, letterSpacing:1.4, color:'#484f58', fontWeight:600 }}>POSICIÓN</div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:20, color:'#e8eaed', lineHeight:1 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, letterSpacing:1.4, color:'var(--text3)', fontWeight:600 }}>POSICIÓN</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1 }}>
                 {situation.field_pos.team} {situation.field_pos.yard}
               </div>
             </div>
@@ -621,8 +706,8 @@ function App() {
 
           {drivePlayCount > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:9, letterSpacing:1.4, color:'#484f58', fontWeight:600 }}>DRIVE</div>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:600, fontSize:16, color:'#e8eaed', lineHeight:1 }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, letterSpacing:1.4, color:'var(--text3)', fontWeight:600 }}>DRIVE</div>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:600, fontSize:16, color:'var(--text)', lineHeight:1 }}>
                 {drivePlayCount} jug · {driveYards} yds
               </div>
             </div>
@@ -636,17 +721,17 @@ function App() {
       <div style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:16, padding:'16px 20px', maxWidth:1200, margin:'0 auto', alignItems:'start' }}>
 
         {/* LEFT — Play by play */}
-        <div style={{ background:'#161b22', border:'1px solid #21262d', borderRadius:6, overflow:'hidden' }}>
+        <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, overflow:'hidden' }}>
           {/* Header + filter */}
-          <div style={{ padding:'12px 16px', borderBottom:'1px solid #21262d', display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:18, color:'#e8eaed', letterSpacing:0.5 }}>Jugada por jugada</span>
+          <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5 }}>Jugada por jugada</span>
             <div style={{ display:'flex', gap:5, marginLeft:'auto' }}>
               {[['ALL','Todos'], [awayAbbr, awayAbbr], [homeAbbr, homeAbbr]].map(([val, label]) => (
                 <button key={val} onClick={() => setDriveFilt(val)} style={{
-                  background: driveFilt===val ? 'rgba(59,130,246,0.12)' : 'transparent',
-                  border: `1px solid ${driveFilt===val ? 'rgba(59,130,246,0.35)' : '#30363d'}`,
-                  borderRadius:4, color: driveFilt===val ? '#3b82f6' : '#8b949e',
-                  fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:12, letterSpacing:0.3,
+                  background: driveFilt===val ? 'rgba(17,24,39,0.06)' : 'transparent',
+                  border: `1px solid ${driveFilt===val ? 'rgba(17,24,39,0.25)' : 'var(--border2)'}`,
+                  borderRadius:4, color: driveFilt===val ? 'var(--text)' : 'var(--text2)',
+                  fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, letterSpacing:0.3,
                   padding:'3px 10px', cursor:'pointer',
                 }}>{label}</button>
               ))}
@@ -656,13 +741,13 @@ function App() {
           {/* Drives list */}
           {plays.length === 0
             ? (
-              <div style={{ padding:'48px 24px', textAlign:'center', color:'#484f58', fontFamily:"'Barlow Condensed',sans-serif", fontSize:17 }}>
+              <div style={{ padding:'48px 24px', textAlign:'center', color:'var(--text3)', fontFamily:"'Inter',sans-serif", fontSize:17 }}>
                 El partido no ha comenzado
               </div>
             )
             : filteredDrives.length === 0
               ? (
-                <div style={{ padding:'40px 24px', textAlign:'center', color:'#484f58', fontFamily:"'Barlow Condensed',sans-serif", fontSize:15 }}>
+                <div style={{ padding:'40px 24px', textAlign:'center', color:'var(--text3)', fontFamily:"'Inter',sans-serif", fontSize:15 }}>
                   Sin drives para este filtro
                 </div>
               )
@@ -670,44 +755,45 @@ function App() {
                   const driveNum   = filteredDrives.length - di;
                   const isHome     = drive.possession === homeAbbr;
                   const dColor     = isHome ? homeColor : awayColor;
-                  const dPassYds   = drive.plays.filter(p => p.play_type==='PASS' && p.result==='complete').reduce((a,p) => a+(p.net_yards||0), 0);
-                  const dRushYds   = drive.plays.filter(p => p.play_type==='RUSH').reduce((a,p) => a+(p.net_yards||0), 0);
-                  const dYds       = dPassYds + dRushYds;
+                  // Sum net_yards across every play in the drive, not just PASS-complete/RUSH —
+                  // sacks and scrambles are play_type PASS with a real (often negative) net_yards
+                  // too, and excluding them by pass_result undercounts any drive with a loss play.
+                  const dYds       = drive.plays.reduce((a,p) => a + (p.net_yards||0), 0);
                   const dRes       = driveResult(drive.plays);
                   return (
-                    <div key={di} style={{ borderBottom:'1px solid #21262d' }}>
+                    <div key={di} style={{ borderBottom:'1px solid var(--border)' }}>
                       {/* Drive header */}
-                      <div style={{ padding:'9px 16px', background:'rgba(0,0,0,0.25)', display:'flex', alignItems:'center', gap:9 }}>
+                      <div style={{ padding:'9px 16px', background:'#f9fafb', display:'flex', alignItems:'center', gap:9 }}>
                         <span style={{ width:9, height:9, borderRadius:'50%', background:dColor, display:'inline-block', flexShrink:0 }} />
-                        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:13, color:dColor, letterSpacing:0.3 }}>{drive.possession}</span>
-                        <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:12, color:'#484f58' }}>Drive {driveNum}</span>
+                        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:dColor, letterSpacing:0.3 }}>{drive.possession}</span>
+                        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text3)' }}>Drive {driveNum}</span>
                         {dRes && (
                           <span style={{
-                            fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:10,
+                            fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:10,
                             padding:'1px 6px', borderRadius:3,
-                            background: dRes==='TD' ? 'rgba(63,185,80,0.15)' : 'rgba(139,148,158,0.08)',
-                            color: dRes==='TD' ? '#3fb950' : '#8b949e',
+                            background: dRes==='TD' ? 'rgba(22,163,74,0.12)' : '#f3f4f6',
+                            color: dRes==='TD' ? '#16a34a' : 'var(--text2)',
                           }}>{dRes}</span>
                         )}
-                        <span style={{ marginLeft:'auto', fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:'#484f58' }}>
+                        <span style={{ marginLeft:'auto', fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)' }}>
                           {drive.plays.length} jug · {dYds} yds
                         </span>
                       </div>
-                      {/* Plays */}
-                      {drive.plays.map((p, pi) => (
+                      {/* Plays — newest first, matching the drive-level order */}
+                      {[...drive.plays].reverse().map((p, pi) => (
                         <div key={pi} style={{
-                          padding:'8px 16px 8px 26px', borderTop:'1px solid rgba(48,54,61,0.35)',
+                          padding:'8px 16px 8px 26px', borderTop:'1px solid var(--border)',
                           display:'flex', alignItems:'flex-start', gap:10,
-                          background: p.is_scoring ? 'rgba(63,185,80,0.05)' : 'transparent',
+                          background: p.touchdown ? 'rgba(22,163,74,0.05)' : 'transparent',
                         }}>
-                          <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:'#484f58', minWidth:52, flexShrink:0, paddingTop:2 }}>
+                          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:52, flexShrink:0, paddingTop:2 }}>
                             Q{p.quarter}{p.clock ? ` ${p.clock}` : ''}
                           </span>
-                          <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color: p.is_scoring ? '#3fb950' : '#c9d1d9', lineHeight:1.45 }}>
-                            {p.description || p.play_type}
+                          <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color: p.touchdown ? '#16a34a' : 'var(--text)', lineHeight:1.45 }}>
+                            {formatPlay ? formatPlay(p) : p.play_type}
                           </span>
                           {p.net_yards != null && p.play_type !== 'GAME_CTRL' && (
-                            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: p.net_yards >= 0 ? '#3fb950' : '#f85149', fontWeight:600, flexShrink:0 }}>
+                            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color: p.net_yards >= 0 ? '#16a34a' : '#dc2626', fontWeight:600, flexShrink:0 }}>
                               {p.net_yards >= 0 ? '+' : ''}{p.net_yards}
                             </span>
                           )}
@@ -723,11 +809,11 @@ function App() {
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
 
           {/* Team stat bars */}
-          <div style={{ background:'#161b22', border:'1px solid #21262d', borderRadius:6, padding:'14px 16px' }}>
-            <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:18, color:'#e8eaed', letterSpacing:0.5, marginBottom:12 }}>Estadísticas</div>
+          <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'14px 16px' }}>
+            <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5, marginBottom:12 }}>Estadísticas</div>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>
-              <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:13, color:awayColor }}>{awayAbbr}</span>
-              <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:800, fontSize:13, color:homeColor }}>{homeAbbr}</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:13, color:awayColor }}>{awayAbbr}</span>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:13, color:homeColor }}>{homeAbbr}</span>
             </div>
             <StatBar label="Yardas terrestres" homeVal={teamStats[homeAbbr]?.rush||0}  awayVal={teamStats[awayAbbr]?.rush||0}  homeColor={homeColor} awayColor={awayColor} />
             <StatBar label="Yardas aéreas"     homeVal={teamStats[homeAbbr]?.pass||0}  awayVal={teamStats[awayAbbr]?.pass||0}  homeColor={homeColor} awayColor={awayColor} />
@@ -736,8 +822,8 @@ function App() {
 
           {/* Individual stats */}
           {plays.length > 0 && (passRows.length > 0 || rushRows.length > 0 || recRows.length > 0) && (
-            <div style={{ background:'#161b22', border:'1px solid #21262d', borderRadius:6, padding:'14px 16px' }}>
-              <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:700, fontSize:18, color:'#e8eaed', letterSpacing:0.5, marginBottom:14 }}>Individuales</div>
+            <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'14px 16px' }}>
+              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5, marginBottom:14 }}>Individuales</div>
               <IndividualStats title="PASSING"   rows={passRows} cols={['ATT','COMP','YDS','TD']} />
               <IndividualStats title="RUSHING"   rows={rushRows} cols={['ATT','YDS','TD']} />
               <IndividualStats title="RECEIVING" rows={recRows}  cols={['REC','YDS','TD']} />
