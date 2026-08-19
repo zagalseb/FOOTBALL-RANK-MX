@@ -989,6 +989,50 @@
       color: var(--text2);
     }
 
+    /* ── EDIT WIZARD SUMMARY ── */
+    .edit-summary__context {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .edit-summary__steps {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 20px;
+    }
+
+    .edit-step-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-family: 'IBM Plex Sans', monospace;
+      font-size: 12px;
+      color: var(--text);
+      transition: border-color 0.15s;
+    }
+
+    .edit-step-row:hover { border-color: var(--accent); }
+
+    .edit-step-row__label {
+      color: var(--text3);
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .edit-step-row__value {
+      font-weight: 600;
+    }
+
     .penalty-list {
       display: flex;
       flex-direction: column;
@@ -1081,9 +1125,10 @@
       transition: color 0.2s, background 0.2s;
     }
 
-    .sync-status--saving { color: var(--accent); }
-    .sync-status--saved  { color: var(--green); }
-    .sync-status--error  { color: var(--red); background: var(--red-bg); }
+    .sync-status--saving  { color: var(--accent); }
+    .sync-status--saved   { color: var(--green); }
+    .sync-status--error   { color: var(--red); background: var(--red-bg); }
+    .sync-status--offline { color: var(--yellow); background: var(--yellow-bg); }
 
   </style>
 </head>
@@ -1163,8 +1208,8 @@
   </div>
 
   <script type="module">
-    import { renderAddPlay } from './wizard.js'
-    import { loadPlays, plays, savePlays, gameState, onPlaySubmitted,
+    import { renderAddPlay, renderEditPlay } from './wizard.js'
+    import { loadPlays, plays, gameState, onPlaySubmitted,
              setSupabaseClient, setGameId, getGameId, onSyncStatus } from './engine.js'
     import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
 
@@ -1223,15 +1268,19 @@
     onSyncStatus((status) => {
       _syncEl.className = `sync-status sync-status--${status}`
       _syncEl.textContent = {
-        saving: '● Guardando',
-        saved:  '✓ Guardado',
-        error:  '⚠ Error sync',
+        saving:  '● Guardando',
+        saved:   '✓ Guardado',
+        error:   '⚠ Error sync',
+        offline: '⚠ Offline — datos locales, pueden estar desactualizados',
       }[status] || ''
     })
 
     // ── Init ───────────────────────────────────────────────────────────────────
+    // loadPlays() is async (fetches from Supabase) — must be awaited before
+    // renderAddPlay()/renderHUD() so they don't run against an empty `plays`
+    // array while the fetch is still in flight.
 
-    loadPlays()
+    await loadPlays()
     renderAddPlay()
     renderHUD()
 
@@ -1357,96 +1406,10 @@
       }).join('')
 
       container.querySelectorAll('.play-row').forEach(row => {
-        row.addEventListener('click', () => _openEditPanel(row.dataset.playId))
-      })
-    }
-
-    function _openEditPanel(playId) {
-      const existing = document.querySelector('.edit-panel')
-      if (existing) {
-        const existingId = existing.dataset.editId
-        existing.remove()
-        document.querySelectorAll('.play-row--editing').forEach(r => r.classList.remove('play-row--editing'))
-        if (existingId === playId) return
-      }
-
-      const play = plays.find(p => p.play_id === playId)
-      if (!play) return
-      const row = document.querySelector(`.play-row[data-play-id="${playId}"]`)
-      if (!row) return
-      row.classList.add('play-row--editing')
-
-      const quarters = ['Q1', 'Q2', 'Q3', 'Q4', 'OT']
-      const teamOpts = [gameState.teams.home.name, gameState.teams.away.name]
-        .map(t => `<option value="${t}" ${play.possession === t ? 'selected' : ''}>${t}</option>`)
-        .join('')
-      const qOpts = quarters.map(q => {
-        const val = q === 'OT' ? 'OT' : parseInt(q[1])
-        return `<option value="${val}" ${play.quarter === val ? 'selected' : ''}>${q}</option>`
-      }).join('')
-      const fp = play.field_pos ? `${play.field_pos.team} ${play.field_pos.yard}` : ''
-
-      const panel = document.createElement('div')
-      panel.className = 'edit-panel'
-      panel.dataset.editId = playId
-      panel.innerHTML = `
-        <div class="edit-panel__title">#${play.seq} — Editar contexto</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-          <div class="edit-field">
-            <label>Clock</label>
-            <input class="edit-input" id="edit-clock" value="${play.clock || ''}">
-          </div>
-          <div class="edit-field">
-            <label>Quarter</label>
-            <select class="edit-input" id="edit-quarter">${qOpts}</select>
-          </div>
-          <div class="edit-field">
-            <label>Field Pos</label>
-            <input class="edit-input" id="edit-fp" value="${fp}">
-          </div>
-          <div class="edit-field">
-            <label>Possession</label>
-            <select class="edit-input" id="edit-poss">${teamOpts}</select>
-          </div>
-          <div class="edit-field">
-            <label>Down</label>
-            <input class="edit-input" type="number" id="edit-down" min="0" max="4" value="${play.down ?? ''}">
-          </div>
-          <div class="edit-field">
-            <label>Distance</label>
-            <input class="edit-input" type="number" id="edit-dist" min="0" max="99" value="${play.distance ?? ''}">
-          </div>
-        </div>
-        <div class="edit-actions">
-          <button class="edit-btn edit-btn--save" id="edit-save">Guardar</button>
-          <button class="edit-btn edit-btn--cancel" id="edit-cancel">Cancelar</button>
-        </div>
-      `
-
-      row.insertAdjacentElement('afterend', panel)
-
-      document.getElementById('edit-save').addEventListener('click', () => {
-        const fpRaw  = document.getElementById('edit-fp').value.trim().split(' ')
-        const fpTeam = fpRaw[0] || play.field_pos?.team
-        const fpYard = parseInt(fpRaw[1]) || play.field_pos?.yard
-        const qRaw   = document.getElementById('edit-quarter').value
-
-        play.clock      = document.getElementById('edit-clock').value
-        play.quarter    = isNaN(parseInt(qRaw)) ? qRaw : parseInt(qRaw)
-        play.field_pos  = { team: fpTeam, yard: fpYard }
-        play.possession = document.getElementById('edit-poss').value
-        play.down       = parseInt(document.getElementById('edit-down').value) || 0
-        play.distance   = parseInt(document.getElementById('edit-dist').value) || 0
-
-        savePlays()
-        panel.remove()
-        row.classList.remove('play-row--editing')
-        _renderPlayList()
-      })
-
-      document.getElementById('edit-cancel').addEventListener('click', () => {
-        panel.remove()
-        row.classList.remove('play-row--editing')
+        row.addEventListener('click', () => {
+          const play = plays.find(p => p.play_id === row.dataset.playId)
+          if (play) renderEditPlay(play)
+        })
       })
     }
 

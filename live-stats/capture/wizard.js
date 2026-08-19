@@ -1,4 +1,4 @@
-import { setPlayField, resetCurrentPlay, getRoster, submitPlayWithSnap, currentPlay, RESULT_OPTIONS, RESULT_BRANCHES, FUMBLE_RESULT_BRANCHES, FUMBLE_2_RESULT_BRANCHES, PASS_RESULT_OPTIONS, PASS_RESULT_BRANCHES, RETURN_RESULT_BRANCHES, PENALTY_RESULT_OPTIONS, PENALTY_DOWN_RESULT_OPTIONS, PENALTY_RESULT_BRANCHES, PENALTIES_LIST, KICK_TYPE_OPTIONS, KICKOFF_RESULT_OPTIONS, FG_RESULT_OPTIONS, FG_MISS_OPTIONS, FG_RETURN_RESULT_OPTIONS, KICK_TYPE_BRANCHES, KICKOFF_RESULT_BRANCHES, FG_RESULT_BRANCHES, FG_BLOCKED_RETURN_BRANCHES, KICK_RETURN_RESULT_BRANCHES, FG_RET_RESULT_BRANCHES, PAT_TYPE_OPTIONS, PAT_KICK_RESULT_OPTIONS, PAT_BLOCK_RESULT_OPTIONS, PAT_TYPE_BRANCHES, PAT_KICK_RESULT_BRANCHES, PUNT_RESULT_OPTIONS, PUNT_RESULT_BRANCHES, PUNT_BLOCK_RETURN_BRANCHES, PUNT_RETURN_RESULT_BRANCHES, PUNT_BLOCK_RET_RESULT_BRANCHES, parseATInput, isTouchdown, calcNetYards, gameState, formatPlay, advanceGameState, applyFlags, applyGameCtrl, GAME_CTRL_OPTIONS } from './engine.js'
+import { setPlayField, resetCurrentPlay, getRoster, submitPlayWithSnap, currentPlay, plays, savePlays, syncPlayUpdate, notifyPlaysChanged, RESULT_OPTIONS, RESULT_BRANCHES, FUMBLE_RESULT_BRANCHES, FUMBLE_2_RESULT_BRANCHES, PASS_RESULT_OPTIONS, PASS_RESULT_BRANCHES, RETURN_RESULT_BRANCHES, PENALTY_RESULT_OPTIONS, PENALTY_DOWN_RESULT_OPTIONS, PENALTY_RESULT_BRANCHES, PENALTIES_LIST, KICK_TYPE_OPTIONS, KICKOFF_RESULT_OPTIONS, FG_RESULT_OPTIONS, FG_MISS_OPTIONS, FG_RETURN_RESULT_OPTIONS, KICK_TYPE_BRANCHES, KICKOFF_RESULT_BRANCHES, FG_RESULT_BRANCHES, FG_BLOCKED_RETURN_BRANCHES, KICK_RETURN_RESULT_BRANCHES, FG_RET_RESULT_BRANCHES, PAT_TYPE_OPTIONS, PAT_KICK_RESULT_OPTIONS, PAT_BLOCK_RESULT_OPTIONS, PAT_TYPE_BRANCHES, PAT_KICK_RESULT_BRANCHES, PUNT_RESULT_OPTIONS, PUNT_RESULT_BRANCHES, PUNT_BLOCK_RETURN_BRANCHES, PUNT_RETURN_RESULT_BRANCHES, PUNT_BLOCK_RET_RESULT_BRANCHES, parseATInput, isTouchdown, calcNetYards, gameState, formatPlay, deriveNextPlayContext, applyGameCtrl, GAME_CTRL_OPTIONS } from './engine.js'
 
 // ── Keyboard context system ───────────────────────────────────────────────────
 // One listener, always active. Each screen replaces entries in KEYBOARD_CONTEXTS.
@@ -34,6 +34,7 @@ const KEYBOARD_CONTEXTS = {
   PAT_BLOCK_RESULT: {},
   PUNT_RESULT:      {},
   PUNT_BLOCK_RETURN: {},
+  EDIT_SUMMARY:     {},
 }
 
 document.addEventListener('keydown', (e) => {
@@ -148,12 +149,59 @@ let _flagNumber  = 1
 let _flagMode    = false
 let _previewPlay = null
 
+// ── Edit-mode state ───────────────────────────────────────────────────────────
+// Separate from currentPlay/steps on purpose: editing an old play must never
+// touch the in-progress new-play capture buffer.
+
+let editMode      = false
+let editingPlayId = null
+let editingPlay   = null   // buffer of play_type-specific fields being edited
+let editContext   = null   // buffer of clock/quarter/down/distance/field_pos/possession
+let editSteps     = []
+let editCursor    = -1
+
+const RESULT_STEP_IDS = [
+  'result', 'fumble_result', 'fumble_2_result',
+  'pass_result', 'return_result', 'penalty_result',
+  'kick_type', 'kickoff_result', 'fg_result',
+  'fg_return_result', 'kick_return_result', 'fg_ret_result',
+  'pat_type', 'pat_kick_result', 'pat_block_result',
+  'punt_result', 'punt_return_result', 'punt_block_return_result', 'punt_block_ret_result',
+]
+
+// Resolves the extra steps that follow a RESULT_STEP_IDS step, given the
+// chosen value. Shared by normal capture (_onStepComplete) and edit mode
+// (_onEditStepComplete) so the branch rules can never drift between the two.
+function resolveBranchSteps(stepId, value, playType) {
+  if (stepId === 'result')                    return RESULT_BRANCHES[playType]?.[value] ?? []
+  if (stepId === 'fumble_result')             return FUMBLE_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'fumble_2_result')           return FUMBLE_2_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'pass_result')               return PASS_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'return_result')             return RETURN_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'penalty_result')            return PENALTY_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'kick_type')                 return KICK_TYPE_BRANCHES[value] ?? []
+  if (stepId === 'kickoff_result')            return KICKOFF_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'fg_result')                 return FG_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'fg_return_result')          return FG_BLOCKED_RETURN_BRANCHES[value] ?? []
+  if (stepId === 'kick_return_result')        return KICK_RETURN_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'fg_ret_result')             return FG_RET_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'pat_type')                  return PAT_TYPE_BRANCHES[value] ?? []
+  if (stepId === 'pat_kick_result')           return PAT_KICK_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'pat_block_result')          return []
+  if (stepId === 'punt_result')               return PUNT_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'punt_return_result')        return PUNT_RETURN_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'punt_block_return_result')  return PUNT_BLOCK_RETURN_BRANCHES[value] ?? []
+  if (stepId === 'punt_block_ret_result')     return PUNT_BLOCK_RET_RESULT_BRANCHES[value] ?? []
+  return []
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function renderAddPlay() {
   steps = []
   currentStepIdx = 0
   resetCurrentPlay()
+  deriveNextPlayContext()
   _setContext('ADD_PLAY')
 
   KEYBOARD_CONTEXTS.ADD_PLAY = {
@@ -168,6 +216,212 @@ export function renderAddPlay() {
 
   _renderProgress()
   _renderPlayGrid()
+
+  // Fired here — not inside submitPlayWithSnap — because gameState.down/
+  // distance/field_pos/possession are only correct as of the
+  // deriveNextPlayContext() call above. Firing earlier (inside
+  // submitPlayWithSnap) painted the HUD with the pre-derive state.
+  notifyPlaysChanged()
+}
+
+// ── Edit mode ─────────────────────────────────────────────────────────────────
+// Reuses the same STEPS_BY_TYPE / *_BRANCHES trees and step widgets as normal
+// capture, but walks them with values already known (from the stored play)
+// instead of waiting for clicks, and writes into editingPlay/editContext
+// instead of currentPlay/gameState. Saving overwrites the existing play
+// in-place (same play_id/seq) — no cascade recalculation of other plays.
+
+// Rebuilds the full step list for a play_type using values already stored on
+// `play`, expanding branches with resolveBranchSteps exactly like the live
+// capture flow would have — just replayed with known answers.
+function _buildEditSteps(play) {
+  const playType = play.play_type
+  const base = STEPS_BY_TYPE[playType]
+  if (!base) return []
+
+  const result = [{ ...base[0], value: playType }]
+  let queue = base.slice(1).map(s => ({ ...s }))
+
+  while (queue.length) {
+    const step = queue.shift()
+    const value = play[step.id] ?? null
+    result.push({ ...step, value })
+    if (RESULT_STEP_IDS.includes(step.id) && value != null) {
+      const branchSteps = resolveBranchSteps(step.id, value, playType)
+      queue = [...branchSteps.map(s => ({ ...s })), ...queue]
+    }
+  }
+  return result
+}
+
+// Opens the edit wizard for an existing play. play_type is fixed — not
+// editable here. Returns false (and blocks) if a new-play capture is
+// mid-flight, since editingPlay/editContext must never share state with
+// currentPlay/gameState.
+export function renderEditPlay(play) {
+  if (steps.length > 0) {
+    alert('Termina o cancela la jugada actual antes de editar una jugada anterior.')
+    return false
+  }
+
+  editMode      = true
+  editingPlayId = play.play_id
+  editingPlay   = { ...play }
+  editContext   = {
+    clock:      play.clock,
+    quarter:    play.quarter,
+    down:       play.down,
+    distance:   play.distance,
+    field_pos:  play.field_pos ? { ...play.field_pos } : null,
+    possession: play.possession,
+  }
+  editSteps  = _buildEditSteps(play)
+  editCursor = -1
+
+  const progressEl = document.getElementById('step-progress')
+  if (progressEl) progressEl.innerHTML = ''
+
+  _renderEditSummary()
+  return true
+}
+
+function _openEditStep(idx) {
+  editCursor = idx
+  _renderStepByComponent(editSteps[idx], (val) => _onEditStepComplete(idx, val))
+}
+
+function _onEditStepComplete(idx, value) {
+  editSteps[idx] = { ...editSteps[idx], value }
+  editingPlay[editSteps[idx].id] = value
+
+  const stepId = editSteps[idx].id
+  if (RESULT_STEP_IDS.includes(stepId)) {
+    const playType  = editingPlay.play_type
+    const newBranch = resolveBranchSteps(stepId, value, playType)
+    const oldSuffix = editSteps.slice(idx + 1)
+    const sameShape = oldSuffix.length === newBranch.length &&
+      oldSuffix.every((s, i) => s.id === newBranch[i].id)
+
+    if (!sameShape) {
+      // The chosen value leads down a different branch than before — the old
+      // suffix no longer applies, so replace it and collect fresh values for
+      // the new branch. Siblings before this step are left untouched.
+      editSteps = editSteps.slice(0, idx + 1).concat(newBranch.map(s => ({ ...s, value: null })))
+      const nextIdx = idx + 1
+      if (nextIdx < editSteps.length) {
+        _openEditStep(nextIdx)
+        return
+      }
+    }
+  }
+
+  editCursor = -1
+  _renderEditSummary()
+}
+
+function _renderEditSummary() {
+  _setContext('EDIT_SUMMARY')
+  KEYBOARD_CONTEXTS.EDIT_SUMMARY = { Escape: () => _cancelEdit(), Enter: () => _saveEdit() }
+
+  const quarters = ['Q1', 'Q2', 'Q3', 'Q4', 'OT']
+  const qOpts = quarters.map(q => {
+    const val = q === 'OT' ? 'OT' : parseInt(q[1])
+    return `<option value="${val}" ${editContext.quarter === val ? 'selected' : ''}>${q}</option>`
+  }).join('')
+  const teamOpts = [gameState.teams.home.name, gameState.teams.away.name]
+    .map(t => `<option value="${t}" ${editContext.possession === t ? 'selected' : ''}>${t}</option>`)
+    .join('')
+  const fpStr = editContext.field_pos ? `${editContext.field_pos.team} ${editContext.field_pos.yard}` : ''
+
+  const stepRows = editSteps.slice(1).map((step, i) => {
+    const idx = i + 1
+    return `<button class="edit-step-row" data-idx="${idx}">
+      <span class="edit-step-row__label">${step.label}</span>
+      <span class="edit-step-row__value">${_stepValueLabel(step)}</span>
+    </button>`
+  }).join('')
+
+  _container().innerHTML = `
+    <div class="submit-screen edit-summary">
+      <div class="wizard-area__title">Editar Jugada #${editingPlay.seq} — ${editingPlay.play_type}</div>
+
+      <div class="edit-panel__title">Contexto</div>
+      <div class="edit-summary__context">
+        <div class="edit-field"><label>Clock</label>
+          <input class="edit-input" id="es-clock" value="${editContext.clock || ''}"></div>
+        <div class="edit-field"><label>Quarter</label>
+          <select class="edit-input" id="es-quarter">${qOpts}</select></div>
+        <div class="edit-field"><label>Field Pos</label>
+          <input class="edit-input" id="es-fp" value="${fpStr}"></div>
+        <div class="edit-field"><label>Possession</label>
+          <select class="edit-input" id="es-poss">${teamOpts}</select></div>
+        <div class="edit-field"><label>Down</label>
+          <input class="edit-input" type="number" id="es-down" min="0" max="4" value="${editContext.down ?? ''}"></div>
+        <div class="edit-field"><label>Distance</label>
+          <input class="edit-input" type="number" id="es-dist" min="0" max="99" value="${editContext.distance ?? ''}"></div>
+      </div>
+
+      <div class="edit-panel__title">Jugada</div>
+      <div class="edit-summary__steps">${stepRows}</div>
+
+      <div class="submit-actions">
+        <button class="submit-btn submit-btn--confirm" id="edit-save">Guardar <span class="submit-kbd">↵</span></button>
+        <button class="submit-btn submit-btn--cancel" id="edit-cancel">Cancelar <span class="submit-kbd">Esc</span></button>
+      </div>
+    </div>
+  `
+
+  _container().querySelectorAll('.edit-step-row').forEach(btn => {
+    btn.addEventListener('click', () => _openEditStep(parseInt(btn.dataset.idx, 10)))
+  })
+  document.getElementById('edit-save').addEventListener('click', _saveEdit)
+  document.getElementById('edit-cancel').addEventListener('click', _cancelEdit)
+}
+
+function _saveEdit() {
+  const fpRaw  = document.getElementById('es-fp').value.trim().split(/\s+/)
+  const fpTeam = fpRaw[0] || editContext.field_pos?.team
+  const fpYard = parseInt(fpRaw[1])
+  const qRaw   = document.getElementById('es-quarter').value
+
+  editContext.clock      = document.getElementById('es-clock').value
+  editContext.quarter    = isNaN(parseInt(qRaw)) ? qRaw : parseInt(qRaw)
+  editContext.field_pos  = { team: fpTeam, yard: isNaN(fpYard) ? editContext.field_pos?.yard : fpYard }
+  editContext.possession = document.getElementById('es-poss').value
+  editContext.down       = parseInt(document.getElementById('es-down').value) || 0
+  editContext.distance   = parseInt(document.getElementById('es-dist').value) || 0
+
+  if (editingPlay.at) {
+    editingPlay.net_yards = calcNetYards(gameState.teams, editContext.possession, editContext.field_pos, editingPlay.at)
+    editingPlay.touchdown = isTouchdown(gameState.teams, editContext.possession, editingPlay.at)
+  }
+
+  const target = plays.find(p => p.play_id === editingPlayId)
+  if (target) {
+    Object.assign(target, editingPlay, editContext)
+    savePlays()
+    syncPlayUpdate(target)
+    // notifyPlaysChanged() is not called here — renderAddPlay() below fires
+    // it after deriveNextPlayContext() has re-derived gameState from the
+    // (possibly just-edited) last play, same as after a normal submit.
+  }
+
+  _exitEditMode()
+  renderAddPlay()
+}
+
+function _cancelEdit() {
+  _exitEditMode()
+  renderAddPlay()
+}
+
+function _exitEditMode() {
+  editMode      = false
+  editingPlayId = null
+  editingPlay   = null
+  editContext   = null
+  editSteps     = []
+  editCursor    = -1
 }
 
 export function renderByMenu(config) {
@@ -291,6 +545,9 @@ export function renderByMenu(config) {
       } else if (selections.length >= 1) {
         // Enter with no digits typed = confirm current selections and advance
         onComplete(multiple ? selections : selections[0])
+      } else if (optional) {
+        // Enter with nothing typed and nothing selected on an optional field = skip it
+        onComplete(null)
       }
     }
     // Escape is caught by the global listener before _byKeyHandler is called
@@ -300,12 +557,13 @@ export function renderByMenu(config) {
 }
 
 export function renderATField(config) {
-  const { onComplete } = config
+  const { onComplete, snapPos: snapPosOverride, possession: possessionOverride } = config
   _setContext('AT')
   KEYBOARD_CONTEXTS.AT = { Escape: goBack }
 
-  const teams    = gameState.teams
-  const snapPos  = gameState.field_pos   // where the play started
+  const teams      = gameState.teams
+  const snapPos    = snapPosOverride    || gameState.field_pos   // where the play started
+  const possession = possessionOverride || gameState.possession
   const container = _container()
   let rawInput = ''
 
@@ -315,14 +573,14 @@ export function renderATField(config) {
 
   function _netYardsLabel(pos) {
     if (!pos) return ''
-    const net = calcNetYards(teams, gameState.possession, snapPos, pos)
+    const net = calcNetYards(teams, possession, snapPos, pos)
     if (net === 0) return 'Sin ganancia'
     return net > 0 ? `+${net} yds` : `${net} yds`
   }
 
   function rebuild() {
     const parsed   = _parse(rawInput)
-    const td       = parsed ? isTouchdown(teams, gameState.possession, parsed) : false
+    const td       = parsed ? isTouchdown(teams, possession, parsed) : false
     const netLabel = parsed && !td ? _netYardsLabel(parsed) : ''
     const posLabel = parsed ? `${parsed.team} ${parsed.yard}` : ''
 
@@ -1178,7 +1436,10 @@ function _renderStepByComponent(step, onComplete) {
   }
 
   if (step.component === 'AT') {
-    renderATField({ ...step.config, label: step.label, onComplete })
+    const overrides = editMode
+      ? { snapPos: editContext.field_pos, possession: editContext.possession }
+      : {}
+    renderATField({ ...step.config, ...overrides, label: step.label, onComplete })
     return
   }
 
@@ -1217,59 +1478,10 @@ function _onStepComplete(stepIdx, value) {
   steps[stepIdx].value = value
   setPlayField(steps[stepIdx].id, value)
 
-  const RESULT_STEP_IDS = [
-    'result', 'fumble_result', 'fumble_2_result',
-    'pass_result', 'return_result', 'penalty_result',
-    'kick_type', 'kickoff_result', 'fg_result',
-    'fg_return_result', 'kick_return_result', 'fg_ret_result',
-    'pat_type', 'pat_kick_result', 'pat_block_result',
-    'punt_result', 'punt_return_result', 'punt_block_return_result', 'punt_block_ret_result',
-  ]
-
   if (RESULT_STEP_IDS.includes(steps[stepIdx].id)) {
     const playType = steps.find(s => s.id === 'play_type')?.value
     const stepId = steps[stepIdx].id
-    let branchSteps = []
-
-    if (stepId === 'result') {
-      branchSteps = RESULT_BRANCHES[playType]?.[value] ?? []
-    } else if (stepId === 'fumble_result') {
-      branchSteps = FUMBLE_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'fumble_2_result') {
-      branchSteps = FUMBLE_2_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'pass_result') {
-      branchSteps = PASS_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'return_result') {
-      branchSteps = RETURN_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'penalty_result') {
-      branchSteps = PENALTY_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'kick_type') {
-      branchSteps = KICK_TYPE_BRANCHES[value] ?? []
-    } else if (stepId === 'kickoff_result') {
-      branchSteps = KICKOFF_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'fg_result') {
-      branchSteps = FG_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'fg_return_result') {
-      branchSteps = FG_BLOCKED_RETURN_BRANCHES[value] ?? []
-    } else if (stepId === 'kick_return_result') {
-      branchSteps = KICK_RETURN_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'fg_ret_result') {
-      branchSteps = FG_RET_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'pat_type') {
-      branchSteps = PAT_TYPE_BRANCHES[value] ?? []
-    } else if (stepId === 'pat_kick_result') {
-      branchSteps = PAT_KICK_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'pat_block_result') {
-      branchSteps = []
-    } else if (stepId === 'punt_result') {
-      branchSteps = PUNT_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'punt_return_result') {
-      branchSteps = PUNT_RETURN_RESULT_BRANCHES[value] ?? []
-    } else if (stepId === 'punt_block_return_result') {
-      branchSteps = PUNT_BLOCK_RETURN_BRANCHES[value] ?? []
-    } else if (stepId === 'punt_block_ret_result') {
-      branchSteps = PUNT_BLOCK_RET_RESULT_BRANCHES[value] ?? []
-    }
+    const branchSteps = resolveBranchSteps(stepId, value, playType)
 
     steps = steps.slice(0, stepIdx + 1)
     steps.push(...branchSteps.map(s => ({ ...s, value: null })))
@@ -1449,8 +1661,6 @@ function _confirmSubmit(previewPlay) {
     score_away: gameState.score.away,
   }
 
-  advanceGameState(previewPlay)
-  applyFlags(previewPlay)
   submitPlayWithSnap(snapState)
   renderAddPlay()
 }
@@ -1458,6 +1668,11 @@ function _confirmSubmit(previewPlay) {
 
 
 function goBack() {
+  // Step widgets (BY/AT/RESULT/TEAM/PENALTY_CODE/...) all wire Escape to this
+  // same function. In edit mode it must return to the edit summary instead of
+  // touching the normal-capture steps/currentStepIdx — those are untouched
+  // while editing, so falling through would wrongly bounce to renderAddPlay().
+  if (editMode) { editCursor = -1; _renderEditSummary(); return }
   if (currentStepIdx <= 1) { renderAddPlay(); return }
   const backIdx = currentStepIdx - 1
   steps.slice(backIdx).forEach(s => { s.value = null; setPlayField(s.id, undefined) })
