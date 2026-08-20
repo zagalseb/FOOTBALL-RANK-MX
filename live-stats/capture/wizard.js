@@ -1658,9 +1658,48 @@ function _returnToSubmit() {
   _renderSubmit()
 }
 
+// down_result values that mean the down itself gets replayed/overridden —
+// same 3 options PENALTY_DOWN_RESULT_OPTIONS offers, shared by the
+// standalone PENALTY play (penalty_down_result) and by a flag attached to
+// any other play (flag_1_down_result/flag_2_down_result, same value set).
+// Any of these means the play's own result never counted, same as a real
+// stat sheet's "NO PLAY (repeat down)".
+const _NO_PLAY_DOWN_RESULTS = ['repeat_down', 'loss_of_down', 'first_down']
+
+function _flagVoidsPlay(play) {
+  for (const num of [1, 2]) {
+    if (play[`flag_${num}_result`] === 'accepted' &&
+        _NO_PLAY_DOWN_RESULTS.includes(play[`flag_${num}_down_result`])) {
+      return true
+    }
+  }
+  return false
+}
+
 function _confirmSubmit(previewPlay) {
-  if (previewPlay.net_yards != null) setPlayField('net_yards', previewPlay.net_yards)
-  if (previewPlay.touchdown  != null) setPlayField('touchdown',  previewPlay.touchdown)
+  if (_flagVoidsPlay(previewPlay)) {
+    // The play's own net_yards/touchdown were computed from its raw AT,
+    // blind to any flag (applyFlags() only ever corrects a transient
+    // gameState-derivation object, never the persisted row — see engine.js
+    // applyFlags/deriveNextPlayContext). Overriding here, at the one place
+    // that actually writes the row, is the origin fix: 0/false/not-counted
+    // from the moment this play is saved, not a read-time patch.
+    setPlayField('net_yards', 0)
+    setPlayField('touchdown', false)
+    setPlayField('stats_count', false)
+  } else {
+    if (previewPlay.net_yards != null) setPlayField('net_yards', previewPlay.net_yards)
+    if (previewPlay.touchdown  != null) setPlayField('touchdown',  previewPlay.touchdown)
+  }
+
+  // Standalone PENALTY plays: 'accepted' always pairs with one of the same
+  // 3 down_result values above (that branch has no other option), so it
+  // always means "this row doesn't count" too — unify with the flag case
+  // above instead of leaving penalty_stats_count only ever set by the
+  // operator-driven 'offsetting' widget.
+  if (previewPlay.play_type === 'PENALTY' && previewPlay.penalty_result === 'accepted') {
+    setPlayField('penalty_stats_count', false)
+  }
 
   // Snapshot del estado ANTES de avanzar
   const snapState = {

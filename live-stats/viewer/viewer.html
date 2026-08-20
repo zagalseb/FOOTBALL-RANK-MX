@@ -58,13 +58,15 @@ const configReady = import('../../shared/supabase/supabase_config.js').then(m =>
 // also pulled in to compute the true current score (see computeCurrentScore below) —
 // engineGameState is this viewer's own private instance of the module (a fresh
 // import() per page), never shared with the capture app running elsewhere.
-let formatPlay, advanceGameState, applyFlags, engineGameState, playerShortLabel;
+let formatPlay, advanceGameState, applyFlags, engineGameState, playerShortLabel, isTouchdown, calcNetYards;
 const engineReady = import('../capture/engine.js').then(m => {
   formatPlay          = m.formatPlay;
   advanceGameState     = m.advanceGameState;
   applyFlags           = m.applyFlags;
   engineGameState       = m.gameState;
   playerShortLabel       = m.playerShortLabel;
+  isTouchdown            = m.isTouchdown;
+  calcNetYards           = m.calcNetYards;
 });
 
 // engine.js stores each play's score_home/score_away as the score BEFORE that
@@ -93,6 +95,46 @@ function computeCurrentScore(lastPlay, fallbackHome, fallbackAway, homeAbbr, awa
   advanceGameState(state, lastPlay);
   applyFlags(state, lastPlay);
   return state.score;
+}
+
+// Walks every play in order, replaying it through the same engine.js
+// scoring functions computeCurrentScore() uses above, and records an event
+// whenever the running score actually changes. This reuses the real TD/FG/
+// PAT/safety/pick-six/etc. rules instead of re-deriving "was this a score"
+// from scratch here (which would inevitably drift from engine.js over time).
+function computeScoringPlays(plays, homeAbbr, awayAbbr) {
+  if (typeof advanceGameState !== 'function') return [];
+  engineGameState.teams = {
+    home: { name: homeAbbr, abreviatura: homeAbbr },
+    away: { name: awayAbbr, abreviatura: awayAbbr },
+  };
+  const events = [];
+  let score = { home: 0, away: 0 };
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue;
+    const state = {
+      quarter:    p.quarter,
+      clock:      p.clock,
+      possession: p.possession,
+      field_pos:  p.field_pos ? { ...p.field_pos } : null,
+      down:       p.down,
+      distance:   p.distance,
+      score:      { ...score },
+    };
+    advanceGameState(state, p);
+    applyFlags(state, p);
+    if (state.score.home !== score.home || state.score.away !== score.away) {
+      events.push({
+        quarter: p.quarter,
+        clock:   p.clock,
+        desc:    typeof formatPlay === 'function' ? formatPlay(p) : p.play_type,
+        home:    state.score.home,
+        away:    state.score.away,
+      });
+    }
+    score = state.score;
+  }
+  return events;
 }
 
 const gameId = new URLSearchParams(location.search).get('game_id');
@@ -131,30 +173,760 @@ function fmtDate(kickoff, hora) {
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${t}`;
 }
 
-function computeDrives(plays) {
+// A kickoff never starts its own drive — it's the opening play of whichever
+// team ends up with the ball. Normally that's the receiving team (the
+// opponent of the kicker), starting at the return spot. Exception: if the
+// kicking team recovers the ball on the play itself — an onside recovery, or
+// a fumble lost by the returner during the return — the drive stays theirs.
+function _kickoffDriveOwner(p, otherTeam) {
+  const kicker = p.possession;
+  const receiver = otherTeam(kicker);
+  if (p.kickoff_result === 'onside' && p.onside_recovery_team === kicker) return kicker;
+  if (p.kick_return_result === 'fumble' && p.fumble_recovery_team === kicker) return kicker;
+  return receiver;
+}
+
+function computeDrives(plays, homeAbbr, awayAbbr) {
+  const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null));
+
+  function driveOwner(p) {
+    // kick_type distinguishes a real kickoff from a field goal attempt —
+    // only the former is a "transition" play that must merge into a drive.
+    if (p.play_type === 'KICK' && p.kick_type !== 'field_goal') {
+      return _kickoffDriveOwner(p, otherTeam);
+    }
+    return p.possession;
+  }
+
   const drives = [];
   let cur = null;
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue;
-    if (!cur || cur.possession !== p.possession) {
+
+    // A PAT try always follows the scoring play it belongs to — it's the
+    // continuation of that drive, not a new series, even when the score came
+    // off a turnover-TD (whose "owner" per driveOwner is the team that just
+    // scored on defense, different from the drive that was actually open).
+    // A score always ENDS a drive, full stop — close it out right here
+    // instead of waiting for the next play's owner to differ. That matters
+    // specifically after a turnover-TD: the ensuing kickoff's "owner" is the
+    // team that just gave the ball away, i.e. the SAME abbreviation as the
+    // drive that just closed, so a plain owner-mismatch check would silently
+    // merge the next real drive into this one instead of starting a new row.
+    if (p.play_type === 'PAT_TRY' && cur) {
+      cur.plays.push(p);
+      drives.push(cur);
+      cur = null;
+      continue;
+    }
+
+    const owner = driveOwner(p);
+    if (!cur || cur.possession !== owner) {
       if (cur) drives.push(cur);
-      cur = { possession: p.possession, plays: [] };
+      cur = { possession: owner, plays: [] };
     }
     cur.plays.push(p);
+
+    // A made field goal has no PAT to trigger the close above — the
+    // same-abbreviation risk on the following kickoff can't actually happen
+    // for a FG (turnovers only ever produce touchdowns, not field goals),
+    // but closing here keeps "a score always ends the drive" true uniformly.
+    if (p.play_type === 'KICK' && p.kick_type === 'field_goal' && p.fg_result === 'good') {
+      drives.push(cur);
+      cur = null;
+    }
   }
   if (cur && cur.plays.length) drives.push(cur);
   return drives;
 }
 
-function driveResult(plays) {
+// A turnover play (interception / fumble recovery / blocked-kick return)
+// that reaches the end zone on the SAME play is a defensive score. Detected
+// the same way engine.js's advanceGameState()/_advanceFumble() do it — via
+// isTouchdown() against the actual recorded return/recovery position — not
+// via the play's top-level `touchdown` column, which the capture wizard only
+// ever populates for plain RUSH/PASS-complete plays (the ones using the
+// generic `at` field); turnover branches write to their own position fields
+// (return_at, fumble_recovered_at, fg_ret_at, ...) that `touchdown` never sees.
+function _turnoverScore(p, teams) {
+  if (!teams || !p.possession) return null;
+  const opponentOf = t => (t === teams.home.name ? teams.away.name : teams.home.name);
+
+  if (p.play_type === 'PASS' && p.pass_result === 'intercepted') {
+    const intTeam = opponentOf(p.possession);
+    const pos = p.return_at || p.intercepted_at;
+    if (pos && isTouchdown(teams, intTeam, pos)) return 'INTERCEPTION';
+  }
+
+  if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession && p.fumble_recovered_at) {
+    if (isTouchdown(teams, p.fumble_recovery_team, p.fumble_recovered_at)) return 'FUMBLE';
+  }
+  if (p.fumble_2_recovery_team && p.fumble_2_recovery_team !== p.possession && p.fumble_2_recovered_at) {
+    if (isTouchdown(teams, p.fumble_2_recovery_team, p.fumble_2_recovered_at)) return 'FUMBLE';
+  }
+
+  if (p.play_type === 'KICK' && p.fg_returned_by && p.fg_ret_at) {
+    const defTeam = opponentOf(p.possession);
+    if (isTouchdown(teams, defTeam, p.fg_ret_at)) return 'BLOCKED KICK';
+  }
+  if (p.play_type === 'PUNT' && p.punt_block_returned_by && p.punt_block_ret_at) {
+    const defTeam = opponentOf(p.possession);
+    if (isTouchdown(teams, defTeam, p.punt_block_ret_at)) return 'BLOCKED KICK';
+  }
+
+  return null;
+}
+
+// Shared "how did this drive end" logic — used by both the play-by-play
+// header badge (driveResult) and the Drive Chart tab (classifyDriveEnd), so
+// there's exactly one definition of what a drive's result label means.
+function driveEndLabel(plays, isLastDrive, teams) {
   if (!plays.length) return null;
-  const last = plays[plays.length - 1];
+  let last = plays[plays.length - 1];
+  // computeDrives() always appends a PAT_TRY to the drive it follows and
+  // force-closes right there — so a scoring drive's literal last play is
+  // almost always the PAT snap, not the touchdown itself. The PAT_TRY row
+  // has its own (usually blank) touchdown/turnover fields, so classifying
+  // off of it directly silently loses the drive's real result — judge the
+  // play the PAT is attached to instead.
+  if (last.play_type === 'PAT_TRY' && plays.length > 1) {
+    last = plays[plays.length - 2];
+  }
+  // Immediate-score turnover closes the OFFENSE's drive under the turnover's
+  // own label — it must not read as a plain 'TD', since the points were the
+  // defense's, not the result of an offensive scoring drive.
+  const turnover = _turnoverScore(last, teams);
+  if (turnover) return turnover;
   if (last.touchdown) return 'TD';
   if (last.play_type === 'KICK' && last.kick_type === 'field_goal' && last.fg_result === 'good') return 'FG';
   if (last.play_type === 'PUNT') return 'PUNT';
   if (last.pass_result === 'intercepted') return 'INT';
-  if (last.result === 'fumble') return 'FUMBLE';
+  if (last.result === 'fumble') return 'FUMB';
+  if (last.down === 4) return 'DOWNS';
+  if (isLastDrive) return 'HALF';
   return null;
+}
+
+function driveResult(plays, teams) {
+  return driveEndLabel(plays, false, teams);
+}
+
+// ── Clock helpers ─────────────────────────────────────────────────────────────
+// Game clock ("MM:SS"), not submitted_at — submitted_at reflects real-world
+// capture pace (however fast the operator types), not game pace, so it can't
+// be used to derive time of possession.
+function parseClockToSeconds(clock) {
+  if (!clock) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(clock).trim());
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function formatSeconds(sec) {
+  if (sec == null) return '—';
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// ── Comparación (team-vs-team box score) ─────────────────────────────────────
+// A play counts as a first down two independent ways: (1) it gained enough
+// yards or scored, and wasn't itself voided by a penalty (stats_count),
+// OR (2) an accepted penalty's down_result directly awarded one (defensive
+// PI, etc.) — that branch fires exactly on the plays (1) excludes, which is
+// why this is an OR of two truly separate signals, not a single field.
+// down_result lives under three different keys depending on how the penalty
+// was captured: flag_1_down_result / flag_2_down_result (a flag attached to
+// a normal play) or penalty_down_result (a standalone PENALTY play).
+function _isFirstDownPlay(p) {
+  const byYards = p.stats_count !== false &&
+    ((p.net_yards != null && p.distance != null && p.net_yards >= p.distance) || p.touchdown === true);
+  const byPenalty = p.flag_1_down_result === 'first_down' ||
+    p.flag_2_down_result === 'first_down' ||
+    p.penalty_down_result === 'first_down';
+  return byYards || byPenalty;
+}
+
+// Every count/sum below either (a) measures official offensive production —
+// gated on stats_count !== false, same as the rest of the app now that
+// wizard.js zeroes out voided plays at save time — or (b) measures an event
+// that happened regardless of whether a penalty also nullified the down
+// (turnovers, fumbles, sacks made, TFL made, penalties themselves) and is
+// intentionally NOT gated on stats_count, since an accepted-flag play is
+// stats_count === false by construction — gating those would make Penalties
+// always read zero.
+function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
+  const blank = () => ({
+    passYds: 0, rushYds: 0, totalPlays: 0,
+    passCompletions: 0, rushPlays: 0, sackAdjRushYds: 0, sackAdjRushPlays: 0,
+    firstDowns: 0, thirdAtt: 0, thirdConv: 0, fourthAtt: 0, fourthConv: 0,
+    redZoneTrips: 0, redZoneTDs: 0,
+    turnovers: 0, fumbles: 0, fumblesLost: 0,
+    sacksMade: 0, sacksYds: 0, tflMade: 0, tflYds: 0,
+  });
+  const out = { [homeAbbr]: blank(), [awayAbbr]: blank() };
+  const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null));
+
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue;
+
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && out[p.possession]) {
+      out[p.possession].turnovers++;
+    }
+    if (p.result === 'fumble' && out[p.possession]) {
+      out[p.possession].fumbles++;
+      if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) {
+        out[p.possession].fumblesLost++;
+        out[p.possession].turnovers++;
+      }
+    }
+
+    if (p.play_type === 'PASS' && p.pass_result === 'sack') {
+      const def = out[otherTeam(p.possession)];
+      if (def) { def.sacksMade++; def.sacksYds += Math.abs(p.net_yards || 0); }
+    }
+    const isTflEligible = p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'complete');
+    if (isTflEligible && p.net_yards != null && p.net_yards < 0) {
+      const def = out[otherTeam(p.possession)];
+      if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards); }
+    }
+
+    if (out[p.possession] && _isFirstDownPlay(p)) out[p.possession].firstDowns++;
+
+    if (p.stats_count === false) continue;
+    const t = out[p.possession];
+    if (!t) continue;
+
+    if (p.play_type === 'RUSH' || p.play_type === 'PASS') {
+      t.totalPlays++;
+      if (p.down === 3) { t.thirdAtt++; if (_isFirstDownPlay(p)) t.thirdConv++; }
+      if (p.down === 4) { t.fourthAtt++; if (_isFirstDownPlay(p)) t.fourthConv++; }
+    }
+
+    if (p.play_type === 'RUSH') {
+      const y = p.net_yards || 0;
+      t.rushYds += y; t.rushPlays++;
+      t.sackAdjRushYds += y; t.sackAdjRushPlays++;
+    } else if (p.play_type === 'PASS' && (p.pass_result === 'sack' || p.pass_result === 'scramble')) {
+      const y = p.net_yards || 0;
+      t.rushYds += y; t.rushPlays++;
+      if (p.pass_result === 'scramble') { t.sackAdjRushYds += y; t.sackAdjRushPlays++; }
+    } else if (p.play_type === 'PASS' && ['complete', 'incomplete', 'intercepted'].includes(p.pass_result)) {
+      t.passYds += (p.net_yards || 0);
+      if (p.pass_result === 'complete') t.passCompletions++;
+    }
+  }
+
+  // Red zone — reuses computeDrives()'s own grouping and the shared
+  // driveEndLabel() Drive Chart already uses for "how did this drive end",
+  // instead of re-deriving a TD check here. yardline_100 is a real column
+  // computed and persisted at capture time (engine.js calcYardline100),
+  // never recalculated geometrically here.
+  drives.forEach((d, i) => {
+    const t = out[d.possession];
+    if (!t) return;
+    // A PAT_TRY is always snapped a couple yards from the goal line by rule
+    // (yardline_100 ~0-5) regardless of which drive it got merged into —
+    // it never reflects how far this drive's own offense actually advanced,
+    // so it can't be allowed to trigger a "trip" on its own.
+    const enteredRedZone = d.plays.some(p =>
+      p.play_type !== 'PAT_TRY' && p.yardline_100 != null && p.yardline_100 <= 20
+    );
+    if (!enteredRedZone) return;
+    t.redZoneTrips++;
+    if (driveEndLabel(d.plays, i === drives.length - 1, teams) === 'TD') t.redZoneTDs++;
+  });
+
+  return out;
+}
+
+// ── Penalties ─────────────────────────────────────────────────────────────────
+// A penalty is either its own standalone PENALTY play (penalty_team/
+// penalty_infraction/penalty_by/penalty_result/penalty_new_los) or a flag
+// attached to another play (flag_1_*/flag_2_*, same field shapes with a
+// flag_N_ prefix) — both are collected here into one chronological list per
+// team — same field_pos-vs-new_los yardage-delta calc used everywhere else
+// a penalty's effect needs to be measured (_effectiveNetYards, Comparación).
+function computePenalties(plays, homeAbbr) {
+  const absYd = (team, yard) => (team === homeAbbr ? yard : 100 - yard);
+  const out = [];
+
+  function pushPenalty(p, team, infraction, by, result, newLos) {
+    if (!team || !infraction) return;
+    let yards = null;
+    if (p.field_pos && newLos) {
+      yards = Math.abs(absYd(newLos.team, newLos.yard) - absYd(p.field_pos.team, p.field_pos.yard));
+    }
+    out.push({
+      seq: p.seq, team, quarter: p.quarter, clock: p.clock,
+      code: infraction.code, label: infraction.label,
+      player: by ? playerLabel(by) : null,
+      result: result || '—',
+      yards,
+      context: typeof formatPlay === 'function' ? formatPlay(p) : p.play_type,
+    });
+  }
+
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue;
+    if (p.play_type === 'PENALTY') {
+      pushPenalty(p, p.penalty_team, p.penalty_infraction, p.penalty_by, p.penalty_result, p.penalty_new_los);
+    }
+    for (const num of [1, 2]) {
+      const inf = p[`flag_${num}_infraction`];
+      if (!inf) continue;
+      pushPenalty(p, p[`flag_${num}_team`], inf, p[`flag_${num}_by`], p[`flag_${num}_result`], p[`flag_${num}_new_los`]);
+    }
+  }
+
+  return out.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+}
+
+// ── Defensive stats ──────────────────────────────────────────────────────────
+// A play's defense is simply whichever team does NOT have possession on it —
+// tackle_by/sack_by/etc. player refs don't carry their own team, but since
+// they only ever come from the opposing side of `possession`, this is enough
+// to attribute every defensive credit correctly without needing that.
+function computeDefenseStats(plays, homeAbbr, awayAbbr) {
+  const teams = { [homeAbbr]: {}, [awayAbbr]: {} };
+
+  function credit(team, player, field, delta) {
+    if (!team || !teams[team] || !player) return;
+    const label = playerLabel(player);
+    if (!label) return;
+    if (!teams[team][label]) teams[team][label] = { label, solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0 };
+    teams[team][label][field] += delta;
+  }
+
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue;
+    const defTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null);
+    if (!defTeam) continue;
+
+    const tackleArrays = [p.tackle_by, p.fumble_tackle_by, p.punt_block_ret_tackle_by, p.return_tackle_by];
+    for (const arr of tackleArrays) {
+      if (!Array.isArray(arr) || !arr.length) continue;
+      const isSolo = arr.length === 1;
+      for (const player of arr) {
+        credit(defTeam, player, isSolo ? 'solo' : 'ast', 1);
+        if (p.net_yards != null && p.net_yards < 0) credit(defTeam, player, 'tfl', 1);
+      }
+    }
+
+    if (p.play_type === 'PASS' && p.pass_result === 'sack' && p.sack_by) {
+      credit(defTeam, p.sack_by, 'sacks', 1);
+      credit(defTeam, p.sack_by, 'solo', 1); // a sack is also a solo tackle
+    }
+
+    if (p.fumble_forced_by) credit(defTeam, p.fumble_forced_by, 'ff', 1);
+    if (p.fumble_2_forced_by) credit(defTeam, p.fumble_2_forced_by, 'ff', 1);
+
+    if (p.pass_result === 'intercepted' && p.intercepted_by) {
+      credit(defTeam, p.intercepted_by, 'int', 1);
+    }
+  }
+
+  return teams;
+}
+
+// ── Special teams stats ──────────────────────────────────────────────────────
+// Punt/kickoff plays never get a top-level net_yards (wizard.js only computes
+// it for RUSH and PASS-complete, see _confirmSubmit) — every distance here is
+// derived from field_pos plus whichever landing-spot field that play's result
+// branch actually recorded (punt_kicked_to/punt_oob_at/kicked_to/etc.),
+// verified against wizard.js's STEPS_BY_TYPE.PUNT/KICK and their *_BRANCHES.
+// A touchback has no recorded landing spot (the branch is empty in both
+// PUNT_RESULT_BRANCHES and KICKOFF_RESULT_BRANCHES) — distance is approximated
+// as the distance to the goal line, the standard box-score convention for
+// touchback punts/kickoffs. Blocked punts and oob/onside kickoffs likewise
+// have no measurable landing spot recorded — they still count as an attempt
+// (No.) but contribute 0 to Yds/Long/Avg.
+function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams) {
+  const punting     = {};
+  const kickoffs     = {};
+  const fgs          = [];
+  const kickReturns  = {};
+  const puntReturns  = {};
+
+  const dist = (kicker, snap, land) =>
+    (typeof calcNetYards === 'function' && snap && land) ? calcNetYards(teams, kicker, snap, land) : null;
+
+  for (const p of plays) {
+    const defTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null);
+    if (!defTeam) continue;
+
+    if (p.play_type === 'PUNT') {
+      const label = p.punted_by ? playerLabel(p.punted_by) : null;
+      if (label) {
+        const key = `${p.possession}::${label}`;
+        if (!punting[key]) punting[key] = { team: p.possession, label, no: 0, yds: 0, long: 0, in20: 0, tb: 0 };
+        const row = punting[key];
+        row.no++;
+        let landPos = null;
+        if (p.punt_result === 'returned' || p.punt_result === 'fair_catch') landPos = p.punt_kicked_to;
+        else if (p.punt_result === 'oob') landPos = p.punt_oob_at;
+        else if (p.punt_result === 'touchback') { landPos = { team: defTeam, yard: 0 }; row.tb++; }
+        if (landPos) {
+          const d = dist(p.possession, p.field_pos, landPos);
+          if (d != null) {
+            row.yds += d;
+            if (d > row.long) row.long = d;
+          }
+          if (p.punt_result !== 'touchback' && landPos.team === defTeam && landPos.yard > 0 && landPos.yard <= 20) row.in20++;
+        }
+      }
+
+      if (p.punt_result === 'returned' && p.punt_returned_by) {
+        const rLabel = playerLabel(p.punt_returned_by);
+        if (rLabel) {
+          let endPos = null;
+          if (['tackle', 'oob', 'eop'].includes(p.punt_return_result)) endPos = p.punt_return_at;
+          else if (p.punt_return_result === 'fumble') endPos = p.fumble_at;
+          const d = endPos ? dist(defTeam, p.punt_kicked_to, endPos) : null;
+          if (d != null) {
+            const key = `${defTeam}::${rLabel}`;
+            if (!puntReturns[key]) puntReturns[key] = { team: defTeam, label: rLabel, no: 0, yds: 0, long: 0 };
+            puntReturns[key].no++;
+            puntReturns[key].yds += d;
+            if (d > puntReturns[key].long) puntReturns[key].long = d;
+          }
+        }
+      }
+    }
+
+    if (p.play_type === 'KICK' && p.kick_type === 'kickoff') {
+      const label = p.kicked_by ? playerLabel(p.kicked_by) : null;
+      if (label) {
+        const key = `${p.possession}::${label}`;
+        if (!kickoffs[key]) kickoffs[key] = { team: p.possession, label, no: 0, yds: 0, tb: 0 };
+        const row = kickoffs[key];
+        row.no++;
+        let landPos = null;
+        if (p.kickoff_result === 'returned' || p.kickoff_result === 'fair_catch') landPos = p.kicked_to;
+        else if (p.kickoff_result === 'touchback') { landPos = { team: defTeam, yard: 0 }; row.tb++; }
+        if (landPos) {
+          const d = dist(p.possession, p.field_pos, landPos);
+          if (d != null) row.yds += d;
+        }
+      }
+
+      if (p.kickoff_result === 'returned' && p.kick_returned_by) {
+        const rLabel = playerLabel(p.kick_returned_by);
+        if (rLabel) {
+          let endPos = null;
+          if (['tackle', 'oob', 'eop'].includes(p.kick_return_result)) endPos = p.kick_return_at;
+          else if (p.kick_return_result === 'fumble') endPos = p.fumble_at;
+          const d = endPos ? dist(defTeam, p.kicked_to, endPos) : null;
+          if (d != null) {
+            const key = `${defTeam}::${rLabel}`;
+            if (!kickReturns[key]) kickReturns[key] = { team: defTeam, label: rLabel, no: 0, yds: 0, long: 0 };
+            kickReturns[key].no++;
+            kickReturns[key].yds += d;
+            if (d > kickReturns[key].long) kickReturns[key].long = d;
+          }
+        }
+      }
+    }
+
+    if (p.play_type === 'KICK' && p.kick_type === 'field_goal') {
+      const result = p.fg_result === 'good' ? 'GOOD' : p.fg_result === 'blocked' ? 'BLOCKED' : p.fg_result === 'missed' ? 'MISSED' : null;
+      if (result) {
+        fgs.push({ team: p.possession, quarter: p.quarter, clock: p.clock, distance: p.kick_distance ?? null, result });
+      }
+    }
+  }
+
+  return {
+    punting:     Object.values(punting).sort((a, b) => b.yds - a.yds),
+    kickoffs:    Object.values(kickoffs).sort((a, b) => b.yds - a.yds),
+    fgs,
+    kickReturns: Object.values(kickReturns).sort((a, b) => b.yds - a.yds),
+    puntReturns: Object.values(puntReturns).sort((a, b) => b.yds - a.yds),
+  };
+}
+
+// ── Fumbles (Individuales) ───────────────────────────────────────────────────
+// Credited to whoever HAD the ball when it came loose (rush_by, the pass
+// catcher on a completed reception, or the returner on a kick/punt return) —
+// never the player who forced it (that's already tracked as FF in Defensiva).
+// The "fumble happened" flag and its recovery fields share the same
+// fumble_recovery_team/fumble_recovered_by names across every branch that can
+// produce one (RUSH/PASS result=fumble, PASS return_result=fumble on a pick,
+// KICK/PUNT return/block-return result=fumble) — only the flag that marks
+// "did it happen on this play" differs per branch, so that part is checked
+// per play_type/result field.
+function _fumbleOccurred(p) {
+  return p.result === 'fumble' || p.return_result === 'fumble' || p.kick_return_result === 'fumble' ||
+    p.fg_ret_result === 'fumble' || p.punt_return_result === 'fumble' || p.punt_block_ret_result === 'fumble';
+}
+
+function _fumbleCarrier(p) {
+  if (p.play_type === 'RUSH') return p.rush_by;
+  if (p.play_type === 'PASS') {
+    if (p.pass_result === 'intercepted') return p.returned_by || p.intercepted_by;
+    if (p.pass_result === 'complete') return p.received_by;
+    return null;
+  }
+  if (p.play_type === 'KICK' && p.kick_type === 'kickoff') return p.kick_returned_by;
+  if (p.play_type === 'KICK' && p.kick_type === 'field_goal') return p.fg_returned_by;
+  if (p.play_type === 'PUNT') return p.punt_result === 'blocked' ? p.punt_block_returned_by : p.punt_returned_by;
+  return null;
+}
+
+function computeFumbleStats(plays) {
+  const out = {};
+  for (const p of plays) {
+    if (!_fumbleOccurred(p)) continue;
+    const carrier = _fumbleCarrier(p);
+    const label = carrier ? playerLabel(carrier) : null;
+    if (!label || !p.possession) continue;
+    const key = `${p.possession}::${label}`;
+    if (!out[key]) out[key] = { team: p.possession, label, no: 0, lost: 0 };
+    out[key].no++;
+    if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) out[key].lost++;
+  }
+  return Object.values(out);
+}
+
+// ── Turnover return yards (interceptions + defensive fumble recoveries) ─────
+// Feeds the FR/IR column of All-Purpose Yards. An interception's return
+// distance runs from intercepted_at to whatever spot its return_result
+// branch recorded (return_at for tackle/oob/eop, fumble_at if the returner
+// himself fumbled); a defensive fumble recovery's return distance runs from
+// the recovery spot (fumble_recovered_at / fumble_2_recovered_at) to the
+// further-advance spot FUMBLE_RESULT_BRANCHES records for tackle/oob/eop
+// (fumble_at_result / fumble_2_at_result) — 0 when the recovery spot was the
+// final spot (no further advance captured).
+function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams) {
+  const map = {};
+  function add(team, label, yds) {
+    if (!team || !label || !yds) return;
+    const key = `${team}::${label}`;
+    if (!map[key]) map[key] = { team, label, yds: 0 };
+    map[key].yds += yds;
+  }
+  const dist = (team, from, to) =>
+    (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0;
+
+  for (const p of plays) {
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
+      const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null);
+      if (intTeam) {
+        let endPos = null;
+        if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at;
+        else if (p.return_result === 'fumble') endPos = p.fumble_at;
+        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0;
+        add(intTeam, playerLabel(p.intercepted_by), yds);
+      }
+    }
+
+    for (const prefix of ['fumble_', 'fumble_2_']) {
+      const recTeam = p[`${prefix}recovery_team`];
+      const recBy   = p[`${prefix}recovered_by`];
+      const recAt   = p[`${prefix}recovered_at`];
+      if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue;
+      const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result';
+      const endPos = p[advField] || null;
+      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0;
+      add(recTeam, playerLabel(recBy), yds);
+    }
+  }
+
+  return Object.values(map);
+}
+
+// Combines rushing/receiving yards (already keyed by team+player from App()'s
+// own breakdown) with kick/punt-return and turnover-return yards into one
+// per-player map, pre-sorted by Total descending within each team so
+// App()'s buildRows() (which just walks object insertion order) renders it
+// sorted without needing its own sort logic.
+function computeAllPurposeMap(rushers, receivers, kickReturns, puntReturns, turnoverReturns, homeAbbr, awayAbbr) {
+  const raw = { [homeAbbr]: {}, [awayAbbr]: {} };
+  function ensure(team, label) {
+    if (!raw[team]) return null;
+    if (!raw[team][label]) raw[team][label] = { run: 0, rcv: 0, kr: 0, pr: 0, frir: 0 };
+    return raw[team][label];
+  }
+  for (const team of [homeAbbr, awayAbbr]) {
+    Object.entries(rushers[team] || {}).forEach(([label, d]) => { const r = ensure(team, label); if (r) r.run += d.yds; });
+    Object.entries(receivers[team] || {}).forEach(([label, d]) => { const r = ensure(team, label); if (r) r.rcv += d.yds; });
+  }
+  kickReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.kr += yds; });
+  puntReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.pr += yds; });
+  turnoverReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.frir += yds; });
+
+  const out = {};
+  for (const team of [homeAbbr, awayAbbr]) {
+    const sorted = Object.entries(raw[team] || {})
+      .map(([label, d]) => [label, { ...d, total: d.run + d.rcv + d.kr + d.pr + d.frir }])
+      .filter(([, d]) => d.total !== 0)
+      .sort((a, b) => b[1].total - a[1].total);
+    out[team] = Object.fromEntries(sorted);
+  }
+  return out;
+}
+
+// Same pre-sorted-map trick as computeAllPurposeMap, for the Fumbles table
+// (sorted Lost desc, then No. desc).
+function fumbleStatsToMap(fumbleStats, homeAbbr, awayAbbr) {
+  const raw = { [homeAbbr]: {}, [awayAbbr]: {} };
+  fumbleStats.forEach(r => { if (raw[r.team]) raw[r.team][r.label] = { no: r.no, lost: r.lost }; });
+  const out = {};
+  for (const team of [homeAbbr, awayAbbr]) {
+    const sorted = Object.entries(raw[team] || {}).sort((a, b) => b[1].lost - a[1].lost || b[1].no - a[1].no);
+    out[team] = Object.fromEntries(sorted);
+  }
+  return out;
+}
+
+// ── QB progression ───────────────────────────────────────────────────────────
+function computeQBProgression(plays) {
+  const byQB = {};
+  const sorted = plays
+    .filter(p => p.play_type === 'PASS' && p.pass_by)
+    .slice()
+    .sort((a, b) => a.seq - b.seq);
+
+  for (const p of sorted) {
+    const label = playerLabel(p.pass_by);
+    if (!label) continue;
+    const key = `${p.possession}::${label}`;
+    if (!byQB[key]) byQB[key] = { team: p.possession, label, rows: [], comp: 0, att: 0, yds: 0, td: 0, int: 0 };
+    const qb = byQB[key];
+
+    // Standard box-score convention: sacks/scrambles are plays the QB was
+    // involved in, but not passing "attempts" — the QB never released the ball.
+    // A play voided by an accepted penalty (stats_count: false, set by
+    // wizard.js at save time) is excluded from the tally entirely — it's
+    // still shown below as a row for context, just not counted.
+    const isAttempt = p.stats_count !== false &&
+      ['complete', 'incomplete', 'dropped', 'broken_up', 'intercepted'].includes(p.pass_result);
+    if (isAttempt) {
+      qb.att++;
+      if (p.pass_result === 'complete') { qb.comp++; qb.yds += (p.net_yards || 0); }
+      if (p.touchdown) qb.td++;
+      if (p.pass_result === 'intercepted') qb.int++;
+    }
+
+    let note = '';
+    if (p.touchdown) note = 'TD';
+    else if (p.pass_result === 'intercepted') note = 'INT';
+    else if (p.pass_result === 'sack') note = 'SACK';
+
+    qb.rows.push({
+      isComplete: p.pass_result === 'complete',
+      caTally: `${qb.comp}-${qb.att}`,
+      netYards: p.net_yards,
+      receiver: p.pass_result === 'complete' && p.received_by ? playerLabel(p.received_by) : null,
+      note,
+      context: typeof formatPlay === 'function' ? formatPlay(p) : p.play_type,
+    });
+  }
+
+  return Object.values(byQB);
+}
+
+// ── Explosive plays ──────────────────────────────────────────────────────────
+// An accepted flag with a new LOS overrides the actual result of the down
+// (same rule engine.js's applyFlags() uses) — the play's own net_yards is
+// just the raw gain on the snap, before the penalty is applied. A play that
+// gained real yardage but got wiped out by an accepted holding/etc. call
+// must be judged by the post-penalty result, not the raw one. Only the LAST
+// accepted flag with a new LOS matters — a second flag can replace the first,
+// same order applyFlags() processes them in.
+function _effectiveNetYards(p, teams) {
+  if (!teams || typeof calcNetYards !== 'function') return p.net_yards;
+
+  // A standalone PENALTY play (false start, encroachment, ...) has no
+  // net_yards of its own — the down's real result is the LOS change, same
+  // calc advanceGameState() does for the repeat-down distance recompute.
+  if (p.play_type === 'PENALTY') {
+    if (p.penalty_result === 'accepted' && p.field_pos && p.penalty_new_los) {
+      return calcNetYards(teams, p.possession, p.field_pos, p.penalty_new_los);
+    }
+    return null;
+  }
+
+  if (!p.field_pos) return p.net_yards;
+  let eff = p.net_yards;
+  for (const num of [1, 2]) {
+    if (!p[`flag_${num}_infraction`]) break;
+    if (p[`flag_${num}_result`] !== 'accepted') continue;
+    const newLos = p[`flag_${num}_new_los`];
+    if (newLos) eff = calcNetYards(teams, p.possession, p.field_pos, newLos);
+  }
+  return eff;
+}
+
+function computeExplosivePlays(plays, teams) {
+  const passing = [];
+  const rushing = [];
+  for (const p of plays) {
+    const eff = _effectiveNetYards(p, teams);
+    if (eff == null) continue;
+    if (p.play_type === 'PASS' && p.pass_result === 'complete' && eff >= 15) passing.push(p);
+    // A scramble is a rushing play (NCAA convention, see computeComparisonStats)
+    // so it's judged against the same 10-yard rushing threshold as a RUSH play.
+    else if ((p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'scramble')) && eff >= 10) rushing.push(p);
+  }
+  return {
+    passing: passing.slice().sort((a, b) => b.net_yards - a.net_yards),
+    rushing: rushing.slice().sort((a, b) => b.net_yards - a.net_yards),
+  };
+}
+
+// ── Drive chart ───────────────────────────────────────────────────────────────
+// Thin wrapper over the shared driveEndLabel() so the Drive Chart tab and the
+// play-by-play header badge can never drift into two different definitions
+// of "how did this drive end".
+function classifyDriveEnd(drive, isLastDrive, teams) {
+  return driveEndLabel(drive.plays, isLastDrive, teams) || '—';
+}
+
+// A drive's start reason is just the previous drive's end reason, translated
+// (e.g. the previous drive ending in a TD/FG/defensive score means this one
+// starts off a kickoff). Note: INT isn't part of the KO/PUNT/DOWNS/FUMB
+// vocabulary asked for, but leaving it out would mislabel real
+// interception-return drives as "DOWNS" — so it's kept as its own value here.
+function classifyDriveStart(prevEnd, isFirstDrive) {
+  if (isFirstDrive) return 'KO';
+  switch (prevEnd) {
+    case 'TD': case 'FG': case 'HALF':
+    case 'INTERCEPTION': case 'FUMBLE': case 'BLOCKED KICK':
+      return 'KO';
+    case 'PUNT':  return 'PUNT';
+    case 'FUMB':  return 'FUMBLE';
+    case 'INT':   return 'INT';
+    case 'DOWNS': return 'DOWNS';
+    default:      return '—';
+  }
+}
+
+function computeDriveRows(drives, teams) {
+  const ends = drives.map((d, i) => classifyDriveEnd(d, i === drives.length - 1, teams));
+  return drives.map((d, i) => {
+    const first = d.plays[0], last = d.plays[d.plays.length - 1];
+    const yds = d.plays.reduce((a, p) => a + (p.net_yards || 0), 0);
+    const realPlays = d.plays.filter(p => p.play_type !== 'GAME_CTRL').length;
+    const c1 = parseClockToSeconds(first?.clock);
+    const c2 = parseClockToSeconds(last?.clock);
+    const top = (c1 != null && c2 != null && c1 >= c2 && first?.quarter === last?.quarter) ? c1 - c2 : null;
+    // A drive opening with a kickoff should show the post-return (or
+    // fumble-recovery) spot, not the kickoff play's own field_pos — that's
+    // the kicking spot, not where this drive actually starts.
+    const isKickoffStart = first?.play_type === 'KICK' && first?.kick_type !== 'field_goal';
+    const startPos = isKickoffStart
+      ? (first.fumble_recovered_at || first.kick_return_at || first.field_pos)
+      : first?.field_pos;
+    return {
+      possession: d.possession,
+      spot: startPos ? `${startPos.team} ${startPos.yard}` : '—',
+      start: classifyDriveStart(i === 0 ? null : ends[i - 1], i === 0),
+      end: ends[i],
+      plays: realPlays,
+      yds,
+      top,
+    };
+  });
 }
 
 // playerLabel() — used to key the individual RUSHING/PASSING/RECEIVING
@@ -269,24 +1041,6 @@ function ScoresPanel({ games, currentId }) {
   );
 }
 
-// ── StatBar ──────────────────────────────────────────────────────────────────
-function StatBar({ label, homeVal, awayVal, homeColor, awayColor }) {
-  const total = (homeVal + awayVal) || 1;
-  const awayPct = (awayVal / total) * 100;
-  return (
-    <div style={{ marginBottom:14 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5, fontFamily:"'Inter',sans-serif", fontSize:13 }}>
-        <span style={{ fontWeight:700, color:awayColor }}>{awayVal}</span>
-        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'var(--text2)', fontWeight:500 }}>{label}</span>
-        <span style={{ fontWeight:700, color:homeColor }}>{homeVal}</span>
-      </div>
-      <div style={{ display:'flex', height:5, borderRadius:2, overflow:'hidden', background: homeColor }}>
-        <div style={{ width:`${awayPct}%`, background:awayColor, height:'100%' }} />
-      </div>
-    </div>
-  );
-}
-
 // ── IndividualStats ──────────────────────────────────────────────────────────
 function IndividualStats({ title, rows, cols }) {
   if (!rows.length) return null;
@@ -318,6 +1072,694 @@ function IndividualStats({ title, rows, cols }) {
   );
 }
 
+// ── Shared small pieces ───────────────────────────────────────────────────────
+function EmptyState({ text }) {
+  return (
+    <div style={{ padding:'24px 12px', textAlign:'center', color:'var(--text3)', fontFamily:"'Inter',sans-serif", fontSize:13 }}>
+      {text}
+    </div>
+  );
+}
+
+function TeamFilterBar({ filt, onChange, awayAbbr, homeAbbr }) {
+  return (
+    <div style={{ display:'flex', gap:5 }}>
+      {[['ALL','Todos'], [awayAbbr, awayAbbr], [homeAbbr, homeAbbr]].map(([val, label]) => (
+        <button key={val} onClick={() => onChange(val)} style={{
+          background: filt===val ? 'rgba(17,24,39,0.06)' : 'transparent',
+          border: `1px solid ${filt===val ? 'rgba(17,24,39,0.25)' : 'var(--border2)'}`,
+          borderRadius:4, color: filt===val ? 'var(--text)' : 'var(--text2)',
+          fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, letterSpacing:0.3,
+          padding:'3px 10px', cursor:'pointer',
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+function StatRow({ label, awayVal, homeVal }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderTop:'1px solid var(--border)', fontFamily:"'Inter',sans-serif" }}>
+      <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{awayVal}</span>
+      <span style={{ fontSize:11, color:'var(--text2)' }}>{label}</span>
+      <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{homeVal}</span>
+    </div>
+  );
+}
+
+const CARD_STYLE = { background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'14px 16px' };
+const SECTION_TITLE_STYLE = { fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5, marginBottom:12 };
+
+// ── TabBar ────────────────────────────────────────────────────────────────────
+// tabs is passed in rather than a module-level constant — the "{Abbr} Stats"
+// labels depend on which game is loaded.
+function TabBar({ tabs, active, onChange }) {
+  return (
+    <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'0 20px', display:'flex', justifyContent:'center', gap:2, overflowX:'auto' }}>
+      {tabs.map(t => (
+        <button key={t.key} onClick={() => onChange(t.key)} style={{
+          background:'none', border:'none',
+          borderBottom: active===t.key ? '2px solid var(--text)' : '2px solid transparent',
+          color: active===t.key ? 'var(--text)' : 'var(--text2)',
+          fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, letterSpacing:0.2,
+          padding:'12px 14px', cursor:'pointer', whiteSpace:'nowrap', transition:'color 0.15s, border-color 0.15s',
+        }}>{t.label}</button>
+      ))}
+    </div>
+  );
+}
+
+// ── SubTabBar ─────────────────────────────────────────────────────────────────
+function SubTabBar({ tabs, active, onChange }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'center', gap:4, overflowX:'auto', borderBottom:'1px solid var(--border)', paddingBottom:8, marginBottom:14 }}>
+      {tabs.map(t => (
+        <button key={t.key} onClick={() => onChange(t.key)} style={{
+          background: active===t.key ? 'rgba(17,24,39,0.06)' : 'transparent',
+          border: `1px solid ${active===t.key ? 'rgba(17,24,39,0.2)' : 'transparent'}`,
+          borderRadius:5,
+          color: active===t.key ? 'var(--text)' : 'var(--text2)',
+          fontFamily:"'Inter',sans-serif", fontWeight:600, fontSize:12, letterSpacing:0.2,
+          padding:'6px 12px', cursor:'pointer', whiteSpace:'nowrap',
+        }}>{t.label}</button>
+      ))}
+    </div>
+  );
+}
+
+// ── Placeholder ───────────────────────────────────────────────────────────────
+function Placeholder({ text = 'Próximamente' }) {
+  return (
+    <div style={{ ...CARD_STYLE, textAlign:'center', padding:'48px 20px' }}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:14, fontWeight:700, color:'var(--text3)', letterSpacing:0.5 }}>{text}</div>
+    </div>
+  );
+}
+
+// ── Tab: Jugada por Jugada ───────────────────────────────────────────────────
+function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeColor, awayColor }) {
+  const [driveFilt, setDriveFilt] = useState('ALL');
+  const filteredDrives = driveFilt === 'ALL' ? drives : drives.filter(d => d.possession === driveFilt);
+  const anyPlays = drives.some(d => d.plays.length);
+  const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+
+  return (
+    <div style={{ ...CARD_STYLE, padding:0, overflow:'hidden' }}>
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5 }}>Jugada por jugada</span>
+        <div style={{ marginLeft:'auto' }}>
+          <TeamFilterBar filt={driveFilt} onChange={setDriveFilt} awayAbbr={awayAbbr} homeAbbr={homeAbbr} />
+        </div>
+      </div>
+
+      {!anyPlays
+        ? <EmptyState text="El partido no ha comenzado" />
+        : filteredDrives.length === 0
+          ? <EmptyState text="Sin drives para este filtro" />
+          : [...filteredDrives].reverse().map((drive, di) => {
+              const driveNum = filteredDrives.length - di;
+              const isHome   = drive.possession === homeAbbr;
+              const dColor   = isHome ? homeColor : awayColor;
+              const dYds     = drive.plays.reduce((a,p) => a + (_effectiveNetYards(p, teams) || 0), 0);
+              const dRes     = driveResult(drive.plays, teams);
+              return (
+                <div key={di} style={{ borderBottom:'1px solid var(--border)' }}>
+                  <div style={{ padding:'9px 16px', background:'#f9fafb', display:'flex', alignItems:'center', gap:9 }}>
+                    <span style={{ width:9, height:9, borderRadius:'50%', background:dColor, display:'inline-block', flexShrink:0 }} />
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:dColor, letterSpacing:0.3 }}>{drive.possession}</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text3)' }}>Drive {driveNum}</span>
+                    {dRes && (
+                      <span style={{
+                        fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:10,
+                        padding:'1px 6px', borderRadius:3,
+                        background: dRes==='TD' ? 'rgba(22,163,74,0.12)' : '#f3f4f6',
+                        color: dRes==='TD' ? '#16a34a' : 'var(--text2)',
+                      }}>{dRes}</span>
+                    )}
+                    <span style={{ marginLeft:'auto', fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)' }}>
+                      {drive.plays.length} jug · {dYds} yds
+                    </span>
+                  </div>
+                  {[...drive.plays].reverse().map((p, pi) => (
+                    <div key={pi} style={{
+                      padding:'8px 16px 8px 26px', borderTop:'1px solid var(--border)',
+                      display:'flex', alignItems:'flex-start', gap:10,
+                      background: p.touchdown ? 'rgba(22,163,74,0.05)' : 'transparent',
+                    }}>
+                      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:52, flexShrink:0, paddingTop:2 }}>
+                        Q{p.quarter}{p.clock ? ` ${p.clock}` : ''}
+                      </span>
+                      <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color: p.touchdown ? '#16a34a' : 'var(--text)', lineHeight:1.45 }}>
+                        {formatPlay ? formatPlay(p) : p.play_type}
+                      </span>
+                      {p.play_type !== 'GAME_CTRL' && (() => {
+                        const eff = _effectiveNetYards(p, teams);
+                        if (eff == null) return null;
+                        return (
+                          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color: eff >= 0 ? '#16a34a' : '#dc2626', fontWeight:600, flexShrink:0 }}>
+                            {eff >= 0 ? '+' : ''}{eff}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  ))}
+                </div>
+              );
+            })
+      }
+    </div>
+  );
+}
+
+// ── Tab: Comparación ─────────────────────────────────────────────────────────
+// Accepted-flag penalty count/yards for one team, from the already-existing
+// computePenalties() list (which mixes accepted/declined/offsetting for both
+// teams) — filtered down, not recomputed.
+function _teamPenaltySummary(penalties, teamAbbr) {
+  const accepted = penalties.filter(r => r.team === teamAbbr && r.result === 'accepted');
+  return { count: accepted.length, yards: accepted.reduce((a, r) => a + (r.yards || 0), 0) };
+}
+
+function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr }) {
+  const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+  const stats = useMemo(() => computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams), [plays, drives, homeAbbr, awayAbbr]);
+  const penalties = useMemo(() => computePenalties(plays, homeAbbr), [plays, homeAbbr]);
+  const A = stats[awayAbbr], H = stats[homeAbbr];
+  const penA = _teamPenaltySummary(penalties, awayAbbr);
+  const penH = _teamPenaltySummary(penalties, homeAbbr);
+
+  const fmtRatio = (num, den) => den > 0 ? (num / den).toFixed(1) : '—';
+  const totalYdsA = A.passYds + A.rushYds;
+  const totalYdsH = H.passYds + H.rushYds;
+  const showThird  = A.thirdAtt > 0  || H.thirdAtt > 0;
+  const showFourth = A.fourthAtt > 0 || H.fourthAtt > 0;
+
+  return (
+    <div style={CARD_STYLE}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <TeamLogo team={away} size={48} />
+        <div style={{ ...SECTION_TITLE_STYLE, marginBottom:0 }}>Comparación</div>
+        <TeamLogo team={home} size={48} />
+      </div>
+
+      <StatRow label="Total Yds"  awayVal={totalYdsA} homeVal={totalYdsH} />
+      <StatRow label="Pass Yds"   awayVal={A.passYds}  homeVal={H.passYds} />
+      <StatRow label="Rush Yds"   awayVal={A.rushYds}  homeVal={H.rushYds} />
+      <StatRow label="Penalties"  awayVal={`${penA.count}-${penA.yards}`} homeVal={`${penH.count}-${penH.yards}`} />
+      <StatRow label="1st Downs" awayVal={A.firstDowns} homeVal={H.firstDowns} />
+      {showThird && (
+        <StatRow label="3rd Downs"
+          awayVal={A.thirdAtt > 0 ? `${A.thirdConv}-${A.thirdAtt}` : '—'}
+          homeVal={H.thirdAtt > 0 ? `${H.thirdConv}-${H.thirdAtt}` : '—'} />
+      )}
+      {showFourth && (
+        <StatRow label="4th Downs"
+          awayVal={A.fourthAtt > 0 ? `${A.fourthConv}-${A.fourthAtt}` : '—'}
+          homeVal={H.fourthAtt > 0 ? `${H.fourthConv}-${H.fourthAtt}` : '—'} />
+      )}
+      <StatRow label="Total Plays" awayVal={A.totalPlays} homeVal={H.totalPlays} />
+      <StatRow label="Avg Yds/Play"       awayVal={fmtRatio(totalYdsA, A.totalPlays)}          homeVal={fmtRatio(totalYdsH, H.totalPlays)} />
+      <StatRow label="Avg Yds/Completion" awayVal={fmtRatio(A.passYds, A.passCompletions)}      homeVal={fmtRatio(H.passYds, H.passCompletions)} />
+      <StatRow label="Avg Yds/Rush"       awayVal={fmtRatio(A.rushYds, A.rushPlays)}             homeVal={fmtRatio(H.rushYds, H.rushPlays)} />
+      <StatRow label="Sack-Adj Rush Yd (Avg)" awayVal={fmtRatio(A.sackAdjRushYds, A.sackAdjRushPlays)} homeVal={fmtRatio(H.sackAdjRushYds, H.sackAdjRushPlays)} />
+      <StatRow label="Red Zone"   awayVal={`${A.redZoneTDs}-${A.redZoneTrips}`} homeVal={`${H.redZoneTDs}-${H.redZoneTrips}`} />
+      <StatRow label="Turnovers" awayVal={A.turnovers} homeVal={H.turnovers} />
+      <StatRow label="Fumbles-Lost"     awayVal={`${A.fumbles}-${A.fumblesLost}`}   homeVal={`${H.fumbles}-${H.fumblesLost}`} />
+      <StatRow label="Sacks (Def Yds)"  awayVal={`${A.sacksMade}-${A.sacksYds}`}    homeVal={`${H.sacksMade}-${H.sacksYds}`} />
+      <StatRow label="TFL (Def Yds)"    awayVal={`${A.tflMade}-${A.tflYds}`}        homeVal={`${H.tflMade}-${H.tflYds}`} />
+    </div>
+  );
+}
+
+// ── Tab: Individuales ────────────────────────────────────────────────────────
+function IndividualsTab({ passRows, rushRows, recRows, apRows, fumbleRows, homeAbbr, awayAbbr }) {
+  const [filt, setFilt] = useState('ALL');
+  const f = rows => filt === 'ALL' ? rows : rows.filter(r => r.team === filt);
+  const fp = f(passRows), fr = f(rushRows), fc = f(recRows), fap = f(apRows), ff = f(fumbleRows);
+  const allEmpty = !fp.length && !fr.length && !fc.length && !fap.length && !ff.length;
+
+  return (
+    <div style={{ ...CARD_STYLE, maxWidth:640 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+        <div style={{ ...SECTION_TITLE_STYLE, marginBottom:0 }}>Individuales</div>
+        <div style={{ marginLeft:'auto' }}>
+          <TeamFilterBar filt={filt} onChange={setFilt} awayAbbr={awayAbbr} homeAbbr={homeAbbr} />
+        </div>
+      </div>
+      {allEmpty
+        ? <EmptyState text="Sin datos para este filtro." />
+        : (<React.Fragment>
+            <IndividualStats title="PASSING"   rows={fp} cols={['ATT','COMP','YDS','TD']} />
+            <IndividualStats title="RUSHING"   rows={fr} cols={['ATT','YDS','TD']} />
+            <IndividualStats title="RECEIVING" rows={fc} cols={['REC','YDS','TD']} />
+            <IndividualStats title="ALL-PURPOSE YARDS" rows={fap} cols={['RUN','RCV','KR','PR','FR/IR','TOT']} />
+            <IndividualStats title="FUMBLES"   rows={ff} cols={['NO','LOST']} />
+          </React.Fragment>)
+      }
+    </div>
+  );
+}
+
+// ── Defense table (single team) ──────────────────────────────────────────────
+// ── Penalties table (single team) ────────────────────────────────────────────
+function PenaltiesTable({ rows }) {
+  if (!rows.length) return <div style={CARD_STYLE}><EmptyState text="Sin penalizaciones todavía." /></div>;
+  return (
+    <div style={CARD_STYLE}>
+      <table style={{ width:'100%', borderCollapse:'collapse' }}>
+        <thead>
+          <tr>
+            {['Q','Tiempo','Infracción','Jugador','Resultado','Yds'].map((h,i) => (
+              <th key={h} style={{
+                textAlign: i===2 ? 'left' : 'center',
+                fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)',
+                letterSpacing:0.5, padding:'4px 6px', textTransform:'uppercase',
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} title={r.context} style={{ borderTop:'1px solid var(--border)' }}>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{r.quarter}</td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{r.clock || '—'}</td>
+              <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.code}{r.label ? ` (${r.label})` : ''}</td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.player || '—'}</td>
+              <td style={{
+                textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, textTransform:'uppercase',
+                color: r.result==='accepted' ? '#dc2626' : 'var(--text2)', padding:'6px',
+              }}>{r.result}</td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.yards != null ? r.yards : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DefenseTable({ abbr, color, rows }) {
+  const THS = ['Jugador','Solo','Ast','Total','Sacks','TFL','FF','INT'];
+  return (
+    <div style={CARD_STYLE}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color, marginBottom:10 }}>{abbr}</div>
+      {rows.length === 0
+        ? <EmptyState text="Sin datos defensivos todavía." />
+        : (
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead>
+              <tr>
+                {THS.map((h,i) => (
+                  <th key={h} style={{
+                    textAlign: i===0 ? 'left' : 'center',
+                    fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)',
+                    letterSpacing:0.5, padding:'4px 6px', textTransform:'uppercase',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r,i) => (
+                <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
+                  <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.label}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.solo}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.ast}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:'var(--text)', padding:'6px' }}>{r.solo+r.ast}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.sacks || ''}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.tfl || ''}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.ff || ''}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.int || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    </div>
+  );
+}
+
+// ── QB progression card (single QB) ──────────────────────────────────────────
+function QBProgressionCard({ qb, color }) {
+  const pct = qb.att ? Math.round((qb.comp / qb.att) * 100) : 0;
+  return (
+    <div style={CARD_STYLE}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+        <span style={{ width:8, height:8, borderRadius:'50%', background:color, display:'inline-block', flexShrink:0 }} />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color:'var(--text)' }}>{qb.label}</span>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)' }}>{qb.team}</span>
+        <span style={{ marginLeft:'auto', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:'var(--text)' }}>
+          {qb.comp}-{qb.att} · {pct}% · {qb.yds} yds · {qb.td} TD · {qb.int} INT
+        </span>
+      </div>
+      <table style={{ width:'100%', borderCollapse:'collapse' }}>
+        <thead>
+          <tr>
+            {['✓','C-A','Yds','Contexto','Receptor','Nota'].map((h,hi) => (
+              <th key={h} style={{
+                textAlign: hi===3 ? 'left' : 'center',
+                fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)',
+                letterSpacing:0.5, padding:'4px 6px', textTransform:'uppercase',
+              }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {qb.rows.map((r, ri) => (
+            <tr key={ri} style={{ borderTop:'1px solid var(--border)' }}>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color: r.isComplete ? '#16a34a' : '#dc2626', padding:'6px' }}>
+                {r.isComplete ? '✓' : '✗'}
+              </td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.caTally}</td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.netYards != null ? r.netYards : '—'}</td>
+              <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px', lineHeight:1.4 }}>{r.context}</td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.receiver || '—'}</td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:'var(--accent)', padding:'6px' }}>{r.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Big Plays (explosive plays) list ─────────────────────────────────────────
+function ExplosivePlayList({ title, items, homeAbbr, homeColor, awayColor }) {
+  return (
+    <div style={CARD_STYLE}>
+      <div style={SECTION_TITLE_STYLE}>{title}</div>
+      {items.length === 0
+        ? <EmptyState text="Sin jugadas explosivas todavía." />
+        : items.map((p, i) => {
+            const color = p.possession === homeAbbr ? homeColor : awayColor;
+            return (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderTop: i>0 ? '1px solid var(--border)' : 'none' }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:16, color, minWidth:42 }}>+{p.net_yards}</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:20 }}>Q{p.quarter}</span>
+                <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', lineHeight:1.4 }}>
+                  {typeof formatPlay === 'function' ? formatPlay(p) : p.play_type}
+                </span>
+              </div>
+            );
+          })
+      }
+    </div>
+  );
+}
+
+// ── Drive table (single team or full chronological list) ────────────────────
+function DriveTable({ abbr, color, rows, showTeamCol, homeAbbr, homeColor, awayColor }) {
+  const THS = showTeamCol
+    ? ['Equipo','Spot','Obtenido','Terminó','Plays-Yds','TOP']
+    : ['Spot','Obtenido','Terminó','Plays-Yds','TOP'];
+  return (
+    <div style={CARD_STYLE}>
+      {abbr && <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color, marginBottom:10 }}>{abbr}</div>}
+      {rows.length === 0
+        ? <EmptyState text="Sin drives todavía." />
+        : (
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead>
+              <tr>
+                {THS.map((h,i) => (
+                  <th key={h} style={{
+                    textAlign: i===0 ? 'left' : 'center',
+                    fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)',
+                    letterSpacing:0.5, padding:'4px 6px', textTransform:'uppercase',
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r,i) => (
+                <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
+                  {showTeamCol && (
+                    <td style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, color: r.possession===homeAbbr?homeColor:awayColor, padding:'6px' }}>{r.possession}</td>
+                  )}
+                  <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.spot}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:'var(--text2)', padding:'6px' }}>{r.start}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color: r.end==='TD'||r.end==='FG' ? '#16a34a' : 'var(--text2)', padding:'6px' }}>{r.end}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.plays}-{r.yds}</td>
+                  <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{formatSeconds(r.top)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    </div>
+  );
+}
+
+// ── Tab: Drives ───────────────────────────────────────────────────────────────
+const DRIVES_SUBTABS = [
+  { key: 'byteam', label: 'Por Equipo' },
+  { key: 'chrono', label: 'Cronológico' },
+];
+
+function DrivesTab({ driveRows, homeAbbr, awayAbbr, homeColor, awayColor, subTab, onSubTabChange }) {
+  return (
+    <div>
+      <SubTabBar tabs={DRIVES_SUBTABS} active={subTab} onChange={onSubTabChange} />
+      {subTab === 'byteam' && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16, alignItems:'start' }}>
+          {[awayAbbr, homeAbbr].map(abbr => {
+            const color = abbr === homeAbbr ? homeColor : awayColor;
+            return <DriveTable key={abbr} abbr={abbr} color={color} rows={driveRows.filter(r => r.possession === abbr)} />;
+          })}
+        </div>
+      )}
+      {subTab === 'chrono' && (
+        <DriveTable rows={driveRows} showTeamCol homeAbbr={homeAbbr} homeColor={homeColor} awayColor={awayColor} />
+      )}
+    </div>
+  );
+}
+
+// ── Tab: {Abbr} Stats ─────────────────────────────────────────────────────────
+const TEAM_SUBTABS = [
+  { key: 'stats', label: 'Stats' },
+  { key: 'qb',    label: 'QB Progression' },
+  { key: 'big',   label: 'Big Plays' },
+  { key: 'pen',   label: 'Penalties' },
+];
+
+// Reshapes computeSpecialTeamsStats()'s output (arrays mixing both teams)
+// into single-team row arrays for SimpleStatTable — same field names/derived
+// Avg as SpecialTeamsTab used, just filtered to one team and without the
+// team-prefix on each row since the column already implies it.
+function buildTeamSpecialRows(stats, teamAbbr) {
+  const punting = stats.punting.filter(r => r.team === teamAbbr).map(r => [
+    r.label, r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '0.0', r.long, r.in20, r.tb,
+  ]);
+  const kickoffs = stats.kickoffs.filter(r => r.team === teamAbbr).map(r => [
+    r.label, r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '0.0', r.tb,
+  ]);
+  const fgs = stats.fgs.filter(r => r.team === teamAbbr).map(r => [
+    `Q${r.quarter}`, r.clock || '—', r.distance != null ? `${r.distance} yds` : '—', r.result,
+  ]);
+  const kickReturns = stats.kickReturns.filter(r => r.team === teamAbbr).map(r => [r.label, r.no, r.yds, r.long]);
+  const puntReturns = stats.puntReturns.filter(r => r.team === teamAbbr).map(r => [r.label, r.no, r.yds, r.long]);
+  return { punting, kickoffs, fgs, kickReturns, puntReturns };
+}
+
+function TeamStatsTab({
+  teamAbbr, teamColor, subTab, onSubTabChange,
+  passRows, rushRows, recRows, defenseStats, qbProgression, explosivePlays, specialTeamsStats, penalties,
+}) {
+  const teamPassRows   = passRows.filter(r => r.team === teamAbbr);
+  const teamRushRows   = rushRows.filter(r => r.team === teamAbbr);
+  const teamRecRows    = recRows.filter(r => r.team === teamAbbr);
+  const teamDefRows    = Object.values(defenseStats[teamAbbr] || {}).sort((a,b) => (b.solo+b.ast) - (a.solo+a.ast));
+  const teamQbs        = qbProgression.filter(q => q.team === teamAbbr);
+  const teamBigPassing = explosivePlays.passing.filter(p => p.possession === teamAbbr);
+  const teamBigRushing = explosivePlays.rushing.filter(p => p.possession === teamAbbr);
+  const teamSpecial    = buildTeamSpecialRows(specialTeamsStats, teamAbbr);
+  const teamPenalties  = penalties.filter(r => r.team === teamAbbr);
+  const offenseEmpty   = !teamPassRows.length && !teamRushRows.length && !teamRecRows.length;
+
+  return (
+    <div>
+      <SubTabBar tabs={TEAM_SUBTABS} active={subTab} onChange={onSubTabChange} />
+
+      {subTab === 'stats' && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:16, alignItems:'start' }}>
+          {/* Columna 1: Pase / Carrera / Recepción */}
+          {offenseEmpty
+            ? <div style={CARD_STYLE}><EmptyState text="Sin datos ofensivos todavía." /></div>
+            : (
+              <div style={CARD_STYLE}>
+                <IndividualStats title="PASSING"   rows={teamPassRows} cols={['ATT','COMP','YDS','TD']} />
+                <IndividualStats title="RUSHING"   rows={teamRushRows} cols={['ATT','YDS','TD']} />
+                <IndividualStats title="RECEIVING" rows={teamRecRows}  cols={['REC','YDS','TD']} />
+              </div>
+            )
+          }
+
+          {/* Columna 2: Defensiva */}
+          <DefenseTable abbr={teamAbbr} color={teamColor} rows={teamDefRows} />
+
+          {/* Columna 3: Equipos Especiales */}
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            <SimpleStatTable title="Punting"         cols={['Jugador','No.','Yds','Avg','Long','In20','TB']} rows={teamSpecial.punting}     empty="Sin punts todavía." />
+            <SimpleStatTable title="Kickoffs"        cols={['Jugador','No.','Yards','Avg','TB']}              rows={teamSpecial.kickoffs}    empty="Sin kickoffs todavía." />
+            <SimpleStatTable title="Field Goals"     cols={['Qtr','Time','Distancia','Resultado']}            rows={teamSpecial.fgs}         empty="Sin intentos de FG todavía." />
+            <SimpleStatTable title="Kickoff Returns" cols={['Jugador','No.','Yards','Long']}                  rows={teamSpecial.kickReturns} empty="Sin regresos de kickoff todavía." />
+            <SimpleStatTable title="Punt Returns"    cols={['Jugador','No.','Yards','Long']}                  rows={teamSpecial.puntReturns} empty="Sin regresos de punt todavía." />
+          </div>
+        </div>
+      )}
+
+      {subTab === 'qb' && (teamQbs.length
+        ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            {teamQbs.map((qb, i) => <QBProgressionCard key={i} qb={qb} color={teamColor} />)}
+          </div>
+        )
+        : <EmptyState text="Sin jugadas de pase todavía." />)}
+
+      {subTab === 'big' && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16, alignItems:'start' }}>
+          <ExplosivePlayList title="Passing 15+" items={teamBigPassing} homeAbbr={teamAbbr} homeColor={teamColor} awayColor={teamColor} />
+          <ExplosivePlayList title="Rushing 10+" items={teamBigRushing} homeAbbr={teamAbbr} homeColor={teamColor} awayColor={teamColor} />
+        </div>
+      )}
+
+      {subTab === 'pen' && <PenaltiesTable rows={teamPenalties} />}
+    </div>
+  );
+}
+
+// ── Scoring Summary ──────────────────────────────────────────────────────────
+function ScoringSummaryPanel({ events, homeAbbr, awayAbbr, homeColor, awayColor }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)' }}>
+      <button onClick={() => setOpen(o => !o)} style={{
+        width:'100%', background:'none', border:'none', cursor:'pointer',
+        display:'flex', alignItems:'center', gap:8, padding:'10px 20px',
+        fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:'var(--text)', letterSpacing:0.5,
+      }}>
+        <span>SCORING SUMMARY</span>
+        <span style={{ color:'var(--text3)', fontWeight:500, fontSize:11 }}>({events.length})</span>
+        <span style={{ marginLeft:'auto', color:'var(--text3)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div style={{ padding:'0 20px 14px' }}>
+          {events.length === 0
+            ? <EmptyState text="Sin anotaciones todavía." />
+            : (
+              <div style={{ maxWidth:920, margin:'0 auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['Q','Tiempo','Jugada','Marcador'].map((h,i) => (
+                        <th key={h} style={{
+                          textAlign: i===2 ? 'left' : 'center',
+                          fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)',
+                          letterSpacing:0.5, padding:'4px 6px', textTransform:'uppercase',
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {events.map((e, i) => (
+                      <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
+                        <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{e.quarter}</td>
+                        <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{e.clock || '—'}</td>
+                        <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px', lineHeight:1.4 }}>{e.desc}</td>
+                        <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:'var(--text)', padding:'6px', fontVariantNumeric:'tabular-nums' }}>
+                          <span style={{ color:awayColor }}>{e.away}</span> – <span style={{ color:homeColor }}>{e.home}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Tab: Equipos Especiales ──────────────────────────────────────────────────
+function SimpleStatTable({ title, rows, cols, empty }) {
+  return (
+    <div style={CARD_STYLE}>
+      <div style={SECTION_TITLE_STYLE}>{title}</div>
+      {rows.length === 0
+        ? <EmptyState text={empty} />
+        : (
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead>
+              <tr>
+                {cols.map((c, i) => (
+                  <th key={c} style={{
+                    textAlign: i===0 ? 'left' : 'center',
+                    fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)',
+                    letterSpacing:0.5, padding:'4px 6px', textTransform:'uppercase',
+                  }}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
+                  {r.map((v, j) => (
+                    <td key={j} style={{
+                      textAlign: j===0 ? 'left' : 'center',
+                      fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px',
+                    }}>{v}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    </div>
+  );
+}
+
+function SpecialTeamsTab({ plays, homeAbbr, awayAbbr }) {
+  const [filt, setFilt] = useState('ALL');
+  const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+  const stats = useMemo(() => computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams), [plays, homeAbbr, awayAbbr]);
+  const f = arr => filt === 'ALL' ? arr : arr.filter(r => r.team === filt);
+
+  const puntingRows = f(stats.punting).map(r => [
+    `${r.team} · ${r.label}`, r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '0.0', r.long, r.in20, r.tb,
+  ]);
+  const kickoffRows = f(stats.kickoffs).map(r => [
+    `${r.team} · ${r.label}`, r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '0.0', r.tb,
+  ]);
+  const fgRows = f(stats.fgs).map(r => [
+    r.team, `Q${r.quarter}`, r.clock || '—', r.distance != null ? `${r.distance} yds` : '—', r.result,
+  ]);
+  const krRows = f(stats.kickReturns).map(r => [`${r.team} · ${r.label}`, r.no, r.yds, r.long]);
+  const prRows = f(stats.puntReturns).map(r => [`${r.team} · ${r.label}`, r.no, r.yds, r.long]);
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+        <div style={{ ...SECTION_TITLE_STYLE, marginBottom:0 }}>Equipos Especiales</div>
+        <div style={{ marginLeft:'auto' }}>
+          <TeamFilterBar filt={filt} onChange={setFilt} awayAbbr={awayAbbr} homeAbbr={homeAbbr} />
+        </div>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16, alignItems:'start' }}>
+        <SimpleStatTable title="Punting"          cols={['Jugador','No.','Yds','Avg','Long','In20','TB']} rows={puntingRows} empty="Sin punts todavía." />
+        <SimpleStatTable title="Kickoffs"         cols={['Jugador','No.','Yards','Avg','TB']}              rows={kickoffRows} empty="Sin kickoffs todavía." />
+        <SimpleStatTable title="Field Goals"      cols={['Equipo','Qtr','Time','Distancia','Resultado']}   rows={fgRows}      empty="Sin intentos de FG todavía." />
+        <SimpleStatTable title="Kickoff Returns"  cols={['Jugador','No.','Yards','Long']}                  rows={krRows}      empty="Sin regresos de kickoff todavía." />
+        <SimpleStatTable title="Punt Returns"     cols={['Jugador','No.','Yards','Long']}                  rows={prRows}      empty="Sin regresos de punt todavía." />
+      </div>
+    </div>
+  );
+}
+
 // ── SkeletonLoader ───────────────────────────────────────────────────────────
 function SkeletonLoader() {
   const B = ({ w, h=14 }) => (
@@ -345,7 +1787,9 @@ function App() {
   const [loading,   setLoading]   = useState(true);
   const [loadErr,   setLoadErr]   = useState(null);
   const [scoresOpen,setScoresOpen]= useState(false);
-  const [driveFilt, setDriveFilt] = useState('ALL');
+  const [activeTab,   setActiveTab]   = useState('away');
+  const [teamSubTab,  setTeamSubTab]  = useState('stats');
+  const [drivesSubTab,setDrivesSubTab]= useState('byteam');
 
   // ── initial load ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -406,22 +1850,22 @@ function App() {
   const isLive    = game?.status === 'live';
   const isFinal   = game?.status === 'final';
 
-  const drives = useMemo(() => computeDrives(plays), [plays]);
+  const drives = useMemo(() => computeDrives(plays, homeAbbr, awayAbbr), [plays, homeAbbr, awayAbbr]);
 
-  const { teamStats, passers, rushers, receivers } = useMemo(() => {
-    const ts = {
-      [homeAbbr]: { rush:0, pass:0, total:0 },
-      [awayAbbr]: { rush:0, pass:0, total:0 },
-    };
+  const { passers, rushers, receivers } = useMemo(() => {
     const pa = {}, ru = {}, re = {};
 
     for (const p of plays) {
       const t = p.possession;
-      if (!ts[t]) continue;
+      if (t !== homeAbbr && t !== awayAbbr) continue;
+      // A play voided by an accepted penalty (stats_count: false, set by
+      // wizard.js at save time) isn't a real attempt for anyone involved —
+      // excluded from RUSHING/PASSING/RECEIVING entirely, not just judged
+      // by its (now-zero) net_yards.
+      if (p.stats_count === false) continue;
 
       if (p.play_type === 'RUSH') {
         const yds = p.net_yards || 0;
-        ts[t].rush += yds; ts[t].total += yds;
         const key = p.rush_by ? playerLabel(p.rush_by) : 'Desconocido';
         if (!ru[t]) ru[t] = {};
         if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0 };
@@ -430,14 +1874,28 @@ function App() {
         if (p.touchdown) ru[t][key].td++;
       }
 
-      if (p.play_type === 'PASS') {
+      // NCAA convention: a QB scramble or a sack is a rushing play credited
+      // to the QB (pass_by), not a passing attempt — the ball was never
+      // thrown either way, so both are folded into the RUSHING breakdown
+      // instead of PASSING (matches computeComparisonStats' Rush Yds and the
+      // isAttempt filter computeQBProgression already used for att/comp%).
+      if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack')) {
+        const yds = p.net_yards || 0;
+        const key = p.pass_by ? playerLabel(p.pass_by) : 'Desconocido';
+        if (!ru[t]) ru[t] = {};
+        if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0 };
+        ru[t][key].att++;
+        ru[t][key].yds += yds;
+        if (p.touchdown) ru[t][key].td++;
+      }
+
+      if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack') {
         const key = p.pass_by ? playerLabel(p.pass_by) : 'Desconocido';
         if (!pa[t]) pa[t] = {};
         if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0 };
         pa[t][key].att++;
         if (p.pass_result === 'complete') {
           const yds = p.net_yards || 0;
-          ts[t].pass += yds; ts[t].total += yds;
           pa[t][key].comp++;
           pa[t][key].yds += yds;
           if (p.touchdown) pa[t][key].td++;
@@ -452,8 +1910,42 @@ function App() {
         }
       }
     }
-    return { teamStats: ts, passers: pa, rushers: ru, receivers: re };
+    return { passers: pa, rushers: ru, receivers: re };
   }, [plays, homeAbbr, awayAbbr]);
+
+  const scoringEvents = useMemo(() => computeScoringPlays(plays, homeAbbr, awayAbbr), [plays, homeAbbr, awayAbbr]);
+
+  const penalties = useMemo(() => computePenalties(plays, homeAbbr), [plays, homeAbbr]);
+
+  const specialTeamsStats = useMemo(() => {
+    const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+    return computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams);
+  }, [plays, homeAbbr, awayAbbr]);
+
+  const { apRows, fumbleRows } = useMemo(() => {
+    const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+    const turnoverReturns = computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams);
+    const apMap = computeAllPurposeMap(
+      rushers, receivers, specialTeamsStats.kickReturns, specialTeamsStats.puntReturns,
+      turnoverReturns, homeAbbr, awayAbbr
+    );
+    const fumbleMap = fumbleStatsToMap(computeFumbleStats(plays), homeAbbr, awayAbbr);
+    return {
+      apRows:     buildRows(apMap, ['RUN','RCV','KR','PR','FR/IR','TOT'], d => [d.run, d.rcv, d.kr, d.pr, d.frir, d.total]),
+      fumbleRows: buildRows(fumbleMap, ['NO','LOST'], d => [d.no, d.lost]),
+    };
+  }, [plays, homeAbbr, awayAbbr, rushers, receivers, specialTeamsStats]);
+
+  const defenseStats = useMemo(() => computeDefenseStats(plays, homeAbbr, awayAbbr), [plays, homeAbbr, awayAbbr]);
+  const qbProgression = useMemo(() => computeQBProgression(plays), [plays]);
+  const explosivePlays = useMemo(() => {
+    const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+    return computeExplosivePlays(plays, teams);
+  }, [plays, homeAbbr, awayAbbr]);
+  const driveRows = useMemo(() => {
+    const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+    return computeDriveRows(drives, teams);
+  }, [drives, homeAbbr, awayAbbr]);
 
   // ── no game_id ──────────────────────────────────────────────────────────────
   if (!gameId) return (
@@ -519,9 +2011,9 @@ function App() {
       const td = dataMap[abbr];
       if (!td || !Object.keys(td).length) continue;
       const color = abbr === homeAbbr ? homeColor : awayColor;
-      rows.push({ isHeader: true, name: abbr, color });
+      rows.push({ isHeader: true, name: abbr, color, team: abbr });
       Object.entries(td).forEach(([name, d]) => {
-        rows.push({ name, vals: keyFn(d) });
+        rows.push({ name, vals: keyFn(d), team: abbr });
       });
     }
     return rows;
@@ -531,10 +2023,16 @@ function App() {
   const rushRows = buildRows(rushers,  ['ATT','YDS','TD'],        d => [d.att, d.yds, d.td]);
   const recRows  = buildRows(receivers,['REC','YDS','TD'],        d => [d.rec, d.yds, d.td]);
 
-  // Filtered drives for PBP
-  const filteredDrives = driveFilt === 'ALL'
-    ? drives
-    : drives.filter(d => d.possession === driveFilt);
+  // Labels depend on the loaded game's real team abbreviations, so this
+  // can't be a module-level constant like the old TABS list was.
+  const mainTabs = [
+    { key: 'away',    label: `${awayAbbr} Stats` },
+    { key: 'home',    label: `${homeAbbr} Stats` },
+    { key: 'compare', label: 'Comparación' },
+    { key: 'drives',  label: 'Drives' },
+    { key: 'scoring', label: 'Anotaciones' },
+    { key: 'pbp',     label: 'Play by Play' },
+  ];
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)', fontFamily:"'Inter',sans-serif", color:'var(--text)' }}>
@@ -717,119 +2215,44 @@ function App() {
         </div>
       )}
 
-      {/* ── BODY ──────────────────────────────────────────────────────────────── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:16, padding:'16px 20px', maxWidth:1200, margin:'0 auto', alignItems:'start' }}>
+      {/* ── TABS ──────────────────────────────────────────────────────────────── */}
+      <TabBar tabs={mainTabs} active={activeTab} onChange={setActiveTab} />
 
-        {/* LEFT — Play by play */}
-        <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, overflow:'hidden' }}>
-          {/* Header + filter */}
-          <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5 }}>Jugada por jugada</span>
-            <div style={{ display:'flex', gap:5, marginLeft:'auto' }}>
-              {[['ALL','Todos'], [awayAbbr, awayAbbr], [homeAbbr, homeAbbr]].map(([val, label]) => (
-                <button key={val} onClick={() => setDriveFilt(val)} style={{
-                  background: driveFilt===val ? 'rgba(17,24,39,0.06)' : 'transparent',
-                  border: `1px solid ${driveFilt===val ? 'rgba(17,24,39,0.25)' : 'var(--border2)'}`,
-                  borderRadius:4, color: driveFilt===val ? 'var(--text)' : 'var(--text2)',
-                  fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, letterSpacing:0.3,
-                  padding:'3px 10px', cursor:'pointer',
-                }}>{label}</button>
-              ))}
-            </div>
-          </div>
-
-          {/* Drives list */}
-          {plays.length === 0
-            ? (
-              <div style={{ padding:'48px 24px', textAlign:'center', color:'var(--text3)', fontFamily:"'Inter',sans-serif", fontSize:17 }}>
-                El partido no ha comenzado
-              </div>
-            )
-            : filteredDrives.length === 0
-              ? (
-                <div style={{ padding:'40px 24px', textAlign:'center', color:'var(--text3)', fontFamily:"'Inter',sans-serif", fontSize:15 }}>
-                  Sin drives para este filtro
-                </div>
-              )
-              : [...filteredDrives].reverse().map((drive, di) => {
-                  const driveNum   = filteredDrives.length - di;
-                  const isHome     = drive.possession === homeAbbr;
-                  const dColor     = isHome ? homeColor : awayColor;
-                  // Sum net_yards across every play in the drive, not just PASS-complete/RUSH —
-                  // sacks and scrambles are play_type PASS with a real (often negative) net_yards
-                  // too, and excluding them by pass_result undercounts any drive with a loss play.
-                  const dYds       = drive.plays.reduce((a,p) => a + (p.net_yards||0), 0);
-                  const dRes       = driveResult(drive.plays);
-                  return (
-                    <div key={di} style={{ borderBottom:'1px solid var(--border)' }}>
-                      {/* Drive header */}
-                      <div style={{ padding:'9px 16px', background:'#f9fafb', display:'flex', alignItems:'center', gap:9 }}>
-                        <span style={{ width:9, height:9, borderRadius:'50%', background:dColor, display:'inline-block', flexShrink:0 }} />
-                        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:dColor, letterSpacing:0.3 }}>{drive.possession}</span>
-                        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text3)' }}>Drive {driveNum}</span>
-                        {dRes && (
-                          <span style={{
-                            fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:10,
-                            padding:'1px 6px', borderRadius:3,
-                            background: dRes==='TD' ? 'rgba(22,163,74,0.12)' : '#f3f4f6',
-                            color: dRes==='TD' ? '#16a34a' : 'var(--text2)',
-                          }}>{dRes}</span>
-                        )}
-                        <span style={{ marginLeft:'auto', fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)' }}>
-                          {drive.plays.length} jug · {dYds} yds
-                        </span>
-                      </div>
-                      {/* Plays — newest first, matching the drive-level order */}
-                      {[...drive.plays].reverse().map((p, pi) => (
-                        <div key={pi} style={{
-                          padding:'8px 16px 8px 26px', borderTop:'1px solid var(--border)',
-                          display:'flex', alignItems:'flex-start', gap:10,
-                          background: p.touchdown ? 'rgba(22,163,74,0.05)' : 'transparent',
-                        }}>
-                          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:52, flexShrink:0, paddingTop:2 }}>
-                            Q{p.quarter}{p.clock ? ` ${p.clock}` : ''}
-                          </span>
-                          <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color: p.touchdown ? '#16a34a' : 'var(--text)', lineHeight:1.45 }}>
-                            {formatPlay ? formatPlay(p) : p.play_type}
-                          </span>
-                          {p.net_yards != null && p.play_type !== 'GAME_CTRL' && (
-                            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color: p.net_yards >= 0 ? '#16a34a' : '#dc2626', fontWeight:600, flexShrink:0 }}>
-                              {p.net_yards >= 0 ? '+' : ''}{p.net_yards}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })
-          }
-        </div>
-
-        {/* RIGHT — Stats */}
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-
-          {/* Team stat bars */}
-          <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'14px 16px' }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5, marginBottom:12 }}>Estadísticas</div>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:12 }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:13, color:awayColor }}>{awayAbbr}</span>
-              <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:13, color:homeColor }}>{homeAbbr}</span>
-            </div>
-            <StatBar label="Yardas terrestres" homeVal={teamStats[homeAbbr]?.rush||0}  awayVal={teamStats[awayAbbr]?.rush||0}  homeColor={homeColor} awayColor={awayColor} />
-            <StatBar label="Yardas aéreas"     homeVal={teamStats[homeAbbr]?.pass||0}  awayVal={teamStats[awayAbbr]?.pass||0}  homeColor={homeColor} awayColor={awayColor} />
-            <StatBar label="Yardas totales"    homeVal={teamStats[homeAbbr]?.total||0} awayVal={teamStats[awayAbbr]?.total||0} homeColor={homeColor} awayColor={awayColor} />
-          </div>
-
-          {/* Individual stats */}
-          {plays.length > 0 && (passRows.length > 0 || rushRows.length > 0 || recRows.length > 0) && (
-            <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'14px 16px' }}>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5, marginBottom:14 }}>Individuales</div>
-              <IndividualStats title="PASSING"   rows={passRows} cols={['ATT','COMP','YDS','TD']} />
-              <IndividualStats title="RUSHING"   rows={rushRows} cols={['ATT','YDS','TD']} />
-              <IndividualStats title="RECEIVING" rows={recRows}  cols={['REC','YDS','TD']} />
-            </div>
-          )}
-        </div>
+      {/* ── TAB CONTENT ───────────────────────────────────────────────────────── */}
+      <div style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
+        {activeTab === 'away' && (
+          <TeamStatsTab
+            teamAbbr={awayAbbr} teamColor={awayColor}
+            subTab={teamSubTab} onSubTabChange={setTeamSubTab}
+            passRows={passRows} rushRows={rushRows} recRows={recRows}
+            defenseStats={defenseStats} qbProgression={qbProgression} explosivePlays={explosivePlays}
+            specialTeamsStats={specialTeamsStats} penalties={penalties}
+          />
+        )}
+        {activeTab === 'home' && (
+          <TeamStatsTab
+            teamAbbr={homeAbbr} teamColor={homeColor}
+            subTab={teamSubTab} onSubTabChange={setTeamSubTab}
+            passRows={passRows} rushRows={rushRows} recRows={recRows}
+            defenseStats={defenseStats} qbProgression={qbProgression} explosivePlays={explosivePlays}
+            specialTeamsStats={specialTeamsStats} penalties={penalties}
+          />
+        )}
+        {activeTab === 'compare' && (
+          <ComparisonTab plays={plays} drives={drives} home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} />
+        )}
+        {activeTab === 'drives' && (
+          <DrivesTab
+            driveRows={driveRows} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
+            subTab={drivesSubTab} onSubTabChange={setDrivesSubTab}
+          />
+        )}
+        {activeTab === 'scoring' && (
+          <ScoringSummaryPanel events={scoringEvents} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
+        )}
+        {activeTab === 'pbp' && (
+          <PlayByPlayTab drives={drives} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
+        )}
       </div>
     </div>
   );

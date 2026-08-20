@@ -47,6 +47,22 @@
       height: 60px;
       display: flex;
       align-items: center;
+      justify-content: space-between;
+    }
+
+    .operator-link {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text3);
+      text-decoration: none;
+      padding: 6px 10px;
+      border-radius: 6px;
+      transition: color 0.12s, background 0.12s;
+    }
+
+    .operator-link:hover {
+      color: var(--text2);
+      background: #f3f4f6;
     }
 
     .brand { text-decoration: none; display: flex; align-items: baseline; gap: 10px; }
@@ -424,6 +440,7 @@
         <span class="brand__name">Cover<span>Cero</span></span>
         <span class="brand__league">ONEFA 2026</span>
       </a>
+      <a class="operator-link" href="../capture/games.html">Modo Operador →</a>
     </div>
   </header>
 
