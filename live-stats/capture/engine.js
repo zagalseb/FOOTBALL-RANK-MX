@@ -360,11 +360,15 @@ export function setRosters(home, away) {
   rosterAway = away || []
 }
 
-// Returns the roster for whichever team currently has possession. Falls back
-// to a generic 0-99 placeholder (no names) if that team's real roster hasn't
-// been loaded — keeps the BY menu usable even without Setup data.
-export function getRoster() {
-  const side = gameState.possession === gameState.teams.home.name ? rosterHome : rosterAway
+// Returns the roster for `teamName`, or for whichever team currently has
+// possession when `teamName` is omitted (default — preserves prior behavior
+// for BY steps where the player is always on the possession team, e.g.
+// rush_by/pass_by/sack_by). Falls back to a generic 0-99 placeholder (no
+// names) if that team's real roster hasn't been loaded — keeps the BY menu
+// usable even without Setup data.
+export function getRoster(teamName) {
+  const team = teamName ?? gameState.possession
+  const side = team === gameState.teams.home.name ? rosterHome : rosterAway
   if (side.length > 0) return side
   return Array.from({ length: 100 }, (_, i) => ({
     number: i,
@@ -587,6 +591,7 @@ export const PENALTIES_LIST = [
   { code: 'TR', label: 'Tripping' },
   { code: 'UC', label: 'Unsportsmanlike conduct' },
   { code: 'EG', label: 'Wrong equipment (knee pads)' },
+  { code: 'UN', label: 'Unidentified' },
 ]
 
 export const FG_RETURN_RESULT_OPTIONS = [
@@ -599,6 +604,7 @@ export const PUNT_RESULT_OPTIONS = [
   { key: 'fair_catch', label: 'Fair Catch',   kbd: 'F', color: '--yellow' },
   { key: 'touchback',  label: 'Touchback',    kbd: 'T', color: '--text2'  },
   { key: 'oob',        label: 'Out of Bounds', kbd: 'O', color: '--accent' },
+  { key: 'downed',     label: 'Downed',       kbd: 'D', color: '--text2'  },
   { key: 'blocked',    label: 'Blocked',      kbd: 'B', color: '--orange' },
 ]
 
@@ -617,7 +623,7 @@ export const RESULT_BRANCHES = {
   RUSH: {
     tackle: [
       { id: 'tackle_by', label: 'Tackle By', component: 'BY',
-        config: { stateKey: 'tackle_by', multiple: true, optional: true } },
+        config: { stateKey: 'tackle_by', multiple: true, optional: true, team: 'opponent' } },
       { id: 'at', label: 'AT', component: 'AT',
         config: { stateKey: 'at' } },
     ],
@@ -641,7 +647,7 @@ export const RESULT_BRANCHES = {
       { id: 'fumble_recovery_team', label: 'Recovery Team', component: 'TEAM',
         config: { stateKey: 'fumble_recovery_team' } },
       { id: 'fumble_recovered_by', label: 'Recovered By', component: 'BY',
-        config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true } },
+        config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true, teamFrom: 'fumble_recovery_team' } },
       { id: 'fumble_recovered_at', label: 'Recovered AT', component: 'AT',
         config: { stateKey: 'fumble_recovered_at' } },
       { id: 'fumble_result', label: 'Fumble Result', component: 'RESULT',
@@ -677,7 +683,7 @@ RESULT_BRANCHES.PASS = RESULT_BRANCHES.RUSH
 export const FUMBLE_RESULT_BRANCHES = {
   tackle: [
     { id: 'fumble_tackle_by', label: 'Tackle By', component: 'BY',
-      config: { stateKey: 'fumble_tackle_by', multiple: true, optional: true } },
+      config: { stateKey: 'fumble_tackle_by', multiple: true, optional: true, teamFrom: 'fumble_recovery_team', invertTeamFrom: true } },
     { id: 'fumble_at_result', label: 'AT', component: 'AT',
       config: { stateKey: 'fumble_at_result' } },
   ],
@@ -712,7 +718,7 @@ export const FUMBLE_RESULT_BRANCHES = {
 export const FUMBLE_2_RESULT_BRANCHES = {
   tackle: [
     { id: 'fumble_2_tackle_by', label: 'Tackle By', component: 'BY',
-      config: { stateKey: 'fumble_2_tackle_by', multiple: true, optional: true } },
+      config: { stateKey: 'fumble_2_tackle_by', multiple: true, optional: true, teamFrom: 'fumble_2_recovery_team', invertTeamFrom: true } },
     { id: 'fumble_2_at_result', label: 'AT', component: 'AT',
       config: { stateKey: 'fumble_2_at_result' } },
   ],
@@ -742,29 +748,29 @@ export const PASS_RESULT_BRANCHES = {
     { id: 'intended_for',  label: 'Intended For',  component: 'BY',
       config: { stateKey: 'intended_for',  multiple: false, optional: true } },
     { id: 'broken_up_by',  label: 'Broken Up By',  component: 'BY',
-      config: { stateKey: 'broken_up_by',  multiple: false, optional: true } },
+      config: { stateKey: 'broken_up_by',  multiple: false, optional: true, team: 'opponent' } },
     { id: 'qb_hurried_by', label: 'QB Hurried By', component: 'BY',
-      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true } },
+      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true, team: 'opponent' } },
   ],
   dropped: [
     { id: 'intended_for',  label: 'Intended For',  component: 'BY',
       config: { stateKey: 'intended_for',  multiple: false, optional: true } },
     { id: 'broken_up_by',  label: 'Broken Up By',  component: 'BY',
-      config: { stateKey: 'broken_up_by',  multiple: false, optional: true } },
+      config: { stateKey: 'broken_up_by',  multiple: false, optional: true, team: 'opponent' } },
     { id: 'qb_hurried_by', label: 'QB Hurried By', component: 'BY',
-      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true } },
+      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true, team: 'opponent' } },
   ],
   broken_up: [
     { id: 'intended_for',  label: 'Intended For',  component: 'BY',
       config: { stateKey: 'intended_for',  multiple: false, optional: true } },
     { id: 'broken_up_by',  label: 'Broken Up By',  component: 'BY',
-      config: { stateKey: 'broken_up_by',  multiple: false, optional: true } },
+      config: { stateKey: 'broken_up_by',  multiple: false, optional: true, team: 'opponent' } },
     { id: 'qb_hurried_by', label: 'QB Hurried By', component: 'BY',
-      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true } },
+      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true, team: 'opponent' } },
   ],
   sack: [
     { id: 'sack_by', label: 'Sack By', component: 'BY',
-      config: { stateKey: 'sack_by', multiple: false, optional: false } },
+      config: { stateKey: 'sack_by', multiple: false, optional: false, team: 'opponent' } },
     { id: 'at', label: 'AT', component: 'AT',
       config: { stateKey: 'at' } },
   ],
@@ -774,11 +780,11 @@ export const PASS_RESULT_BRANCHES = {
   ],
   intercepted: [
     { id: 'intercepted_by', label: 'Intercepted By', component: 'BY',
-      config: { stateKey: 'intercepted_by', multiple: false, optional: false } },
+      config: { stateKey: 'intercepted_by', multiple: false, optional: false, team: 'opponent' } },
     { id: 'intercepted_at', label: 'Intercepted AT', component: 'AT',
       config: { stateKey: 'intercepted_at' } },
     { id: 'returned_by', label: 'Returned By', component: 'BY',
-      config: { stateKey: 'returned_by', multiple: false, optional: true } },
+      config: { stateKey: 'returned_by', multiple: false, optional: true, team: 'opponent' } },
     { id: 'return_result', label: 'Return Result', component: 'RESULT',
       config: { stateKey: 'return_result', optionsKey: 'STANDARD' } },
   ],
@@ -811,7 +817,7 @@ export const RETURN_RESULT_BRANCHES = {
     { id: 'fumble_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true } },
+      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true, teamFrom: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'fumble_recovered_at' } },
     { id: 'fumble_result', label: 'Fumble Result', component: 'RESULT',
@@ -857,7 +863,7 @@ export const KICKOFF_RESULT_BRANCHES = {
     { id: 'kicked_to', label: 'Kicked To', component: 'AT',
       config: { stateKey: 'kicked_to' } },
     { id: 'kick_returned_by', label: 'Returned By', component: 'BY',
-      config: { stateKey: 'kick_returned_by', multiple: false, optional: false } },
+      config: { stateKey: 'kick_returned_by', multiple: false, optional: false, team: 'opponent' } },
     { id: 'kick_return_result', label: 'Return Result', component: 'RESULT',
       config: { stateKey: 'kick_return_result', optionsKey: 'STANDARD' } },
   ],
@@ -866,7 +872,7 @@ export const KICKOFF_RESULT_BRANCHES = {
     { id: 'kicked_to', label: 'Kicked To', component: 'AT',
       config: { stateKey: 'kicked_to' } },
     { id: 'fair_catch_by', label: 'Fair Catch By', component: 'BY',
-      config: { stateKey: 'fair_catch_by', multiple: false, optional: false } },
+      config: { stateKey: 'fair_catch_by', multiple: false, optional: false, team: 'opponent' } },
     { id: 'fair_catch_at', label: 'AT', component: 'AT',
       config: { stateKey: 'fair_catch_at' } },
   ],
@@ -875,7 +881,7 @@ export const KICKOFF_RESULT_BRANCHES = {
     { id: 'onside_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'onside_recovery_team' } },
     { id: 'onside_recovery_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'onside_recovery_by', multiple: false, optional: true } },
+      config: { stateKey: 'onside_recovery_by', multiple: false, optional: true, teamFrom: 'onside_recovery_team' } },
     { id: 'onside_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'onside_recovered_at' } },
   ],
@@ -889,11 +895,11 @@ export const FG_RESULT_BRANCHES = {
   ],
   blocked: [
     { id: 'fg_blocked_by', label: 'Blocked By', component: 'BY',
-      config: { stateKey: 'fg_blocked_by', multiple: false, optional: true } },
+      config: { stateKey: 'fg_blocked_by', multiple: false, optional: true, team: 'opponent' } },
     { id: 'fg_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'fg_recovery_team' } },
     { id: 'fg_recovery_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'fg_recovery_by', multiple: false, optional: true } },
+      config: { stateKey: 'fg_recovery_by', multiple: false, optional: true, teamFrom: 'fg_recovery_team' } },
     { id: 'fg_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'fg_recovered_at' } },
     { id: 'fg_return_result', label: 'Return Result', component: 'FG_RETURN',
@@ -905,7 +911,7 @@ export const FG_BLOCKED_RETURN_BRANCHES = {
   downed: [],
   returned: [
     { id: 'fg_returned_by', label: 'Returned By', component: 'BY',
-      config: { stateKey: 'fg_returned_by', multiple: false, optional: false } },
+      config: { stateKey: 'fg_returned_by', multiple: false, optional: false, teamFrom: 'fg_recovery_team' } },
     { id: 'fg_ret_result', label: 'Return Result', component: 'RESULT',
       config: { stateKey: 'fg_ret_result', optionsKey: 'STANDARD' } },
   ],
@@ -938,7 +944,7 @@ export const KICK_RETURN_RESULT_BRANCHES = {
     { id: 'fumble_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true } },
+      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true, teamFrom: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'fumble_recovered_at' } },
     { id: 'fumble_result', label: 'Fumble Result', component: 'RESULT',
@@ -949,7 +955,7 @@ export const KICK_RETURN_RESULT_BRANCHES = {
 export const FG_RET_RESULT_BRANCHES = {
   tackle: [
     { id: 'fg_ret_tackle_by', label: 'Tackle By', component: 'BY',
-      config: { stateKey: 'fg_ret_tackle_by', multiple: true, optional: true } },
+      config: { stateKey: 'fg_ret_tackle_by', multiple: true, optional: true, teamFrom: 'fg_recovery_team', invertTeamFrom: true } },
     { id: 'fg_ret_at', label: 'AT', component: 'AT',
       config: { stateKey: 'fg_ret_at' } },
   ],
@@ -973,7 +979,7 @@ export const FG_RET_RESULT_BRANCHES = {
     { id: 'fumble_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true } },
+      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true, teamFrom: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'fumble_recovered_at' } },
     { id: 'fumble_result', label: 'Fumble Result', component: 'RESULT',
@@ -1007,7 +1013,7 @@ export const PAT_KICK_RESULT_BRANCHES = {
   missed:  [],
   blocked: [
     { id: 'pat_blocked_by', label: 'Blocked By', component: 'BY',
-      config: { stateKey: 'pat_blocked_by', multiple: false, optional: true } },
+      config: { stateKey: 'pat_blocked_by', multiple: false, optional: true, team: 'opponent' } },
     { id: 'pat_block_returned_by', label: 'Returned By', component: 'BY',
       config: { stateKey: 'pat_block_returned_by', multiple: false, optional: true } },
     { id: 'pat_block_result', label: 'Block Result', component: 'PAT_BLOCK_RESULT',
@@ -1020,7 +1026,7 @@ export const PUNT_RESULT_BRANCHES = {
     { id: 'punt_kicked_to', label: 'Kicked To', component: 'AT',
       config: { stateKey: 'punt_kicked_to' } },
     { id: 'punt_returned_by', label: 'Returned By', component: 'BY',
-      config: { stateKey: 'punt_returned_by', multiple: false, optional: false } },
+      config: { stateKey: 'punt_returned_by', multiple: false, optional: false, team: 'opponent' } },
     { id: 'punt_return_result', label: 'Return Result', component: 'RESULT',
       config: { stateKey: 'punt_return_result', optionsKey: 'STANDARD' } },
   ],
@@ -1028,7 +1034,7 @@ export const PUNT_RESULT_BRANCHES = {
     { id: 'punt_kicked_to', label: 'Kicked To', component: 'AT',
       config: { stateKey: 'punt_kicked_to' } },
     { id: 'punt_fair_catch_by', label: 'Fair Catch By', component: 'BY',
-      config: { stateKey: 'punt_fair_catch_by', multiple: false, optional: false } },
+      config: { stateKey: 'punt_fair_catch_by', multiple: false, optional: false, team: 'opponent' } },
     { id: 'punt_fair_catch_at', label: 'AT', component: 'AT',
       config: { stateKey: 'punt_fair_catch_at' } },
   ],
@@ -1037,13 +1043,17 @@ export const PUNT_RESULT_BRANCHES = {
     { id: 'punt_oob_at', label: 'Out AT', component: 'AT',
       config: { stateKey: 'punt_oob_at' } },
   ],
+  downed: [
+    { id: 'punt_downed_at', label: 'Downed At', component: 'AT',
+      config: { stateKey: 'punt_downed_at' } },
+  ],
   blocked: [
     { id: 'punt_blocked_by', label: 'Blocked By', component: 'BY',
-      config: { stateKey: 'punt_blocked_by', multiple: false, optional: true } },
+      config: { stateKey: 'punt_blocked_by', multiple: false, optional: true, team: 'opponent' } },
     { id: 'punt_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'punt_recovery_team' } },
     { id: 'punt_recovery_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'punt_recovery_by', multiple: false, optional: true } },
+      config: { stateKey: 'punt_recovery_by', multiple: false, optional: true, teamFrom: 'punt_recovery_team' } },
     { id: 'punt_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'punt_recovered_at' } },
     { id: 'punt_block_return_result', label: 'Return Result', component: 'PUNT_BLOCK_RETURN',
@@ -1055,7 +1065,7 @@ export const PUNT_BLOCK_RETURN_BRANCHES = {
   downed: [],
   returned: [
     { id: 'punt_block_returned_by', label: 'Returned By', component: 'BY',
-      config: { stateKey: 'punt_block_returned_by', multiple: false, optional: false } },
+      config: { stateKey: 'punt_block_returned_by', multiple: false, optional: false, teamFrom: 'punt_recovery_team' } },
     { id: 'punt_block_ret_result', label: 'Return Result', component: 'RESULT',
       config: { stateKey: 'punt_block_ret_result', optionsKey: 'STANDARD' } },
   ],
@@ -1088,7 +1098,7 @@ export const PUNT_RETURN_RESULT_BRANCHES = {
     { id: 'fumble_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true } },
+      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true, teamFrom: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'fumble_recovered_at' } },
     { id: 'fumble_result', label: 'Fumble Result', component: 'RESULT',
@@ -1099,7 +1109,7 @@ export const PUNT_RETURN_RESULT_BRANCHES = {
 export const PUNT_BLOCK_RET_RESULT_BRANCHES = {
   tackle: [
     { id: 'punt_block_ret_tackle_by', label: 'Tackle By', component: 'BY',
-      config: { stateKey: 'punt_block_ret_tackle_by', multiple: true, optional: true } },
+      config: { stateKey: 'punt_block_ret_tackle_by', multiple: true, optional: true, teamFrom: 'punt_recovery_team', invertTeamFrom: true } },
     { id: 'punt_block_ret_at', label: 'AT', component: 'AT',
       config: { stateKey: 'punt_block_ret_at' } },
   ],
@@ -1123,7 +1133,7 @@ export const PUNT_BLOCK_RET_RESULT_BRANCHES = {
     { id: 'fumble_recovery_team', label: 'Recovery Team', component: 'TEAM',
       config: { stateKey: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_by', label: 'Recovered By', component: 'BY',
-      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true } },
+      config: { stateKey: 'fumble_recovered_by', multiple: false, optional: true, teamFrom: 'fumble_recovery_team' } },
     { id: 'fumble_recovered_at', label: 'Recovered AT', component: 'AT',
       config: { stateKey: 'fumble_recovered_at' } },
     { id: 'fumble_result', label: 'Fumble Result', component: 'RESULT',
@@ -1491,6 +1501,8 @@ export function formatPlay(play) {
       ? ` at ${_posStr(play.punt_fair_catch_at)}` : ''
     const oobAt     = play.punt_oob_at
       ? ` at ${_posStr(play.punt_oob_at)}` : ''
+    const downedAt  = play.punt_downed_at
+      ? ` at ${_posStr(play.punt_downed_at)}` : ''
     const blockedBy = play.punt_blocked_by
       ? ` blocked by ${_playerStr(play.punt_blocked_by)}` : ''
     const blkRetBy  = play.punt_block_returned_by
@@ -1517,6 +1529,9 @@ export function formatPlay(play) {
     }
     if (puntRes === 'oob') {
       return `${situation}: ${puntedBy} punt OUT OF BOUNDS${oobAt}${_formatFlags(play)}`
+    }
+    if (puntRes === 'downed') {
+      return `${situation}: ${puntedBy} punt DOWNED${downedAt}${_formatFlags(play)}`
     }
     if (puntRes === 'blocked') {
       return `${situation}: ${puntedBy} punt BLOCKED${blockedBy}${blkRetBy}${blkRetAt}${blkTD}${_formatFlags(play)}`
@@ -1722,6 +1737,14 @@ export function advanceGameState(state, play) {
     if (puntRes === 'oob') {
       state.possession = defTeam
       if (play.punt_oob_at) state.field_pos = { ...play.punt_oob_at }
+      state.down       = 1
+      state.distance   = 10
+      return
+    }
+
+    if (puntRes === 'downed') {
+      state.possession = defTeam
+      if (play.punt_downed_at) state.field_pos = { ...play.punt_downed_at }
       state.down       = 1
       state.distance   = 10
       return

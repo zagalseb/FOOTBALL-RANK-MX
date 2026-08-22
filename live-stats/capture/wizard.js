@@ -425,11 +425,34 @@ function _exitEditMode() {
 }
 
 export function renderByMenu(config) {
-  const { optional, multiple, onComplete } = config
+  const { optional, multiple, onComplete, team, teamFrom, invertTeamFrom } = config
   _setContext('BY')
   KEYBOARD_CONTEXTS.BY = { Escape: goBack }
 
-  const roster = getRoster()
+  // team: 'opponent' — used by return steps (kick/punt/INT return) where the
+  // player is always on the team that did NOT have possession when the play
+  // started (possession isn't flipped to the receiving team until after
+  // submit, so it can't be read directly off gameState here).
+  // teamFrom: '<stateKey>' — used by blocked-kick return steps, where the
+  // returning team was already chosen earlier in the same flow (e.g.
+  // fg_recovery_team/punt_recovery_team) and can go to either side, so it
+  // can't be inferred as a fixed opponent.
+  // invertTeamFrom: true — used by tackle steps that follow a variable
+  // recovery (e.g. fumble_tackle_by after fumble_recovery_team): the tackler
+  // is always the side OPPOSITE whoever recovered, not the recovery team itself.
+  let teamName
+  if (team === 'opponent') {
+    teamName = gameState.possession === gameState.teams.home.name
+      ? gameState.teams.away.name
+      : gameState.teams.home.name
+  } else if (teamFrom) {
+    const fromTeam = currentPlay[teamFrom]
+    teamName = invertTeamFrom
+      ? (fromTeam === gameState.teams.home.name ? gameState.teams.away.name : gameState.teams.home.name)
+      : fromTeam
+  }
+
+  const roster = getRoster(teamName)
   let selections = []
   let typedDigits = ''
   const container = _container()

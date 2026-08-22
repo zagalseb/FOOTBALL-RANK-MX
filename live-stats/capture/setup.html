@@ -342,6 +342,26 @@
     .toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
     .toast--success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
     .toast--error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* ── CSV IMPORT ── */
+    .import-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .import-badge--new    { background: var(--green-bg);  color: var(--green); }
+    .import-badge--update { background: var(--yellow-bg); color: var(--yellow); }
+    .import-badge--error  { background: var(--red-bg);    color: var(--red); }
+
+    .import-summary {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text2);
+    }
   </style>
 </head>
 <body>
@@ -351,7 +371,7 @@
     <span class="topbar__brand">COVER<span>CERO</span></span>
     <span class="topbar__sub">Setup</span>
     <div class="topbar__divider"></div>
-    <a class="topbar__back" href="covercero_live.html">← Volver a captura</a>
+    <a class="topbar__back" href="games.html">← Regresar a menú</a>
     <nav class="topbar__tabs" id="setup-tabs">
       <button class="tab tab--active" data-panel="roster">Roster</button>
       <button class="tab" data-panel="games">Partidos</button>
@@ -371,6 +391,15 @@
         <select class="input" id="roster-team-select">
           <option value="">Selecciona un equipo…</option>
         </select>
+      </div>
+
+      <div class="card" id="roster-import-card" style="display:none">
+        <div class="card__title">Importar roster desde CSV</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:10px">
+          Formato: <code>number,nombre,apellido,position</code> (con fila de encabezado)
+        </div>
+        <input class="input" type="file" accept=".csv,text/csv" id="roster-csv-input" style="max-width:320px">
+        <div id="roster-import-preview" style="margin-top:14px"></div>
       </div>
 
       <div id="roster-content"></div>
@@ -485,6 +514,7 @@
     let rosterTeamId  = null
     let editingGameId = null
     let editingPlayerId = null
+    let importRows = []
 
     // ── Supabase helpers ─────────────────────────────────────────────────────
 
@@ -508,6 +538,20 @@
       if (method === 'DELETE') return null
       const rows = await res.json()
       return Array.isArray(rows) ? rows[0] : rows
+    }
+
+    async function sbUpsert(path, body, onConflict) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}?on_conflict=${encodeURIComponent(onConflict)}`, {
+        method: 'POST',
+        headers: {
+          ...SB_HEADERS,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates,return=representation',
+        },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(await extractError(res))
+      return res.json()
     }
 
     async function extractError(res) {
@@ -568,6 +612,8 @@
     document.getElementById('roster-team-select').addEventListener('change', async e => {
       rosterTeamId = e.target.value || null
       editingPlayerId = null
+      resetImportState()
+      document.getElementById('roster-import-card').style.display = rosterTeamId ? 'block' : 'none'
       if (!rosterTeamId) {
         document.getElementById('roster-content').innerHTML = ''
         return
@@ -758,6 +804,203 @@
         } catch (err) {
           showToast(err.message, 'error')
         }
+      }
+    })
+
+    // ── Importar roster (CSV) ────────────────────────────────────────────────
+
+    function resetImportState() {
+      importRows = []
+      const fileInput = document.getElementById('roster-csv-input')
+      if (fileInput) fileInput.value = ''
+      const previewEl = document.getElementById('roster-import-preview')
+      if (previewEl) previewEl.innerHTML = ''
+    }
+
+    // Minimal RFC4180 parser (handles quoted fields with embedded commas/quotes).
+    // No CDN dependency added on purpose — this file has no build step and no
+    // deps beyond fonts + the Supabase config module, and the format is fixed
+    // to 4 simple columns, so a small manual parser is lower footprint than
+    // pulling in PapaParse for this.
+    function parseCSV(text) {
+      const rows = []
+      let row = [], field = '', inQuotes = false
+      const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      for (let i = 0; i < norm.length; i++) {
+        const c = norm[i]
+        if (inQuotes) {
+          if (c === '"') {
+            if (norm[i + 1] === '"') { field += '"'; i++ }
+            else inQuotes = false
+          } else field += c
+        } else {
+          if (c === '"') inQuotes = true
+          else if (c === ',') { row.push(field); field = '' }
+          else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+          else field += c
+        }
+      }
+      if (field.length || row.length) { row.push(field); rows.push(row) }
+      return rows.filter(r => !(r.length === 1 && r[0].trim() === ''))
+    }
+
+    function classifyImportRow(r, dupCounts) {
+      const validNumber = /^\d{1,2}$/.test(r.numberRaw)
+      if (!validNumber) {
+        return { ...r, status: 'error', reason: 'Número vacío o inválido (debe ser 0-99)', number: null }
+      }
+      const number = parseInt(r.numberRaw, 10)
+      if (dupCounts[number] > 1) {
+        return { ...r, status: 'error', reason: 'Número duplicado dentro del CSV', number }
+      }
+      const existing = roster.find(p => p.number === number)
+      if (existing) {
+        return {
+          ...r, status: 'update', number,
+          old: { nombre: existing.nombre, apellido: existing.apellido, position: existing.position },
+        }
+      }
+      return { ...r, status: 'new', number }
+    }
+
+    function buildImportRows(text) {
+      const clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text
+      const raw = parseCSV(clean)
+      if (!raw.length) return { error: 'El archivo está vacío.' }
+
+      const header = raw[0].map(h => h.trim().toLowerCase())
+      const idx = {
+        number:   header.indexOf('number'),
+        nombre:   header.indexOf('nombre'),
+        apellido: header.indexOf('apellido'),
+        position: header.indexOf('position'),
+      }
+      if (idx.number === -1) return { error: 'El CSV debe tener una columna "number" en el encabezado.' }
+
+      const dataRows = raw.slice(1).filter(r => r.some(c => c.trim() !== ''))
+      if (!dataRows.length) return { error: 'El CSV no tiene filas de datos.' }
+
+      const parsed = dataRows.map(cols => ({
+        numberRaw: (cols[idx.number] ?? '').trim(),
+        nombre:    idx.nombre   >= 0 ? (cols[idx.nombre]   ?? '').trim() : '',
+        apellido:  idx.apellido >= 0 ? (cols[idx.apellido] ?? '').trim() : '',
+        position:  idx.position >= 0 ? (cols[idx.position] ?? '').trim() : '',
+      }))
+
+      const dupCounts = {}
+      parsed.forEach(r => {
+        if (/^\d{1,2}$/.test(r.numberRaw)) {
+          const n = parseInt(r.numberRaw, 10)
+          dupCounts[n] = (dupCounts[n] || 0) + 1
+        }
+      })
+
+      return { rows: parsed.map(r => classifyImportRow(r, dupCounts)) }
+    }
+
+    function diffCell(oldVal, newVal) {
+      const o = oldVal || '—'
+      const n = newVal || '—'
+      if ((oldVal || '') === (newVal || '')) return esc(n)
+      return `<span style="color:var(--text3);text-decoration:line-through">${esc(o)}</span> → ${esc(n)}`
+    }
+
+    function renderImportPreview() {
+      const el = document.getElementById('roster-import-preview')
+      if (!importRows.length) { el.innerHTML = ''; return }
+
+      const newCount    = importRows.filter(r => r.status === 'new').length
+      const updateCount = importRows.filter(r => r.status === 'update').length
+      const errorCount  = importRows.filter(r => r.status === 'error').length
+      const validCount  = newCount + updateCount
+
+      const rowsHtml = importRows.map(r => {
+        if (r.status === 'error') {
+          return `<tr>
+            <td class="num-cell">${esc(r.numberRaw || '—')}</td>
+            <td colspan="3" style="color:var(--text3)">${esc(r.reason)}</td>
+            <td><span class="import-badge import-badge--error">Error</span></td>
+          </tr>`
+        }
+        if (r.status === 'update') {
+          return `<tr>
+            <td class="num-cell">#${r.number}</td>
+            <td>${diffCell(r.old.nombre, r.nombre)}</td>
+            <td>${diffCell(r.old.apellido, r.apellido)}</td>
+            <td>${diffCell(r.old.position, r.position)}</td>
+            <td><span class="import-badge import-badge--update">Actualizar</span></td>
+          </tr>`
+        }
+        return `<tr>
+          <td class="num-cell">#${r.number}</td>
+          <td>${esc(r.nombre || '—')}</td>
+          <td>${esc(r.apellido || '—')}</td>
+          <td>${esc(r.position || '—')}</td>
+          <td><span class="import-badge import-badge--new">Nuevo</span></td>
+        </tr>`
+      }).join('')
+
+      el.innerHTML = `
+        <table class="setup-table">
+          <thead><tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Posición</th><th>Status</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div class="form-actions" style="margin-top:12px">
+          <span class="import-summary">${newCount} nuevo${newCount !== 1 ? 's' : ''} · ${updateCount} actualizar · ${errorCount} error${errorCount !== 1 ? 'es' : ''}</span>
+          ${validCount > 0 ? `<button class="btn btn--primary" id="roster-import-confirm-btn">Confirmar Import</button>` : ''}
+        </div>`
+
+      const confirmBtn = document.getElementById('roster-import-confirm-btn')
+      if (confirmBtn) confirmBtn.addEventListener('click', confirmImport)
+    }
+
+    async function confirmImport() {
+      const btn = document.getElementById('roster-import-confirm-btn')
+      const validRows = importRows.filter(r => r.status === 'new' || r.status === 'update')
+      if (!validRows.length) return
+
+      const payload = validRows.map(r => ({
+        team_id: rosterTeamId,
+        number: r.number,
+        nombre: r.nombre || null,
+        apellido: r.apellido || null,
+        position: r.position || null,
+      }))
+      const insertedCount = validRows.filter(r => r.status === 'new').length
+      const updatedCount  = validRows.filter(r => r.status === 'update').length
+      const errorCount    = importRows.length - validRows.length
+
+      btn.disabled = true
+      btn.textContent = 'Importando…'
+      try {
+        await sbUpsert('players', payload, 'team_id,number')
+        showToast(`${insertedCount} insertados, ${updatedCount} actualizados, ${errorCount} con error (no importados)`)
+        resetImportState()
+        await loadRoster()
+      } catch (err) {
+        showToast(err.message, 'error')
+        btn.disabled = false
+        btn.textContent = 'Confirmar Import'
+      }
+    }
+
+    document.getElementById('roster-csv-input').addEventListener('change', async e => {
+      const file = e.target.files[0]
+      const previewEl = document.getElementById('roster-import-preview')
+      if (!file) return
+      try {
+        const text = await file.text()
+        const result = buildImportRows(text)
+        if (result.error) {
+          importRows = []
+          previewEl.innerHTML = `<div class="form-error form-error--visible">${esc(result.error)}</div>`
+          return
+        }
+        importRows = result.rows
+        renderImportPreview()
+      } catch (err) {
+        console.error(err)
+        previewEl.innerHTML = `<div class="form-error form-error--visible">No se pudo leer el archivo.</div>`
       }
     })
 

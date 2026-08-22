@@ -105,6 +105,12 @@
       border-bottom-color: var(--accent);
     }
 
+    .tab--link {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+
     /* ── CONTENT ── */
     .content {
       max-width: 960px;
@@ -366,6 +372,7 @@
     <button class="tab" data-tab="upcoming">Próximos</button>
     <button class="tab" data-tab="final">Finalizados</button>
     <button class="tab" data-tab="test">TEST</button>
+    <a class="tab tab--link" href="setup.html">Setup</a>
   </nav>
 
   <!-- CONTENT -->
@@ -530,7 +537,7 @@
 
     document.getElementById('filter-bar').addEventListener('click', e => {
       const btn = e.target.closest('.tab')
-      if (!btn) return
+      if (!btn || !btn.dataset.tab) return
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab--active'))
       btn.classList.add('tab--active')
       activeTab = btn.dataset.tab

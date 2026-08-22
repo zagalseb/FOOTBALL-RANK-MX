@@ -446,6 +446,34 @@ function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
 // flag_N_ prefix) — both are collected here into one chronological list per
 // team — same field_pos-vs-new_los yardage-delta calc used everywhere else
 // a penalty's effect needs to be measured (_effectiveNetYards, Comparación).
+// Resolves the spot where a PUNT actually ended (pre-penalty) — the field
+// that holds it varies by which branch the punt took, since unlike RUSH/PASS
+// there's no single uniform terminal field ('at'). Returns null when no such
+// field was captured (touchback, safety) so the caller can fall back.
+function _puntTerminalSpot(p) {
+  if (p.punt_result === 'fair_catch') return p.punt_fair_catch_at || null;
+  if (p.punt_result === 'oob') return p.punt_oob_at || null;
+  if (p.punt_result === 'downed') return p.punt_downed_at || null;
+  if (p.punt_result === 'returned') {
+    if (p.punt_return_result === 'fumble') return p.fumble_recovered_at || null;
+    return p.punt_return_at || null; // tackle / oob / eop
+  }
+  if (p.punt_result === 'blocked') {
+    if (p.punt_block_return_result === 'returned') {
+      if (p.punt_block_ret_result === 'fumble') return p.fumble_recovered_at || null;
+      return p.punt_block_ret_at || null; // tackle / oob / eop
+    }
+    return p.punt_recovered_at || null; // downed right where it was recovered
+  }
+  // touchback (and 'safety' inside returned/blocked) — no terminal spot is
+  // captured anywhere for these. Real rule for a punt touchback is the
+  // receiving team's own 20 (see engine.js advanceGameState, PUNT touchback
+  // branch), but that's an inline literal there, not an exported constant,
+  // and this file has no import path into engine.js (fully standalone) — so
+  // it can't be reused from here without duplicating the literal.
+  return null;
+}
+
 function computePenalties(plays, homeAbbr) {
   const absYd = (team, yard) => (team === homeAbbr ? yard : 100 - yard);
   const out = [];
@@ -453,8 +481,22 @@ function computePenalties(plays, homeAbbr) {
   function pushPenalty(p, team, infraction, by, result, newLos) {
     if (!team || !infraction) return;
     let yards = null;
-    if (p.field_pos && newLos) {
-      yards = Math.abs(absYd(newLos.team, newLos.yard) - absYd(p.field_pos.team, p.field_pos.yard));
+    // PUNT: field_pos is the kick's own snap spot, which would fold the
+    // punt's flight/return distance into the "penalty" yardage — use the
+    // play's actual terminal spot instead. Every other play_type (RUSH/PASS/
+    // PAT/etc.) keeps using field_pos exactly as before — most scrimmage
+    // penalties enforce "from previous spot" (the snap), so field_pos is
+    // already correct there and must not change.
+    // KICKOFF and FG share this same underlying issue but are left out of
+    // this fix on purpose — pending a follow-up pass.
+    let base = p.field_pos;
+    if (p.play_type === 'PUNT') {
+      // TODO: touchback (and 'safety' sub-results) have no terminal spot
+      // captured — falls back to field_pos here, which can be imprecise.
+      base = _puntTerminalSpot(p) || p.field_pos;
+    }
+    if (base && newLos) {
+      yards = Math.abs(absYd(newLos.team, newLos.yard) - absYd(base.team, base.yard));
     }
     out.push({
       seq: p.seq, team, quarter: p.quarter, clock: p.clock,
