@@ -2242,6 +2242,15 @@ function _applyGameCtrlEventToState(state, event) {
   }
 }
 
+// Direct status change from the operator's status dropdown (scheduled/live/
+// halftime/final) — unlike applyGameCtrl's 'end_game', this doesn't record a
+// gameEvent/play, it's just a straight PATCH of games.status. Score is left
+// untouched (passes gameState's current score along, same as syncGameStatus
+// always requires).
+export function setGameStatus(status) {
+  syncGameStatus(status, gameState.score.home, gameState.score.away)
+}
+
 export function applyGameCtrl(action, data) {
   const event = {
     event_id: generatePlayId(),

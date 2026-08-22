@@ -1202,7 +1202,12 @@
     <nav class="topbar__nav">
       <button class="nav-btn nav-btn--active">Add Play</button>
       <button class="nav-btn">Reports</button>
-      <button class="nav-btn">Rosters</button>
+      <select class="nav-btn" id="game-status-select" style="cursor:pointer">
+        <option value="scheduled">Scheduled</option>
+        <option value="live">Live</option>
+        <option value="halftime">Half Time</option>
+        <option value="final">Final</option>
+      </select>
       <button class="nav-btn" id="nav-setup">Setup</button>
     </nav>
   </header>
@@ -1244,7 +1249,7 @@
     import { renderAddPlay, renderEditPlay } from './wizard.js'
     import { loadPlays, plays, gameState, onPlaySubmitted,
              setSupabaseClient, setGameId, getGameId, onSyncStatus,
-             loadRoster, setRosters, playerShortLabel } from './engine.js'
+             loadRoster, setRosters, playerShortLabel, setGameStatus } from './engine.js'
     import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
 
     const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
@@ -1282,6 +1287,9 @@
         )
         if (res.ok) {
           const [game] = await res.json()
+          if (game?.status) {
+            document.getElementById('game-status-select').value = game.status
+          }
           if (game?.home && game?.away) {
             const homeAbbr = game.home.abreviatura || game.home.nombre_corto
             const awayAbbr = game.away.abreviatura || game.away.nombre_corto
@@ -1303,6 +1311,10 @@
         console.warn('[Cover Cero] Could not load game data:', e.message)
       }
     }
+
+    document.getElementById('game-status-select').addEventListener('change', (e) => {
+      setGameStatus(e.target.value)
+    })
 
     const _syncEl = document.getElementById('sync-status')
     onSyncStatus((status) => {

@@ -69,16 +69,23 @@ const engineReady = import('../capture/engine.js').then(m => {
   calcNetYards           = m.calcNetYards;
 });
 
-// engine.js stores each play's score_home/score_away as the score BEFORE that
-// play was processed — the points a play itself scores only show up on the
-// *next* play's row (that's how the capture app's own deriveNextPlayContext()
-// keeps its live HUD correct). So when lastPlay is the actual scoring play,
-// naively reading its score_home/score_away undercounts. This replays
-// advanceGameState()/applyFlags() — the exact same functions the capture app
-// uses — on top of lastPlay's own baseline to get the real current score,
-// instead of duplicating scoring rules (TD/FG/PAT/safety/pick-six/...) here.
-function computeCurrentScore(lastPlay, fallbackHome, fallbackAway, homeAbbr, awayAbbr) {
-  if (!lastPlay) return { home: fallbackHome, away: fallbackAway };
+// engine.js stores each play's score_home/score_away (and down/distance/
+// field_pos/possession) as they were BEFORE that play was processed — the
+// effect of a play only shows up on the *next* play's row (that's how the
+// capture app's own deriveNextPlayContext() keeps its live HUD correct). So
+// naively reading lastPlay's own fields undercounts the score and shows the
+// down/distance/spot as they were BEFORE the last play ran, not the resulting
+// situation for the next snap. This replays advanceGameState()/applyFlags()
+// — the exact same functions the capture app uses — on top of lastPlay's own
+// baseline to get the true current state, instead of duplicating game rules
+// (TD/FG/PAT/safety/pick-six/penalties/...) here.
+//
+// Known gap: unlike deriveNextPlayContext() (operator side), this does NOT
+// replay gameEvents (manual GAME_CTRL corrections, e.g. set_possession/
+// set_score) that happened after lastPlay — the viewer doesn't fetch
+// gameEvents at all today. Accepted limitation, not fixed here.
+function computeDerivedState(lastPlay, fallbackHome, fallbackAway, homeAbbr, awayAbbr) {
+  if (!lastPlay) return null;
   engineGameState.teams = {
     home: { name: homeAbbr, abreviatura: homeAbbr },
     away: { name: awayAbbr, abreviatura: awayAbbr },
@@ -94,7 +101,38 @@ function computeCurrentScore(lastPlay, fallbackHome, fallbackAway, homeAbbr, awa
   };
   advanceGameState(state, lastPlay);
   applyFlags(state, lastPlay);
-  return state.score;
+  return state;
+}
+
+function computeCurrentScore(lastPlay, fallbackHome, fallbackAway, homeAbbr, awayAbbr) {
+  const state = computeDerivedState(lastPlay, fallbackHome, fallbackAway, homeAbbr, awayAbbr);
+  return state ? state.score : { home: fallbackHome, away: fallbackAway };
+}
+
+// ── Live ticker formatting ────────────────────────────────────────────────
+// "2° & 10 MTY 43 · POSS: MTY · ≈07:00" — the ≈ signals this is the clock as
+// it stood on the last captured play, not a running countdown (no live timer
+// in the browser).
+function _ordinalDown(down) {
+  return ['', '1°', '2°', '3°', '4°'][down] || `${down}°`;
+}
+function _padClock(clock) {
+  if (!clock) return null;
+  const [m, s] = String(clock).split(':');
+  return `${(m || '0').padStart(2, '0')}:${(s || '00').padStart(2, '0')}`;
+}
+function formatLiveTicker(state) {
+  // Only "no plays captured yet" falls back to 'Por comenzar'. down === 0 is
+  // a legitimate value (right after a score/kickoff/PAT, before the next
+  // snap is captured) — it's falsy in JS, so it must be excluded from the
+  // "no data" gate or every between-plays live game wrongly showed the
+  // pre-kickoff fallback.
+  if (!state || !state.possession) return 'Por comenzar';
+  const clock = _padClock(state.clock);
+  const clockPart = clock ? ` · ≈${clock}` : '';
+  if (!state.down || !state.field_pos) return `POSS: ${state.possession}${clockPart}`;
+  return `${_ordinalDown(state.down)} & ${state.distance} ${state.field_pos.team} ${state.field_pos.yard}` +
+    ` · POSS: ${state.possession}${clockPart}`;
 }
 
 // Walks every play in order, replaying it through the same engine.js
@@ -1016,7 +1054,7 @@ function FieldStrip({ possession, fieldPos, home, away }) {
     ? (home?.color_principal || '#3b82f6')
     : (away?.color_principal || '#f97316');
   return (
-    <div style={{ position:'relative', flex:1, height:52, background:'#1a6b3c', borderRadius:3, overflow:'hidden', minWidth:260 }}>
+    <div style={{ position:'relative', flex:1, maxWidth:400, height:52, background:'#1a6b3c', borderRadius:3, overflow:'hidden', minWidth:260 }}>
       <div style={{ position:'absolute', left:0, top:0, bottom:0, width:'10%', background: away?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
         <span style={{ color: away?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{awayAbbr}</span>
       </div>
@@ -2033,14 +2071,13 @@ function App() {
   const qScoreHome = qScores('home');
   const qScoreAway = qScores('away');
 
-  // Situation from last non-GAME_CTRL play
+  // Situation from last non-GAME_CTRL play — derived via computeDerivedState
+  // (advanceGameState/applyFlags replayed on top of sitPlay), NOT sitPlay's
+  // own raw down/distance/field_pos/possession fields. Those reflect the
+  // situation BEFORE sitPlay ran, same pre/post distinction computeCurrentScore
+  // already had to correct for above.
   const sitPlay = [...plays].reverse().find(p => p.play_type !== 'GAME_CTRL');
-  const situation = sitPlay ? {
-    possession: sitPlay.possession,
-    down: sitPlay.down,
-    distance: sitPlay.distance,
-    field_pos: sitPlay.field_pos,
-  } : null;
+  const situation = computeDerivedState(sitPlay, game.score_home ?? 0, game.score_away ?? 0, homeAbbr, awayAbbr);
 
   // Current drive summary
   const currentDrive  = drives.length ? drives[drives.length - 1] : null;
@@ -2081,9 +2118,17 @@ function App() {
 
       {/* ── UTILBAR ─────────────────────────────────────────────────────────── */}
       <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'10px 20px', display:'flex', alignItems:'center', gap:14, position:'sticky', top:0, zIndex:100 }}>
-        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:20, color:'var(--text)', letterSpacing:1, flexShrink:0 }}>
-          COVER<span style={{ color:'var(--accent)' }}>CERO</span>
-        </span>
+        <div style={{ display:'flex', flexDirection:'column', lineHeight:1, flexShrink:0 }}>
+          <span style={{ display:'flex', alignItems:'baseline', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:20, lineHeight:1 }}>
+            <span style={{
+              color:'#fff', WebkitTextStroke:'1px #000',
+              textShadow:'-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+              letterSpacing:'0.035em', marginRight:'0.06em',
+            }}>COVER</span>
+            <span style={{ color:'#000' }}>CERO</span>
+          </span>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:8, letterSpacing:1.5, color:'#000', marginTop:1 }}>STATS</span>
+        </div>
         <div style={{ width:1, height:18, background:'var(--border2)' }} />
         <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', letterSpacing:0.3, flexShrink:0 }}>
           {game.liga ? `${game.liga} · ` : ''}{fmtWeek(game.semana)}
@@ -2152,6 +2197,11 @@ function App() {
                 )}
               </div>
             )}
+            {isLive && (
+              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', marginBottom:10, fontVariantNumeric:'tabular-nums' }}>
+                {formatLiveTicker(situation)}
+              </div>
+            )}
             {isFinal && (
               <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:15, letterSpacing:2, color:'var(--text2)', marginBottom:10 }}>FINAL</div>
             )}
@@ -2215,7 +2265,7 @@ function App() {
 
       {/* ── SITUATION STRIP (live only) ──────────────────────────────────────── */}
       {isLive && situation && (
-        <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'12px 20px', display:'flex', alignItems:'center', gap:18, flexWrap:'wrap' }}>
+        <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'center', gap:18, flexWrap:'wrap' }}>
           <div style={{
             display:'flex', alignItems:'center', gap:7, color:'#fff',
             padding:'6px 12px', borderRadius:3, flexShrink:0,

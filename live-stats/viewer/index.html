@@ -65,16 +65,42 @@
       background: #f3f4f6;
     }
 
-    .brand { text-decoration: none; display: flex; align-items: baseline; gap: 10px; }
+    .brand { text-decoration: none; display: flex; align-items: center; gap: 10px; }
 
-    .brand__name {
+    .wordmark { display: flex; flex-direction: column; line-height: 1; }
+
+    .wordmark__line {
+      display: flex;
+      align-items: baseline;
       font-size: 20px;
       font-weight: 800;
-      color: var(--text);
-      letter-spacing: -0.03em;
+      line-height: 1;
     }
 
-    .brand__name span { color: var(--accent); }
+    .wordmark__cover {
+      color: #fff;
+      -webkit-text-stroke: 1px #000;
+      text-shadow:
+        -1px -1px 0 #000, 1px -1px 0 #000,
+        -1px  1px 0 #000, 1px  1px 0 #000;
+      /* The stroke draws outward from each glyph without the browser
+         reflowing advance widths for it, so at -0.03em (the old tight
+         wordmark spacing) neighboring strokes overlapped — most visible on
+         the R sinking under CERO's C. Open up the spacing and add a
+         hard gap after COVER instead of relying on natural kerning. */
+      letter-spacing: 0.035em;
+      margin-right: 0.06em;
+    }
+
+    .wordmark__cero { color: #000; }
+
+    .wordmark__stats {
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      color: #000;
+      margin-top: 1px;
+    }
 
     .brand__league {
       font-size: 11px;
@@ -437,7 +463,10 @@
   <header class="site-header">
     <div class="site-header__inner">
       <a class="brand" href="/">
-        <span class="brand__name">Cover<span>Cero</span></span>
+        <div class="wordmark">
+          <div class="wordmark__line"><span class="wordmark__cover">COVER</span><span class="wordmark__cero">CERO</span></div>
+          <div class="wordmark__stats">STATS</div>
+        </div>
         <span class="brand__league">ONEFA 2026</span>
       </a>
       <a class="operator-link" href="../capture/games.html">Modo Operador →</a>
@@ -477,6 +506,91 @@
 
   <script type="module">
     import { SUPABASE_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+
+    // engine.js is the capture app's module — advanceGameState/applyFlags/gameState
+    // live there and this file has no build step to import them statically, so
+    // it's pulled in the same dynamic-import pattern viewer.html already uses.
+    // engineGameState is this page's own private instance (a fresh import() per
+    // page load), never shared with the capture app running elsewhere.
+    let advanceGameState, applyFlags, engineGameState
+    const engineReady = import('../capture/engine.js').then(m => {
+      advanceGameState = m.advanceGameState
+      applyFlags        = m.applyFlags
+      engineGameState    = m.gameState
+    })
+
+    // Same replay pattern as viewer.html's computeDerivedState() — a play's own
+    // down/distance/field_pos/possession/clock are stored as they were BEFORE
+    // that play ran, not the resulting situation for the next snap. Replays
+    // advanceGameState()/applyFlags() (the real capture-app rules) on top of
+    // lastPlay's baseline instead of re-deriving game rules here.
+    // Known gap (shared with viewer.html): doesn't replay gameEvents (manual
+    // GAME_CTRL corrections) after lastPlay — not fetched by this page.
+    function computeDerivedState(lastPlay, homeAbbr, awayAbbr) {
+      if (!lastPlay) return null
+      engineGameState.teams = {
+        home: { name: homeAbbr, abreviatura: homeAbbr },
+        away: { name: awayAbbr, abreviatura: awayAbbr },
+      }
+      const state = {
+        quarter:    lastPlay.quarter,
+        clock:      lastPlay.clock,
+        possession: lastPlay.possession,
+        field_pos:  lastPlay.field_pos ? { ...lastPlay.field_pos } : null,
+        down:       lastPlay.down,
+        distance:   lastPlay.distance,
+        score:      { home: lastPlay.score_home ?? 0, away: lastPlay.score_away ?? 0 },
+      }
+      advanceGameState(state, lastPlay)
+      applyFlags(state, lastPlay)
+      return state
+    }
+
+    // "2° & 10 MTY 43 · POSS: MTY · ≈07:00" — ≈ signals this is the clock as it
+    // stood on the last captured play, not a running countdown.
+    function ordinalDown(down) {
+      return ['', '1°', '2°', '3°', '4°'][down] || `${down}°`
+    }
+    function padClock(clock) {
+      if (!clock) return null
+      const [m, s] = String(clock).split(':')
+      return `${(m || '0').padStart(2, '0')}:${(s || '00').padStart(2, '0')}`
+    }
+    function formatLiveTicker(state) {
+      // Only "no plays captured yet" falls back to 'Por comenzar'. down === 0
+      // is a legitimate value (right after a score/kickoff/PAT, before the
+      // next snap is captured) — it's falsy in JS, so it must be checked with
+      // != null, not truthiness, or every between-plays live game wrongly
+      // showed the pre-kickoff fallback.
+      if (!state || !state.possession) return 'Por comenzar'
+      const clock = padClock(state.clock)
+      const clockPart = clock ? ` · ≈${clock}` : ''
+      if (!state.down || !state.field_pos) return `POSS: ${state.possession}${clockPart}`
+      return `${ordinalDown(state.down)} & ${state.distance} ${state.field_pos.team} ${state.field_pos.yard}` +
+        ` · POSS: ${state.possession}${clockPart}`
+    }
+
+    async function fetchLastPlay(gameId) {
+      const qs = new URLSearchParams({ game_id: `eq.${gameId}`, select: '*', order: 'seq.desc', limit: '1' })
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/plays?${qs}`, { headers: SB_HEADERS })
+      if (!res.ok) return null
+      const rows = await res.json()
+      return rows[0] || null
+    }
+
+    // gameId -> derived state (or null if no plays yet) for every 'live' game.
+    let liveStates = {}
+
+    async function loadLiveStates(games) {
+      await engineReady
+      const liveGames = games.filter(g => g.status === 'live')
+      const entries = await Promise.all(liveGames.map(async g => {
+        const lastPlay = await fetchLastPlay(g.id)
+        const state = computeDerivedState(lastPlay, g.home?.abreviatura || '', g.away?.abreviatura || '')
+        return [g.id, state]
+      }))
+      liveStates = Object.fromEntries(entries)
+    }
 
     // Canonical week order
     const WEEK_ORDER = ['TEST','1','2','3','4','5','6','7','8','9','10','QF','SF','F']
@@ -578,7 +692,11 @@
 
     function renderStatus(game) {
       if (game.status === 'live') {
-        return `<div class="badge-live"><span class="badge-live__dot"></span>EN VIVO</div>`
+        const ticker = formatLiveTicker(liveStates[game.id])
+        return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%">
+          <div class="badge-live"><span class="badge-live__dot"></span>EN VIVO</div>
+          <span style="font-size:10px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(ticker)}</span>
+        </div>`
       }
       if (game.status === 'final') {
         return `<span class="badge-final">FINAL</span>`
@@ -747,6 +865,16 @@
       document.getElementById('week-bar').style.display = ''
       renderTabs(weeks)
       renderGames()
+
+      // Ticker data loads separately (one extra request per live game) so the
+      // initial render isn't blocked on it — live cards show the "Por comenzar"
+      // fallback (formatLiveTicker's null-state) until this resolves, then
+      // re-render with the real down/distance/spot.
+      if (allGames.some(g => g.status === 'live')) {
+        loadLiveStates(allGames).then(() => renderGames()).catch(err => {
+          console.error('[Cover Cero] Error loading live ticker data:', err)
+        })
+      }
     }
 
     init()
