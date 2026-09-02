@@ -123,9 +123,109 @@
 
     /* ── MAIN LAYOUT ── */
     .main {
+      position: relative;
       display: flex;
       flex: 1;
       overflow: hidden;
+    }
+
+    /* ── START GAME OVERLAY ── */
+    .start-game-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .start-game-overlay__inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .start-game-btn {
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      padding: 14px 36px;
+      cursor: pointer;
+    }
+
+    .start-game-btn:hover { opacity: 0.9; }
+
+    .start-game-question {
+      font-size: 13px;
+      color: var(--text2);
+    }
+
+    .start-game-picker {
+      display: flex;
+      gap: 20px;
+    }
+
+    .start-game-team-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 20px 28px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .start-game-team-card:hover:not(:disabled) {
+      border-color: var(--accent);
+      background: var(--bg3);
+    }
+
+    .start-game-team-card:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .start-game-team-card__logo-wrap {
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .start-game-team-card__logo-wrap img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .start-game-team-card__logo-fallback {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .start-game-team-card__name {
+      font-size: 12px;
+      color: var(--text);
+      font-weight: 600;
     }
 
     /* ── SIDEBAR ── */
@@ -1159,6 +1259,176 @@
     .sync-status--error   { color: var(--red); background: var(--red-bg); }
     .sync-status--offline { color: var(--yellow); background: var(--yellow-bg); }
 
+    /* ── REPORTS TAB ── */
+    .reports-view {
+      flex: 1;
+      display: none;
+      overflow: hidden;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    .reports-config {
+      width: 380px;
+      flex-shrink: 0;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .reports-preview {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg3);
+      overflow: auto;
+      padding: 24px;
+    }
+
+    #reports-canvas {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+      border-radius: 4px;
+    }
+
+    .reports-section__label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--text2);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .card-type-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .card-type-btn {
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 10px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border2);
+      background: var(--bg3);
+      color: var(--text);
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .card-type-btn--active {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    .card-type-btn:disabled {
+      color: var(--text3);
+      cursor: default;
+      opacity: 0.55;
+    }
+
+    .card-type-btn__soon {
+      display: block;
+      font-size: 9px;
+      font-weight: 500;
+      color: var(--text3);
+      margin-top: 2px;
+    }
+
+    .orientation-toggle {
+      display: flex;
+      gap: 8px;
+    }
+
+    .orientation-btn {
+      flex: 1;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border2);
+      background: var(--bg3);
+      color: var(--text2);
+      cursor: pointer;
+    }
+
+    .orientation-btn--active {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    .reports-select {
+      width: 100%;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border2);
+      background: var(--bg3);
+      color: var(--text);
+    }
+
+    .reports-file-input {
+      width: 100%;
+      font-family: inherit;
+      font-size: 11px;
+      color: var(--text2);
+    }
+
+    .stats-checklist {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stats-checklist__group-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .stats-checklist__row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .stats-checklist__empty {
+      font-size: 11px;
+      color: var(--text3);
+      font-style: italic;
+    }
+
+    .reports-download-btn {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      color: #fff;
+      background: var(--green);
+      border: none;
+      border-radius: 6px;
+      padding: 12px;
+      cursor: pointer;
+    }
+
+    .reports-download-btn:hover { opacity: 0.9; }
+
   </style>
 </head>
 <body>
@@ -1200,8 +1470,8 @@
       <span class="topbar__stat-value" id="hud-distance">10</span>
     </div>
     <nav class="topbar__nav">
-      <button class="nav-btn nav-btn--active">Add Play</button>
-      <button class="nav-btn">Reports</button>
+      <button class="nav-btn nav-btn--active" id="nav-tab-addplay">Add Play</button>
+      <button class="nav-btn" id="nav-tab-reports">Reports</button>
       <select class="nav-btn" id="game-status-select" style="cursor:pointer">
         <option value="scheduled">Scheduled</option>
         <option value="live">Live</option>
@@ -1214,6 +1484,8 @@
 
   <!-- MAIN -->
   <div class="main">
+
+    <div class="start-game-overlay" id="start-game-overlay" style="display:none"></div>
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
@@ -1245,14 +1517,158 @@
 
   </div>
 
+  <!-- REPORTS -->
+  <div class="reports-view" id="reports-view">
+    <div class="reports-config">
+
+      <div>
+        <div class="reports-section__label">Tipo de tarjeta</div>
+        <div class="card-type-grid" id="card-type-grid">
+          <button class="card-type-btn card-type-btn--active" data-card-type="player">Player Card</button>
+          <button class="card-type-btn" data-card-type="boxscore">Box Score</button>
+          <button class="card-type-btn" disabled>Jugada Destacada<span class="card-type-btn__soon">Próximamente</span></button>
+          <button class="card-type-btn" disabled>Resumen de Cuarto<span class="card-type-btn__soon">Próximamente</span></button>
+        </div>
+      </div>
+
+      <div>
+        <div class="reports-section__label">Orientación</div>
+        <div class="orientation-toggle" id="orientation-toggle">
+          <button class="orientation-btn orientation-btn--active" data-orientation="vertical">Vertical</button>
+          <button class="orientation-btn" data-orientation="horizontal">Horizontal</button>
+        </div>
+      </div>
+
+      <div id="player-card-config">
+        <div style="margin-bottom:14px">
+          <div class="reports-section__label">Equipo</div>
+          <select class="reports-select" id="reports-team-select">
+            <option value="">Selecciona un equipo…</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div class="reports-section__label">Jugador</div>
+          <select class="reports-select" id="reports-player-select" disabled>
+            <option value="">Selecciona un equipo primero…</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div class="reports-section__label">Foto (local, no se sube)</div>
+          <input type="file" accept="image/*" class="reports-file-input" id="reports-photo-input">
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div class="reports-section__label">Crédito de foto</div>
+          <input type="text" class="reports-select" id="reports-photo-credit-input"
+            placeholder="Foto: @usuario o Foto: Nombre Apellido">
+        </div>
+
+        <div>
+          <div class="reports-section__label">Stats a mostrar</div>
+          <div class="stats-checklist" id="stats-checklist">
+            <div class="stats-checklist__empty">Selecciona un jugador para ver sus stats disponibles.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="box-score-config" style="display:none">
+        <div class="reports-section__label">Stats a mostrar</div>
+        <div class="stats-checklist" id="box-score-checklist">
+          <div class="stats-checklist__empty">Cargando estadísticas del juego…</div>
+        </div>
+      </div>
+
+      <button class="reports-download-btn" id="reports-download-btn">Descargar PNG</button>
+    </div>
+
+    <div class="reports-preview">
+      <canvas id="reports-canvas"></canvas>
+    </div>
+  </div>
+
   <script type="module">
     import { renderAddPlay, renderEditPlay } from './wizard.js'
     import { loadPlays, plays, gameState, onPlaySubmitted,
              setSupabaseClient, setGameId, getGameId, onSyncStatus,
-             loadRoster, setRosters, playerShortLabel, setGameStatus } from './engine.js'
+             loadRoster, setRosters, playerShortLabel, setGameStatus,
+             startGame, computePlayerStats,
+             computeDrives, computeComparisonStats, computePenalties } from './engine.js'
+    import { drawPlayerCard, drawBoxScore } from './player_card.js'
     import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
 
     const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
+
+    // Hoisted out of the game-fetch try block below so the Reports tab (built
+    // further down) can reuse the same game/team/roster data instead of
+    // re-fetching it.
+    let _reportsGame       = null   // { home, away, home_team_id, away_team_id, ... } (raw games row)
+    let _reportsHomeAbbr   = ''
+    let _reportsAwayAbbr   = ''
+    let _reportsHomeRoster = []
+    let _reportsAwayRoster = []
+
+    // Reports/Player Card UI state — declared here (not next to the rest of
+    // the Reports tab code further down) because _initReportsTab() is called
+    // from inside the game-fetch try block below, and `let`/`const` bindings
+    // are not usable before the line that declares them even though the
+    // functions that reference them are hoisted.
+    let _reportsCardType       = 'player'   // 'player' | 'boxscore'
+    let _reportsOrientation    = 'vertical'
+    let _reportsSelectedPlayer = null
+    let _reportsPhotoImg       = null
+    let _reportsTeamLogoImg    = null
+    let _reportsSiteLogoImg    = null   // "cover 0 stats logo.png", bucket 'logos' — loaded once, reused for every card
+    let _reportsPhotoCredit    = ''
+    const REPORTS_SITE_LOGO_URL =
+      `${SUPABASE_URL}/storage/v1/object/public/logos/${encodeURIComponent('cover 0 stats logo.png')}`
+    let _reportsLastStats      = null   // raw computePlayerStats() output for the selected player
+
+    // Box Score state — both team logos (unlike Player Card, which only ever
+    // shows one team at a time), loaded lazily the first time the operator
+    // switches to the Box Score card type, then cached for the rest of the
+    // session. _reportsBoxScoreStats holds the raw per-team numbers
+    // (computeComparisonStats + computePenalties output); the checklist
+    // formats them into display rows on demand.
+    let _reportsAwayLogoImg   = null
+    let _reportsHomeLogoImg   = null
+    let _reportsBoxScoreStats = null
+
+    // Same 17 rows as viewer.html's Comparación table (ComparisonTab), same
+    // order. First 5 checked by default so the checklist doesn't start empty.
+    const BOX_SCORE_ROW_DEFS = [
+      { key: 'totalYds',         label: 'Total Yds' },
+      { key: 'passYds',          label: 'Pass Yds' },
+      { key: 'rushYds',          label: 'Rush Yds' },
+      { key: 'penalties',        label: 'Penalties' },
+      { key: 'firstDowns',       label: '1st Downs' },
+      { key: 'thirdDowns',       label: '3rd Downs' },
+      { key: 'fourthDowns',      label: '4th Downs' },
+      { key: 'totalPlays',       label: 'Total Plays' },
+      { key: 'ydsPerPlay',       label: 'Avg Yds/Play' },
+      { key: 'ydsPerCompletion', label: 'Avg Yds/Completion' },
+      { key: 'ydsPerRush',       label: 'Avg Yds/Rush' },
+      { key: 'sackAdjRushAvg',   label: 'Sack-Adj Rush Yd (Avg)' },
+      { key: 'redZone',          label: 'Red Zone' },
+      { key: 'turnovers',        label: 'Turnovers' },
+      { key: 'fumblesLost',      label: 'Fumbles-Lost' },
+      { key: 'sacks',            label: 'Sacks (Def Yds)' },
+      { key: 'tfl',              label: 'TFL (Def Yds)' },
+    ]
+    const BOX_SCORE_DEFAULTS = ['totalYds', 'passYds', 'rushYds', 'firstDowns', 'turnovers']
+
+    const STAT_FIELDS = {
+      passing:   [['compAtt', 'Comp-Att'], ['comp', 'Comp'], ['att', 'Att'], ['yds', 'Yds'], ['td', 'TD'], ['int', 'INT']],
+      rushing:   [['att', 'Att'], ['yds', 'Yds'], ['td', 'TD'], ['avg', 'Avg']],
+      receiving: [['rec', 'Rec'], ['yds', 'Yds'], ['td', 'TD']],
+      defense:   [['solo', 'Solo'], ['ast', 'Ast'], ['sacks', 'Sacks'], ['tfl', 'TFL'], ['ff', 'FF'], ['int', 'INT']],
+    }
+    const STAT_DEFAULTS = {
+      passing: ['compAtt', 'yds', 'td'], rushing: ['att', 'yds', 'td'],
+      receiving: ['rec', 'yds', 'td'],   defense: ['solo', 'sacks', 'int'],
+    }
+    const CATEGORY_LABELS = { passing: 'Passing', rushing: 'Rushing', receiving: 'Receiving', defense: 'Defense' }
 
     // ── Supabase setup ─────────────────────────────────────────────────────────
 
@@ -1267,6 +1683,7 @@
     const _urlGameId = new URLSearchParams(window.location.search).get('game_id')
     const _localGameId = localStorage.getItem('covercero_game_id')
     const _activeGameId = _urlGameId || _localGameId
+    const _urlTab = new URLSearchParams(window.location.search).get('tab')
 
     if (!_activeGameId) {
       document.body.insertAdjacentHTML('beforeend', `
@@ -1282,7 +1699,7 @@
       // Fetch game + teams from Supabase
       try {
         const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/games?select=*,home:home_team_id(nombre_corto,abreviatura),away:away_team_id(nombre_corto,abreviatura)&id=eq.${encodeURIComponent(_activeGameId)}&limit=1`,
+          `${SUPABASE_URL}/rest/v1/games?select=*,home:home_team_id(nombre_corto,abreviatura,escuela_corto,color_principal,color_texto,logo_url),away:away_team_id(nombre_corto,abreviatura,escuela_corto,color_principal,color_texto,logo_url)&id=eq.${encodeURIComponent(_activeGameId)}&limit=1`,
           { headers: SUPABASE_HEADERS }
         )
         if (res.ok) {
@@ -1297,19 +1714,476 @@
             gameState.teams.home.abreviatura = homeAbbr.toUpperCase()
             gameState.teams.away.name   = awayAbbr
             gameState.teams.away.abreviatura = awayAbbr.toUpperCase()
-            gameState.possession        = homeAbbr
-            gameState.field_pos         = { team: homeAbbr, yard: 35 }
+
+            // Opening kickoff team, if set in Setup — falls back to the old
+            // home-team default for games created before this field existed
+            // (or left "Sin definir"). Who kicks off the 2nd half onward is
+            // NOT derived here — the operator corrects it manually via the
+            // existing set_possession game-control action (key P).
+            const openingKicker = game.opening_kickoff_team_id === game.away_team_id
+              ? awayAbbr : homeAbbr
+            gameState.possession = openingKicker
+            gameState.field_pos  = { team: openingKicker, yard: 35 }
 
             const [homeRoster, awayRoster] = await Promise.all([
               loadRoster(game.home_team_id),
               loadRoster(game.away_team_id),
             ])
             setRosters(homeRoster, awayRoster)
+
+            _reportsGame       = game
+            _reportsHomeAbbr   = homeAbbr
+            _reportsAwayAbbr   = awayAbbr
+            _reportsHomeRoster = homeRoster
+            _reportsAwayRoster = awayRoster
+            _initReportsTab()
+
+            // Opens directly on the Reports tab when linked with ?tab=reports
+            // (e.g. from the "Reports" button on games.html), skipping the
+            // default Add Play view.
+            if (_urlTab === 'reports') _showTab('reports')
+
+            // A brand-new game (never started) shows the Start Game screen
+            // instead of the normal capture UI, until the operator picks who
+            // kicks off first. A game already 'live' (with or without
+            // opening_kickoff_team_id — see the fallback above) skips this
+            // entirely and loads straight into capture, per requirement.
+            if (game.status === 'scheduled') {
+              _showStartGamePrompt({
+                homeId: game.home_team_id, awayId: game.away_team_id,
+                homeAbbr, awayAbbr,
+                homeName: game.home.nombre_corto || homeAbbr,
+                awayName: game.away.nombre_corto || awayAbbr,
+                homeTeam: game.home, awayTeam: game.away,
+              })
+            }
           }
         }
       } catch (e) {
         console.warn('[Cover Cero] Could not load game data:', e.message)
       }
+    }
+
+    // ── Start Game overlay ───────────────────────────────────────────────────
+    // Shown only while game.status === 'scheduled'. Blocks capture (it sits
+    // above .sidebar/.content with a higher z-index) until the operator picks
+    // who kicks off first; startGame() then persists status='live' +
+    // opening_kickoff_team_id and updates gameState.possession/field_pos so
+    // capture can start immediately, no reload needed.
+
+    function _teamCardHtml(teamId, abbr, name, team) {
+      const bg = (team && team.color_principal) || '#2e3540'
+      const tx = (team && team.color_texto) || '#8a95a3'
+      const logoUrl = team && team.logo_url
+      const logoHtml = logoUrl
+        ? `<img src="${logoUrl}" alt="${abbr}"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+           <div class="start-game-team-card__logo-fallback" style="display:none;background:${bg};color:${tx}">${abbr}</div>`
+        : `<div class="start-game-team-card__logo-fallback" style="background:${bg};color:${tx}">${abbr}</div>`
+      return `
+        <button type="button" class="start-game-team-card" data-team-id="${teamId}" data-abbr="${abbr}">
+          <div class="start-game-team-card__logo-wrap">${logoHtml}</div>
+          <span class="start-game-team-card__name">${name}</span>
+        </button>
+      `
+    }
+
+    function _showStartGamePicker(info) {
+      const overlay = document.getElementById('start-game-overlay')
+      overlay.innerHTML = `
+        <div class="start-game-overlay__inner">
+          <div class="start-game-question">¿Quién patea primero?</div>
+          <div class="start-game-picker">
+            ${_teamCardHtml(info.homeId, info.homeAbbr, info.homeName, info.homeTeam)}
+            ${_teamCardHtml(info.awayId, info.awayAbbr, info.awayName, info.awayTeam)}
+          </div>
+        </div>
+      `
+      overlay.querySelectorAll('.start-game-team-card').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          overlay.querySelectorAll('.start-game-team-card').forEach(b => b.disabled = true)
+          try {
+            await startGame(btn.dataset.teamId, btn.dataset.abbr)
+            document.getElementById('game-status-select').value = 'live'
+            overlay.style.display = 'none'
+            renderAddPlay()
+            renderHUD()
+          } catch (e) {
+            alert('No se pudo iniciar el partido: ' + e.message)
+            overlay.querySelectorAll('.start-game-team-card').forEach(b => b.disabled = false)
+          }
+        })
+      })
+    }
+
+    function _showStartGamePrompt(info) {
+      const overlay = document.getElementById('start-game-overlay')
+      overlay.style.display = 'flex'
+      overlay.innerHTML = `<button type="button" class="start-game-btn" id="start-game-btn">Start Game</button>`
+      document.getElementById('start-game-btn').addEventListener('click', () => _showStartGamePicker(info))
+    }
+
+    // ── Reports tab ───────────────────────────────────────────────────────────
+    // Only "Player Card" is wired up — the other 3 card types render disabled
+    // ("Próximamente") so they have a slot to drop into later without
+    // restructuring this selector. Card rendering itself lives in
+    // player_card.js (drawPlayerCard); this section only wires the
+    // configuration UI (team/player pickers, photo upload, stats checklist)
+    // and feeds it computePlayerStats() from engine.js.
+    // (State for this section is declared earlier, alongside _reportsGame —
+    // _initReportsTab() is called from inside the game-fetch try block above,
+    // before this point in the file, so any `let` here would still be in its
+    // temporal dead zone when that call runs.)
+
+    function _loadImageFromUrl(url) {
+      return new Promise((resolve) => {
+        if (!url) { resolve(null); return }
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        img.onload  = () => resolve(img)
+        img.onerror = () => resolve(null)
+        img.src = url
+      })
+    }
+
+    function _showTab(tab) {
+      document.getElementById('nav-tab-addplay').classList.toggle('nav-btn--active', tab === 'addplay')
+      document.getElementById('nav-tab-reports').classList.toggle('nav-btn--active', tab === 'reports')
+      document.querySelector('.main').style.display   = tab === 'addplay' ? 'flex' : 'none'
+      document.getElementById('reports-view').style.display = tab === 'reports' ? 'flex' : 'none'
+      if (tab === 'reports') _redrawReportsCanvas()
+    }
+    document.getElementById('nav-tab-addplay').addEventListener('click', () => _showTab('addplay'))
+    document.getElementById('nav-tab-reports').addEventListener('click', () => _showTab('reports'))
+
+    function _initReportsTab() {
+      const teamSelect = document.getElementById('reports-team-select')
+      teamSelect.innerHTML = '<option value="">Selecciona un equipo…</option>' +
+        `<option value="home">${_reportsGame.home.nombre_corto || _reportsHomeAbbr} (${_reportsHomeAbbr})</option>` +
+        `<option value="away">${_reportsGame.away.nombre_corto || _reportsAwayAbbr} (${_reportsAwayAbbr})</option>`
+      teamSelect.addEventListener('change', () => _onReportsTeamChange(teamSelect.value))
+
+      document.getElementById('reports-player-select').addEventListener('change', (e) => {
+        _onReportsPlayerChange(e.target.value)
+      })
+
+      document.getElementById('reports-photo-input').addEventListener('change', (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        const url = URL.createObjectURL(file)
+        const img = new Image()
+        img.onload = () => { _reportsPhotoImg = img; _redrawReportsCanvas() }
+        img.src = url
+      })
+
+      document.getElementById('reports-photo-credit-input').addEventListener('input', (e) => {
+        _reportsPhotoCredit = e.target.value
+        _redrawReportsCanvas()
+      })
+
+      // Loaded once, reused for every card — redraws when it resolves in
+      // case the operator already has a player selected by then.
+      _loadImageFromUrl(REPORTS_SITE_LOGO_URL).then((img) => {
+        _reportsSiteLogoImg = img
+        _redrawReportsCanvas()
+      })
+
+      document.querySelectorAll('#orientation-toggle .orientation-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          _reportsOrientation = btn.dataset.orientation
+          document.querySelectorAll('#orientation-toggle .orientation-btn').forEach(b =>
+            b.classList.toggle('orientation-btn--active', b === btn))
+          _redrawReportsCanvas()
+        })
+      })
+
+      document.getElementById('reports-download-btn').addEventListener('click', () => {
+        const canvas = document.getElementById('reports-canvas')
+        canvas.toBlob((blob) => {
+          if (!blob) return
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = _reportsCardType === 'boxscore'
+            ? `box-score-${_reportsOrientation}.png`
+            : `player-card-${_reportsSelectedPlayer?.number ?? 'x'}-${_reportsOrientation}.png`
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        }, 'image/png')
+      })
+
+      document.querySelectorAll('#card-type-grid .card-type-btn').forEach(btn => {
+        if (btn.disabled) return
+        btn.addEventListener('click', async () => {
+          _reportsCardType = btn.dataset.cardType
+          document.querySelectorAll('#card-type-grid .card-type-btn').forEach(b =>
+            b.classList.toggle('card-type-btn--active', b === btn))
+          document.getElementById('player-card-config').style.display = _reportsCardType === 'player' ? '' : 'none'
+          document.getElementById('box-score-config').style.display   = _reportsCardType === 'boxscore' ? '' : 'none'
+
+          if (_reportsCardType === 'boxscore' && _reportsGame) {
+            if (!_reportsAwayLogoImg) _reportsAwayLogoImg = await _loadImageFromUrl(_reportsGame.away.logo_url)
+            if (!_reportsHomeLogoImg) _reportsHomeLogoImg = await _loadImageFromUrl(_reportsGame.home.logo_url)
+            _reportsBoxScoreStats = _computeBoxScoreStats()
+            _renderBoxScoreChecklist()
+          }
+          _redrawReportsCanvas()
+        })
+      })
+
+      _redrawReportsCanvas()
+    }
+
+    // ── Box Score ─────────────────────────────────────────────────────────────
+
+    function _computeBoxScoreStats() {
+      const homeAbbr = _reportsHomeAbbr, awayAbbr = _reportsAwayAbbr
+      const teams = gameState.teams
+      const drives = computeDrives(plays, homeAbbr, awayAbbr)
+      const stats = computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
+      const penalties = computePenalties(plays, homeAbbr)
+      const penSummary = (teamAbbr) => {
+        const accepted = penalties.filter(r => r.team === teamAbbr && r.result === 'accepted')
+        return { count: accepted.length, yards: accepted.reduce((a, r) => a + (r.yards || 0), 0) }
+      }
+      const penA = penSummary(awayAbbr), penH = penSummary(homeAbbr)
+      return {
+        A: { ...stats[awayAbbr], penCount: penA.count, penYds: penA.yards },
+        H: { ...stats[homeAbbr], penCount: penH.count, penYds: penH.yards },
+      }
+    }
+
+    // Same formatting rules as viewer.html's ComparisonTab (fmtRatio, the
+    // Total Yds/Penalties/3rd-4th-down/Red Zone/Fumbles-Lost/Sacks/TFL
+    // composite strings) — kept in lockstep with that file by hand, same as
+    // the engine.js duplication itself.
+    function _boxScoreRowValues(key, A, H) {
+      const fmtRatio = (num, den) => den > 0 ? (num / den).toFixed(1) : '—'
+      switch (key) {
+        case 'totalYds':         return [A.passYds + A.rushYds, H.passYds + H.rushYds]
+        case 'passYds':          return [A.passYds, H.passYds]
+        case 'rushYds':          return [A.rushYds, H.rushYds]
+        case 'penalties':        return [`${A.penCount}-${A.penYds}`, `${H.penCount}-${H.penYds}`]
+        case 'firstDowns':       return [A.firstDowns, H.firstDowns]
+        case 'thirdDowns':       return [A.thirdAtt > 0 ? `${A.thirdConv}-${A.thirdAtt}` : '—', H.thirdAtt > 0 ? `${H.thirdConv}-${H.thirdAtt}` : '—']
+        case 'fourthDowns':      return [A.fourthAtt > 0 ? `${A.fourthConv}-${A.fourthAtt}` : '—', H.fourthAtt > 0 ? `${H.fourthConv}-${H.fourthAtt}` : '—']
+        case 'totalPlays':       return [A.totalPlays, H.totalPlays]
+        case 'ydsPerPlay':       return [fmtRatio(A.passYds + A.rushYds, A.totalPlays), fmtRatio(H.passYds + H.rushYds, H.totalPlays)]
+        case 'ydsPerCompletion': return [fmtRatio(A.passYds, A.passCompletions), fmtRatio(H.passYds, H.passCompletions)]
+        case 'ydsPerRush':       return [fmtRatio(A.rushYds, A.rushPlays), fmtRatio(H.rushYds, H.rushPlays)]
+        case 'sackAdjRushAvg':   return [fmtRatio(A.sackAdjRushYds, A.sackAdjRushPlays), fmtRatio(H.sackAdjRushYds, H.sackAdjRushPlays)]
+        case 'redZone':          return [`${A.redZoneTDs}-${A.redZoneTrips}`, `${H.redZoneTDs}-${H.redZoneTrips}`]
+        case 'turnovers':        return [A.turnovers, H.turnovers]
+        case 'fumblesLost':      return [`${A.fumbles}-${A.fumblesLost}`, `${H.fumbles}-${H.fumblesLost}`]
+        case 'sacks':            return [`${A.sacksMade}-${A.sacksYds}`, `${H.sacksMade}-${H.sacksYds}`]
+        case 'tfl':              return [`${A.tflMade}-${A.tflYds}`, `${H.tflMade}-${H.tflYds}`]
+      }
+      return ['—', '—']
+    }
+
+    function _renderBoxScoreChecklist() {
+      const container = document.getElementById('box-score-checklist')
+      const { A, H } = _reportsBoxScoreStats
+      const html = BOX_SCORE_ROW_DEFS.map(({ key, label }) => {
+        const [awayVal, homeVal] = _boxScoreRowValues(key, A, H)
+        const checked = BOX_SCORE_DEFAULTS.includes(key) ? 'checked' : ''
+        return `
+          <label class="stats-checklist__row">
+            <input type="checkbox" data-key="${key}" ${checked}>
+            ${label}: ${awayVal} — ${homeVal}
+          </label>
+        `
+      }).join('')
+      container.innerHTML = html
+      container.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => _redrawReportsCanvas())
+      })
+    }
+
+    function _getCheckedBoxScoreRowsForCanvas() {
+      if (!_reportsBoxScoreStats) return []
+      const { A, H } = _reportsBoxScoreStats
+      const boxes = document.querySelectorAll('#box-score-checklist input[type=checkbox]:checked')
+      return Array.from(boxes).map(cb => {
+        const def = BOX_SCORE_ROW_DEFS.find(d => d.key === cb.dataset.key)
+        const [awayVal, homeVal] = _boxScoreRowValues(cb.dataset.key, A, H)
+        return { label: def.label, awayVal, homeVal }
+      })
+    }
+
+    async function _onReportsTeamChange(side) {
+      const playerSelect = document.getElementById('reports-player-select')
+      _reportsSelectedPlayer = null
+      _reportsPhotoImg = null
+      _reportsLastStats = null
+      document.getElementById('reports-photo-input').value = ''
+
+      if (!side) {
+        playerSelect.innerHTML = '<option value="">Selecciona un equipo primero…</option>'
+        playerSelect.disabled = true
+        _reportsTeamLogoImg = null
+        _renderStatsChecklist(null)
+        _redrawReportsCanvas()
+        return
+      }
+
+      const roster = side === 'home' ? _reportsHomeRoster : _reportsAwayRoster
+      playerSelect.disabled = false
+      playerSelect.innerHTML = '<option value="">Selecciona un jugador…</option>' +
+        roster.map((p, i) => {
+          const name = [p.nombre, p.apellido].filter(Boolean).join(' ')
+          return `<option value="${i}">#${p.number}${name ? ' ' + name : ''}</option>`
+        }).join('')
+
+      const team = side === 'home' ? _reportsGame.home : _reportsGame.away
+      _reportsTeamLogoImg = await _loadImageFromUrl(team.logo_url)
+      _renderStatsChecklist(null)
+      _redrawReportsCanvas()
+    }
+
+    function _onReportsPlayerChange(idxStr) {
+      const side = document.getElementById('reports-team-select').value
+      const roster = side === 'home' ? _reportsHomeRoster : _reportsAwayRoster
+      const idx = idxStr === '' ? -1 : Number(idxStr)
+      _reportsSelectedPlayer = idx >= 0 ? roster[idx] : null
+
+      if (!_reportsSelectedPlayer) {
+        _reportsLastStats = null
+        _renderStatsChecklist(null)
+        _redrawReportsCanvas()
+        return
+      }
+
+      const teamAbbr = side === 'home' ? _reportsHomeAbbr : _reportsAwayAbbr
+      _reportsLastStats = computePlayerStats(plays, _reportsSelectedPlayer, teamAbbr)
+      _renderStatsChecklist(_reportsLastStats)
+      _redrawReportsCanvas()
+    }
+
+    function _renderStatsChecklist(stats) {
+      const container = document.getElementById('stats-checklist')
+      if (!stats || Object.keys(stats).length === 0) {
+        container.innerHTML = '<div class="stats-checklist__empty">Este jugador no tiene stats registradas en este juego todavía.</div>'
+        return
+      }
+      let html = ''
+      for (const category of ['passing', 'rushing', 'receiving', 'defense']) {
+        if (!stats[category]) continue
+        html += `<div class="stats-checklist__group-label">${CATEGORY_LABELS[category]}</div>`
+        for (const [key, label] of STAT_FIELDS[category]) {
+          const value = stats[category][key]
+          if (value === undefined) continue
+          const checked = STAT_DEFAULTS[category].includes(key) ? 'checked' : ''
+          html += `
+            <label class="stats-checklist__row">
+              <input type="checkbox" data-category="${category}" data-key="${key}" data-label="${label}" ${checked}>
+              ${label}: ${value}
+            </label>
+          `
+        }
+      }
+      container.innerHTML = html || '<div class="stats-checklist__empty">Este jugador no tiene stats registradas en este juego todavía.</div>'
+      container.querySelectorAll('input[type=checkbox]').forEach(cb => {
+        cb.addEventListener('change', () => _redrawReportsCanvas())
+      })
+    }
+
+    function _getCheckedStatsForCanvas() {
+      const boxes = document.querySelectorAll('#stats-checklist input[type=checkbox]:checked')
+      return Array.from(boxes)
+        .map(cb => ({
+          label: cb.dataset.label,
+          value: _reportsLastStats?.[cb.dataset.category]?.[cb.dataset.key],
+        }))
+        .filter(s => s.value !== undefined)
+    }
+
+    function _redrawReportsCanvas() {
+      const canvas = document.getElementById('reports-canvas')
+      const [W, H] = _reportsOrientation === 'vertical' ? [1080, 1920] : [1600, 900]
+      canvas.width  = W
+      canvas.height = H
+      const ctx = canvas.getContext('2d')
+
+      if (_reportsCardType === 'boxscore') {
+        if (!_reportsGame) {
+          ctx.fillStyle = '#0d0f12'
+          ctx.fillRect(0, 0, W, H)
+          ctx.fillStyle = '#4a5568'
+          ctx.font = "600 32px 'IBM Plex Mono', monospace"
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText('Cargando juego…', W / 2, H / 2)
+          return
+        }
+        // Score/quarter/clock come straight from gameState — the capture
+        // app's own live state machine, already kept accurate for the
+        // possession bar and final banner elsewhere in this file (built by
+        // replaying game_ctrl events on load, same as viewer.html's
+        // computeCurrentScore does from outside — here it's already done,
+        // no need to re-derive it). status==='final' uses the same games
+        // row field the rest of the site (index.html/viewer.html ticker)
+        // checks for "FINAL".
+        const scoreLabel = `${gameState.score.away} - ${gameState.score.home}`
+        const statusLabel = _reportsGame.status === 'final'
+          ? 'FINAL'
+          : `${DOWN_LABELS[gameState.quarter] ? DOWN_LABELS[gameState.quarter] + ' Q' : (gameState.quarter === 'OT' ? 'OT' : `Q${gameState.quarter}`)} · ${gameState.clock || ''}`
+
+        drawBoxScore(ctx, W, H, {
+          orientation: _reportsOrientation,
+          away: {
+            abbr: _reportsAwayAbbr,
+            color: _reportsGame.away.color_principal || '#333333',
+            text: _reportsGame.away.color_texto || '',
+            logoImg: _reportsAwayLogoImg,
+          },
+          home: {
+            abbr: _reportsHomeAbbr,
+            color: _reportsGame.home.color_principal || '#333333',
+            text: _reportsGame.home.color_texto || '',
+            logoImg: _reportsHomeLogoImg,
+          },
+          siteLogoImg: _reportsSiteLogoImg,
+          scoreLabel,
+          statusLabel,
+          rows: _getCheckedBoxScoreRowsForCanvas(),
+        })
+        return
+      }
+
+      if (!_reportsSelectedPlayer || !_reportsGame) {
+        ctx.fillStyle = '#0d0f12'
+        ctx.fillRect(0, 0, W, H)
+        ctx.fillStyle = '#4a5568'
+        ctx.font = "600 32px 'IBM Plex Mono', monospace"
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('Selecciona equipo y jugador', W / 2, H / 2)
+        return
+      }
+
+      const side     = document.getElementById('reports-team-select').value
+      const team     = side === 'home' ? _reportsGame.home : _reportsGame.away
+      const teamAbbr = side === 'home' ? _reportsHomeAbbr  : _reportsAwayAbbr
+      const p        = _reportsSelectedPlayer
+      const fullName = [p.nombre, p.apellido].filter(Boolean).join(' ') || `Jugador #${p.number}`
+
+      drawPlayerCard(ctx, W, H, {
+        orientation:    _reportsOrientation,
+        teamColor:      team.color_principal || '#333333',
+        teamText:       team.color_texto || '',
+        teamLogoImg:    _reportsTeamLogoImg,
+        photoImg:       _reportsPhotoImg,
+        siteLogoImg:    _reportsSiteLogoImg,
+        photoCredit:    _reportsPhotoCredit,
+        playerName:     fullName,
+        playerNumber:   p.number,
+        playerPosition: p.position,
+        teamName:       team.escuela_corto || teamAbbr,
+        stats:          _getCheckedStatsForCanvas(),
+      })
     }
 
     document.getElementById('game-status-select').addEventListener('change', (e) => {

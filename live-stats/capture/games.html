@@ -306,6 +306,20 @@
 
     .action-btn--log:hover { color: var(--text); border-color: var(--text3); }
 
+    .action-btn--reports {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+
+    .action-btn--reports:hover { background: var(--accent); color: #fff; }
+
+    .action-btn-group {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
     /* ── SKELETON ── */
     .skeleton-row td {
       padding: 13px 14px;
@@ -486,7 +500,10 @@
       const href = `covercero_live.html?game_id=${encodeURIComponent(game.id)}`
       switch (game.status) {
         case 'live':
-          return `<a class="action-btn action-btn--continue" href="${href}">Continuar →</a>`
+          return `<div class="action-btn-group">
+            <a class="action-btn action-btn--continue" href="${href}">Continuar →</a>
+            <a class="action-btn action-btn--reports" href="${href}&tab=reports" title="Ir a Reports">📷 Reports</a>
+          </div>`
         case 'final':
           return `<a class="action-btn action-btn--log" href="${href}">Ver log</a>`
         default:

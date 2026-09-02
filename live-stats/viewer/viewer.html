@@ -211,6 +211,14 @@ function fmtDate(kickoff, hora) {
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${t}`;
 }
 
+// ⚠️ computeComparisonStats() and its dependencies below (computeDrives,
+// driveEndLabel, _turnoverScore, _kickoffDriveOwner, _isFirstDownPlay,
+// _effectiveNetYards) are DUPLICATED in capture/engine.js for the Reports
+// tab's Box Score card (viewer.html isn't an ES module capture/ could import
+// from, and moving these here would break 10+ synchronous call sites).
+// If you fix a Comparación formula in any of these, replicate the change in
+// engine.js too.
+
 // A kickoff never starts its own drive — it's the opening play of whichever
 // team ends up with the ball. Normally that's the receiving team (the
 // opponent of the kicker), starting at the return spot. Exception: if the
@@ -441,15 +449,15 @@ function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
     }
 
     if (p.play_type === 'RUSH') {
-      const y = p.net_yards || 0;
+      const y = _effectiveNetYards(p, teams) || 0;
       t.rushYds += y; t.rushPlays++;
       t.sackAdjRushYds += y; t.sackAdjRushPlays++;
     } else if (p.play_type === 'PASS' && (p.pass_result === 'sack' || p.pass_result === 'scramble')) {
-      const y = p.net_yards || 0;
+      const y = _effectiveNetYards(p, teams) || 0;
       t.rushYds += y; t.rushPlays++;
       if (p.pass_result === 'scramble') { t.sackAdjRushYds += y; t.sackAdjRushPlays++; }
     } else if (p.play_type === 'PASS' && ['complete', 'incomplete', 'intercepted'].includes(p.pass_result)) {
-      t.passYds += (p.net_yards || 0);
+      t.passYds += (_effectiveNetYards(p, teams) || 0);
       if (p.pass_result === 'complete') t.passCompletions++;
     }
   }
@@ -484,6 +492,9 @@ function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
 // flag_N_ prefix) — both are collected here into one chronological list per
 // team — same field_pos-vs-new_los yardage-delta calc used everywhere else
 // a penalty's effect needs to be measured (_effectiveNetYards, Comparación).
+// ⚠️ _puntTerminalSpot() and computePenalties() below are ALSO duplicated in
+// capture/engine.js (same reason as the computeComparisonStats block above —
+// Box Score's "Penalties" row needs them). Replicate fixes there too.
 // Resolves the spot where a PUNT actually ended (pre-penalty) — the field
 // that holds it varies by which branch the punt took, since unlike RUSH/PASS
 // there's no single uniform terminal field ('at'). Returns null when no such
@@ -943,14 +954,17 @@ function computeExplosivePlays(plays, teams) {
   for (const p of plays) {
     const eff = _effectiveNetYards(p, teams);
     if (eff == null) continue;
-    if (p.play_type === 'PASS' && p.pass_result === 'complete' && eff >= 15) passing.push(p);
+    // Carry the already-computed effective yardage along on a shallow copy
+    // (_effYards) instead of recomputing it for sort/display — same value
+    // the threshold check above just used, not the raw (pre-penalty) net_yards.
+    if (p.play_type === 'PASS' && p.pass_result === 'complete' && eff >= 15) passing.push({ ...p, _effYards: eff });
     // A scramble is a rushing play (NCAA convention, see computeComparisonStats)
     // so it's judged against the same 10-yard rushing threshold as a RUSH play.
-    else if ((p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'scramble')) && eff >= 10) rushing.push(p);
+    else if ((p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'scramble')) && eff >= 10) rushing.push({ ...p, _effYards: eff });
   }
   return {
-    passing: passing.slice().sort((a, b) => b.net_yards - a.net_yards),
-    rushing: rushing.slice().sort((a, b) => b.net_yards - a.net_yards),
+    passing: passing.slice().sort((a, b) => b._effYards - a._effYards),
+    rushing: rushing.slice().sort((a, b) => b._effYards - a._effYards),
   };
 }
 
@@ -985,7 +999,7 @@ function computeDriveRows(drives, teams) {
   const ends = drives.map((d, i) => classifyDriveEnd(d, i === drives.length - 1, teams));
   return drives.map((d, i) => {
     const first = d.plays[0], last = d.plays[d.plays.length - 1];
-    const yds = d.plays.reduce((a, p) => a + (p.net_yards || 0), 0);
+    const yds = d.plays.reduce((a, p) => a + (_effectiveNetYards(p, teams) || 0), 0);
     const realPlays = d.plays.filter(p => p.play_type !== 'GAME_CTRL').length;
     const c1 = parseClockToSeconds(first?.clock);
     const c2 = parseClockToSeconds(last?.clock);
@@ -1534,7 +1548,7 @@ function ExplosivePlayList({ title, items, homeAbbr, homeColor, awayColor }) {
             const color = p.possession === homeAbbr ? homeColor : awayColor;
             return (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderTop: i>0 ? '1px solid var(--border)' : 'none' }}>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:16, color, minWidth:42 }}>+{p.net_yards}</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:16, color, minWidth:42 }}>+{p._effYards}</span>
                 <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:20 }}>Q{p.quarter}</span>
                 <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', lineHeight:1.4 }}>
                   {typeof formatPlay === 'function' ? formatPlay(p) : p.play_type}
@@ -2082,7 +2096,7 @@ function App() {
   // Current drive summary
   const currentDrive  = drives.length ? drives[drives.length - 1] : null;
   const drivePlayCount = currentDrive?.plays.length || 0;
-  const driveYards    = currentDrive?.plays.reduce((a,p) => a + (p.net_yards||0), 0) || 0;
+  const driveYards    = currentDrive?.plays.reduce((a,p) => a + (_effectiveNetYards(p, { home: { name: homeAbbr }, away: { name: awayAbbr } }) || 0), 0) || 0;
 
   function buildRows(dataMap, cols, keyFn) {
     const rows = [];

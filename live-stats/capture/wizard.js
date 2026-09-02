@@ -167,7 +167,20 @@ const RESULT_STEP_IDS = [
   'fg_return_result', 'kick_return_result', 'fg_ret_result',
   'pat_type', 'pat_kick_result', 'pat_block_result',
   'punt_result', 'punt_return_result', 'punt_block_return_result', 'punt_block_ret_result',
+  'fake_punt_type',
 ]
+
+// A fake punt is captured with the exact same step trees as a real RUSH/PASS
+// play (rush_by/result, pass_by/pass_result) — sliced straight from
+// STEPS_BY_TYPE so there is no second copy of that tree to drift out of
+// sync. _onStepComplete retargets play_type to RUSH/PASS (and sets
+// fake_punt:true) the moment 'fake_punt_type' resolves, so every downstream
+// consumer (advanceGameState, stat aggregation, formatPlay) sees a genuine
+// RUSH/PASS play.
+const FAKE_PUNT_TYPE_BRANCHES = {
+  run:  STEPS_BY_TYPE.RUSH.slice(1),
+  pass: STEPS_BY_TYPE.PASS.slice(1),
+}
 
 // Resolves the extra steps that follow a RESULT_STEP_IDS step, given the
 // chosen value. Shared by normal capture (_onStepComplete) and edit mode
@@ -192,6 +205,7 @@ function resolveBranchSteps(stepId, value, playType) {
   if (stepId === 'punt_return_result')        return PUNT_RETURN_RESULT_BRANCHES[value] ?? []
   if (stepId === 'punt_block_return_result')  return PUNT_BLOCK_RETURN_BRANCHES[value] ?? []
   if (stepId === 'punt_block_ret_result')     return PUNT_BLOCK_RET_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'fake_punt_type')            return FAKE_PUNT_TYPE_BRANCHES[value] ?? []
   return []
 }
 
@@ -1514,9 +1528,23 @@ function _onStepComplete(stepIdx, value) {
   steps[stepIdx].value = value
   setPlayField(steps[stepIdx].id, value)
 
-  if (RESULT_STEP_IDS.includes(steps[stepIdx].id)) {
+  const stepId = steps[stepIdx].id
+
+  // Fake punt: from here on this is a genuine RUSH/PASS play, not a PUNT.
+  // Retarget play_type (in both currentPlay and the wizard's own play_type
+  // step slot) BEFORE resolving branch steps below, so every later
+  // RESULT_STEP_IDS step (e.g. the RUSH/PASS 'result' step) looks up
+  // RESULT_BRANCHES[playType] against 'RUSH'/'PASS', not 'PUNT'.
+  if (stepId === 'fake_punt_type') {
+    const newType = value === 'run' ? 'RUSH' : 'PASS'
+    setPlayField('play_type', newType)
+    setPlayField('fake_punt', true)
+    const playTypeStep = steps.find(s => s.id === 'play_type')
+    if (playTypeStep) playTypeStep.value = newType
+  }
+
+  if (RESULT_STEP_IDS.includes(stepId)) {
     const playType = steps.find(s => s.id === 'play_type')?.value
-    const stepId = steps[stepIdx].id
     const branchSteps = resolveBranchSteps(stepId, value, playType)
 
     steps = steps.slice(0, stepIdx + 1)
@@ -1620,9 +1648,9 @@ function _onFlagStepComplete(idx, value) {
   setPlayField(step.id, value)
 
   const stepId = step.id
-  if (stepId.endsWith('_result') && stepId.includes('flag_')) {
+  const prefix = `flag_${_flagNumber}_`
+  if (stepId === `${prefix}result`) {
     const branchSteps = PENALTY_RESULT_BRANCHES[value] ?? []
-    const prefix = `flag_${_flagNumber}_`
     const prefixed = branchSteps.map(s => ({
       ...s,
       id: s.id.replace(/^penalty_/, prefix),
@@ -1633,6 +1661,18 @@ function _onFlagStepComplete(idx, value) {
     }))
     _flagSteps = _flagSteps.slice(0, idx + 1)
     _flagSteps.push(...prefixed.map(s => ({ ...s, value: null })))
+
+    // Only meaningful when the flag actually affects the play (accepted) —
+    // declined/offsetting never touch net_yards/stats_count, so there's
+    // nothing to time. Asked last, after the down_result — see FLAG_TIMING
+    // in engine.js and _flagVoidsPlay() below for how this is consumed.
+    if (value === 'accepted') {
+      _flagSteps.push({
+        id: `${prefix}timing`, label: 'Timing del Foul', component: 'RESULT',
+        config: { stateKey: `${prefix}timing`, optionsKey: 'FLAG_TIMING' },
+        value: null,
+      })
+    }
   }
 
   _flagStepIdx = idx + 1
@@ -1689,10 +1729,17 @@ function _returnToSubmit() {
 // stat sheet's "NO PLAY (repeat down)".
 const _NO_PLAY_DOWN_RESULTS = ['repeat_down', 'loss_of_down', 'first_down']
 
+// timing !== 'dead' covers both 'live' and missing/undefined — plays
+// captured before this field existed keep voiding exactly as before
+// (non-retroactive default, same reasoning as stats_count originally).
+// Only an explicit 'dead' (foul happened after the play already ended)
+// skips the zeroing — the play's own result stood on its own merit before
+// the foul, and net_yards/stats_count must preserve it.
 function _flagVoidsPlay(play) {
   for (const num of [1, 2]) {
     if (play[`flag_${num}_result`] === 'accepted' &&
-        _NO_PLAY_DOWN_RESULTS.includes(play[`flag_${num}_down_result`])) {
+        _NO_PLAY_DOWN_RESULTS.includes(play[`flag_${num}_down_result`]) &&
+        play[`flag_${num}_timing`] !== 'dead') {
       return true
     }
   }
