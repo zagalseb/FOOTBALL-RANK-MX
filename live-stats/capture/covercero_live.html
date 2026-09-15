@@ -1432,6 +1432,7 @@
   </style>
 </head>
 <body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
 
   <!-- TOP BAR -->
   <header class="topbar">
@@ -1526,6 +1527,7 @@
         <div class="card-type-grid" id="card-type-grid">
           <button class="card-type-btn card-type-btn--active" data-card-type="player">Player Card</button>
           <button class="card-type-btn" data-card-type="boxscore">Box Score</button>
+          <button class="card-type-btn" data-card-type="statcard">Stat Card</button>
           <button class="card-type-btn" disabled>Jugada Destacada<span class="card-type-btn__soon">Próximamente</span></button>
           <button class="card-type-btn" disabled>Resumen de Cuarto<span class="card-type-btn__soon">Próximamente</span></button>
         </div>
@@ -1539,7 +1541,10 @@
         </div>
       </div>
 
-      <div id="player-card-config">
+      <!-- Shared by Player Card AND Stat Card (Box Score doesn't pick a
+           single player) — kept as one block instead of duplicated into
+           each card type's own config div. -->
+      <div id="team-player-config">
         <div style="margin-bottom:14px">
           <div class="reports-section__label">Equipo</div>
           <select class="reports-select" id="reports-team-select">
@@ -1553,23 +1558,34 @@
             <option value="">Selecciona un equipo primero…</option>
           </select>
         </div>
+      </div>
 
+      <div id="player-card-config">
         <div style="margin-bottom:14px">
           <div class="reports-section__label">Foto (local, no se sube)</div>
           <input type="file" accept="image/*" class="reports-file-input" id="reports-photo-input">
         </div>
+      </div>
 
+      <div id="statcard-config" style="display:none">
         <div style="margin-bottom:14px">
-          <div class="reports-section__label">Crédito de foto</div>
-          <input type="text" class="reports-select" id="reports-photo-credit-input"
-            placeholder="Foto: @usuario o Foto: Nombre Apellido">
+          <div class="reports-section__label">Avatar (local, no se sube)</div>
+          <input type="file" accept="image/*" class="reports-file-input" id="reports-avatar-input">
         </div>
+      </div>
 
-        <div>
-          <div class="reports-section__label">Stats a mostrar</div>
-          <div class="stats-checklist" id="stats-checklist">
-            <div class="stats-checklist__empty">Selecciona un jugador para ver sus stats disponibles.</div>
-          </div>
+      <!-- Also shared by Player Card AND Stat Card — same free-text field,
+           just a different placeholder/prefix per card type (set in JS). -->
+      <div id="credit-config" style="margin-bottom:14px">
+        <div class="reports-section__label" id="credit-config-label">Crédito de foto</div>
+        <input type="text" class="reports-select" id="reports-photo-credit-input"
+          placeholder="Foto: @usuario o Foto: Nombre Apellido">
+      </div>
+
+      <div id="stats-checklist-config">
+        <div class="reports-section__label">Stats a mostrar</div>
+        <div class="stats-checklist" id="stats-checklist">
+          <div class="stats-checklist__empty">Selecciona un jugador para ver sus stats disponibles.</div>
         </div>
       </div>
 
@@ -1590,12 +1606,15 @@
 
   <script type="module">
     import { renderAddPlay, renderEditPlay } from './wizard.js'
-    import { loadPlays, plays, gameState, onPlaySubmitted,
+    import { loadPlays, plays, onPlaySubmitted,
              setSupabaseClient, setGameId, getGameId, onSyncStatus,
-             loadRoster, setRosters, playerShortLabel, setGameStatus,
-             startGame, computePlayerStats,
-             computeDrives, computeComparisonStats, computePenalties } from './engine.js'
-    import { drawPlayerCard, drawBoxScore } from './player_card.js'
+             loadRoster, setRosters, setGameStatus, startGame } from './engine.js'
+    // stats-lib.js: pure calc/display functions shared with viewer/ (split out
+    // of engine.js on 2026-09-08) — gameState/playerShortLabel/computePlayerStats/
+    // computeDrives/computeComparisonStats/computePenalties all live here now.
+    import { gameState, playerShortLabel, computePlayerStats,
+             computeDrives, computeComparisonStats, computePenalties } from '../../shared/stats-lib.js'
+    import { drawPlayerCard, drawBoxScore, drawStatCard } from './player_card.js'
     import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
 
     const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
@@ -1614,16 +1633,22 @@
     // from inside the game-fetch try block below, and `let`/`const` bindings
     // are not usable before the line that declares them even though the
     // functions that reference them are hoisted.
-    let _reportsCardType       = 'player'   // 'player' | 'boxscore'
+    let _reportsCardType       = 'player'   // 'player' | 'boxscore' | 'statcard'
     let _reportsOrientation    = 'vertical'
     let _reportsSelectedPlayer = null
     let _reportsPhotoImg       = null
+    let _reportsAvatarImg      = null   // Stat Card only — small creator/source avatar, not a play photo
     let _reportsTeamLogoImg    = null
     let _reportsSiteLogoImg    = null   // "cover 0 stats logo.png", bucket 'logos' — loaded once, reused for every card
-    let _reportsPhotoCredit    = ''
+    let _reportsPhotoCredit    = ''     // shared free-text field — Player Card's "Foto: ..." AND Stat Card's "Vía ..."
     const REPORTS_SITE_LOGO_URL =
       `${SUPABASE_URL}/storage/v1/object/public/logos/${encodeURIComponent('cover 0 stats logo.png')}`
     let _reportsLastStats      = null   // raw computePlayerStats() output for the selected player
+
+    // Stat Card's checklist reuses Player Card's exact #stats-checklist
+    // element/render function — this just caps how many can be checked at
+    // once, since the layout only has room for a handful of columns.
+    const STATCARD_MAX_STATS = 4
 
     // Box Score state — both team logos (unlike Player Card, which only ever
     // shows one team at a time), loaded lazily the first time the operator
@@ -1645,7 +1670,7 @@
       { key: 'firstDowns',       label: '1st Downs' },
       { key: 'thirdDowns',       label: '3rd Downs' },
       { key: 'fourthDowns',      label: '4th Downs' },
-      { key: 'totalPlays',       label: 'Total Plays' },
+      { key: 'totalPlays',       label: 'Offensive Plays' },
       { key: 'ydsPerPlay',       label: 'Avg Yds/Play' },
       { key: 'ydsPerCompletion', label: 'Avg Yds/Completion' },
       { key: 'ydsPerRush',       label: 'Avg Yds/Rush' },
@@ -1876,6 +1901,15 @@
         img.src = url
       })
 
+      document.getElementById('reports-avatar-input').addEventListener('change', (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        const url = URL.createObjectURL(file)
+        const img = new Image()
+        img.onload = () => { _reportsAvatarImg = img; _redrawReportsCanvas() }
+        img.src = url
+      })
+
       document.getElementById('reports-photo-credit-input').addEventListener('input', (e) => {
         _reportsPhotoCredit = e.target.value
         _redrawReportsCanvas()
@@ -1906,7 +1940,9 @@
           a.href = url
           a.download = _reportsCardType === 'boxscore'
             ? `box-score-${_reportsOrientation}.png`
-            : `player-card-${_reportsSelectedPlayer?.number ?? 'x'}-${_reportsOrientation}.png`
+            : _reportsCardType === 'statcard'
+              ? `stat-card-${_reportsSelectedPlayer?.number ?? 'x'}-${_reportsOrientation}.png`
+              : `player-card-${_reportsSelectedPlayer?.number ?? 'x'}-${_reportsOrientation}.png`
           document.body.appendChild(a)
           a.click()
           document.body.removeChild(a)
@@ -1920,8 +1956,26 @@
           _reportsCardType = btn.dataset.cardType
           document.querySelectorAll('#card-type-grid .card-type-btn').forEach(b =>
             b.classList.toggle('card-type-btn--active', b === btn))
-          document.getElementById('player-card-config').style.display = _reportsCardType === 'player' ? '' : 'none'
-          document.getElementById('box-score-config').style.display   = _reportsCardType === 'boxscore' ? '' : 'none'
+
+          const needsTeamPlayer = _reportsCardType === 'player' || _reportsCardType === 'statcard'
+          document.getElementById('team-player-config').style.display     = needsTeamPlayer ? '' : 'none'
+          document.getElementById('credit-config').style.display          = needsTeamPlayer ? '' : 'none'
+          document.getElementById('stats-checklist-config').style.display = needsTeamPlayer ? '' : 'none'
+          document.getElementById('player-card-config').style.display     = _reportsCardType === 'player'   ? '' : 'none'
+          document.getElementById('statcard-config').style.display        = _reportsCardType === 'statcard' ? '' : 'none'
+          document.getElementById('box-score-config').style.display       = _reportsCardType === 'boxscore' ? '' : 'none'
+
+          // Same free-text input, relabeled per card type — "Foto:" credits
+          // the play photo, "Vía" credits the Stat Card's graphic itself.
+          const creditLabel = document.getElementById('credit-config-label')
+          const creditInput = document.getElementById('reports-photo-credit-input')
+          if (_reportsCardType === 'statcard') {
+            creditLabel.textContent = 'Crédito ("Vía …")'
+            creditInput.placeholder = '@usuario o Nombre Apellido'
+          } else {
+            creditLabel.textContent = 'Crédito de foto'
+            creditInput.placeholder = 'Foto: @usuario o Foto: Nombre Apellido'
+          }
 
           if (_reportsCardType === 'boxscore' && _reportsGame) {
             if (!_reportsAwayLogoImg) _reportsAwayLogoImg = await _loadImageFromUrl(_reportsGame.away.logo_url)
@@ -2086,7 +2140,20 @@
       }
       container.innerHTML = html || '<div class="stats-checklist__empty">Este jugador no tiene stats registradas en este juego todavía.</div>'
       container.querySelectorAll('input[type=checkbox]').forEach(cb => {
-        cb.addEventListener('change', () => _redrawReportsCanvas())
+        cb.addEventListener('change', () => {
+          // Stat Card's layout only has room for a handful of columns —
+          // same checklist/container as Player Card, just capped here
+          // instead of forking into a second checklist implementation.
+          if (_reportsCardType === 'statcard' && cb.checked) {
+            const checkedCount = container.querySelectorAll('input[type=checkbox]:checked').length
+            if (checkedCount > STATCARD_MAX_STATS) {
+              cb.checked = false
+              alert(`Stat Card admite máximo ${STATCARD_MAX_STATS} stats.`)
+              return
+            }
+          }
+          _redrawReportsCanvas()
+        })
       })
     }
 
@@ -2168,6 +2235,24 @@
       const team     = side === 'home' ? _reportsGame.home : _reportsGame.away
       const teamAbbr = side === 'home' ? _reportsHomeAbbr  : _reportsAwayAbbr
       const p        = _reportsSelectedPlayer
+
+      if (_reportsCardType === 'statcard') {
+        drawStatCard(ctx, W, H, {
+          orientation:     _reportsOrientation,
+          teamColor:       team.color_principal || '#333333',
+          teamText:        team.color_texto || '',
+          teamAbbr,
+          teamLogoImg:     _reportsTeamLogoImg,
+          siteLogoImg:     _reportsSiteLogoImg,
+          avatarImg:       _reportsAvatarImg,
+          creditText:      _reportsPhotoCredit,
+          playerLastName:  p.apellido || `#${p.number}`,
+          playerNumber:    p.number,
+          stats:           _getCheckedStatsForCanvas(),
+        })
+        return
+      }
+
       const fullName = [p.nombre, p.apellido].filter(Boolean).join(' ') || `Jugador #${p.number}`
 
       drawPlayerCard(ctx, W, H, {

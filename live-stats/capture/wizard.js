@@ -1,4 +1,4 @@
-import { setPlayField, resetCurrentPlay, getRoster, submitPlayWithSnap, currentPlay, plays, savePlays, syncPlayUpdate, notifyPlaysChanged, RESULT_OPTIONS, RESULT_BRANCHES, FUMBLE_RESULT_BRANCHES, FUMBLE_2_RESULT_BRANCHES, PASS_RESULT_OPTIONS, PASS_RESULT_BRANCHES, RETURN_RESULT_BRANCHES, PENALTY_RESULT_OPTIONS, PENALTY_DOWN_RESULT_OPTIONS, PENALTY_RESULT_BRANCHES, PENALTIES_LIST, KICK_TYPE_OPTIONS, KICKOFF_RESULT_OPTIONS, FG_RESULT_OPTIONS, FG_MISS_OPTIONS, FG_RETURN_RESULT_OPTIONS, KICK_TYPE_BRANCHES, KICKOFF_RESULT_BRANCHES, FG_RESULT_BRANCHES, FG_BLOCKED_RETURN_BRANCHES, KICK_RETURN_RESULT_BRANCHES, FG_RET_RESULT_BRANCHES, PAT_TYPE_OPTIONS, PAT_KICK_RESULT_OPTIONS, PAT_BLOCK_RESULT_OPTIONS, PAT_TYPE_BRANCHES, PAT_KICK_RESULT_BRANCHES, PUNT_RESULT_OPTIONS, PUNT_RESULT_BRANCHES, PUNT_BLOCK_RETURN_BRANCHES, PUNT_RETURN_RESULT_BRANCHES, PUNT_BLOCK_RET_RESULT_BRANCHES, parseATInput, isTouchdown, calcNetYards, gameState, formatPlay, deriveNextPlayContext, applyGameCtrl, GAME_CTRL_OPTIONS, playerShortLabel } from './engine.js'
+import { setPlayField, resetCurrentPlay, getRoster, submitPlayWithSnap, currentPlay, plays, savePlays, syncPlayUpdate, notifyPlaysChanged, RESULT_OPTIONS, RESULT_BRANCHES, FUMBLE_RESULT_BRANCHES, FUMBLE_2_RESULT_BRANCHES, PASS_RESULT_OPTIONS, PASS_RESULT_BRANCHES, RETURN_RESULT_BRANCHES, PENALTY_RESULT_OPTIONS, PENALTY_DOWN_RESULT_OPTIONS, PENALTY_RESULT_BRANCHES, PENALTIES_LIST, KICK_TYPE_OPTIONS, KICKOFF_RESULT_OPTIONS, FG_RESULT_OPTIONS, FG_MISS_OPTIONS, FG_RETURN_RESULT_OPTIONS, KICK_TYPE_BRANCHES, KICKOFF_RESULT_BRANCHES, FG_RESULT_BRANCHES, FG_BLOCKED_RETURN_BRANCHES, KICK_RETURN_RESULT_BRANCHES, FG_RET_RESULT_BRANCHES, PAT_TYPE_OPTIONS, PAT_KICK_RESULT_OPTIONS, PAT_BLOCK_RESULT_OPTIONS, PAT_TYPE_BRANCHES, PAT_KICK_RESULT_BRANCHES, PUNT_RESULT_OPTIONS, PUNT_RESULT_BRANCHES, PUNT_MUFF_RESULT_BRANCHES, PUNT_BLOCK_RETURN_BRANCHES, PUNT_RETURN_RESULT_BRANCHES, PUNT_BLOCK_RET_RESULT_BRANCHES, SNAP_FUMBLE_RECOVERY_BRANCHES, SNAP_FUMBLE_RESULT_BRANCHES, PUNT_BAD_SNAP_RECOVERY_BRANCHES, PUNT_BAD_SNAP_RESULT_BRANCHES, FG_BAD_SNAP_RECOVERY_BRANCHES, FG_BAD_SNAP_RESULT_BRANCHES, PAT_BAD_SNAP_RECOVERY_BRANCHES, PAT_BAD_SNAP_RESULT_BRANCHES, parseATInput, isTouchdown, calcNetYards, gameState, formatPlay, deriveNextPlayContext, applyGameCtrl, GAME_CTRL_OPTIONS, playerShortLabel } from './engine.js'
 
 // ── Keyboard context system ───────────────────────────────────────────────────
 // One listener, always active. Each screen replaces entries in KEYBOARD_CONTEXTS.
@@ -92,6 +92,7 @@ const BUTTONS = [
   { label: 'Kick',      key: 'K', type: 'KICK',      disabled: false },
   { label: 'PAT Try',   key: 'A', type: 'PAT_TRY',   disabled: false },
   { label: 'Comment',   key: 'C', type: 'COMMENT',   disabled: true  },
+  { label: 'Snap Fumble', key: 'S', type: 'SNAP_FUMBLE', disabled: false },
   { label: 'Game CTRL', key: 'G', type: 'GAME_CTRL', disabled: false },
 ]
 
@@ -136,6 +137,17 @@ const STEPS_BY_TYPE = {
     { id: 'punt_result', label: 'Punt Result', component: 'PUNT_RESULT',
       config: { stateKey: 'punt_result' } },
   ],
+  // Bad center snap, before the play develops. snap_fumble_recovery_team's
+  // branch (own offense vs opponent) is resolved dynamically in
+  // resolveBranchSteps() by comparing the chosen team against the play's
+  // actual possession, not by a fixed lookup here.
+  SNAP_FUMBLE: [
+    { id: 'play_type', label: 'Fumble de Snap' },
+    { id: 'snap_fumble_at', label: 'Fumble AT', component: 'AT',
+      config: { stateKey: 'snap_fumble_at' } },
+    { id: 'snap_fumble_recovery_team', label: 'Recovery Team', component: 'TEAM',
+      config: { stateKey: 'snap_fumble_recovery_team' } },
+  ],
 }
 
 // ── Wizard state ──────────────────────────────────────────────────────────────
@@ -167,7 +179,11 @@ const RESULT_STEP_IDS = [
   'fg_return_result', 'kick_return_result', 'fg_ret_result',
   'pat_type', 'pat_kick_result', 'pat_block_result',
   'punt_result', 'punt_return_result', 'punt_block_return_result', 'punt_block_ret_result',
-  'fake_punt_type',
+  'fake_punt_type', 'punt_muff_result',
+  'snap_fumble_recovery_team', 'snap_fumble_type', 'snap_fumble_result',
+  'punt_bad_snap_recovery_team', 'punt_bad_snap_type', 'punt_bad_snap_result',
+  'fg_bad_snap_recovery_team', 'fg_bad_snap_type', 'fg_bad_snap_result',
+  'pat_bad_snap_recovery_team', 'pat_bad_snap_type', 'pat_bad_snap_result',
 ]
 
 // A fake punt is captured with the exact same step trees as a real RUSH/PASS
@@ -182,10 +198,27 @@ const FAKE_PUNT_TYPE_BRANCHES = {
   pass: STEPS_BY_TYPE.PASS.slice(1),
 }
 
+// Bad snap to the punter, own snapper/punter recovers, but still gets the
+// kick away despite the botched exchange. Unlike 'run'/'pass' (which reuse
+// FAKE_PUNT_TYPE_BRANCHES's retarget-to-RUSH/PASS mechanism), 'kick' never
+// retargets play_type — it's already 'PUNT' — it just re-enters the normal
+// punt_result step fresh (STEPS_BY_TYPE.PUNT's tail after punted_by).
+const PUNT_BAD_SNAP_TYPE_BRANCHES = {
+  ...FAKE_PUNT_TYPE_BRANCHES,
+  kick: STEPS_BY_TYPE.PUNT.slice(2),
+}
+
 // Resolves the extra steps that follow a RESULT_STEP_IDS step, given the
 // chosen value. Shared by normal capture (_onStepComplete) and edit mode
 // (_onEditStepComplete) so the branch rules can never drift between the two.
-function resolveBranchSteps(stepId, value, playType) {
+// `possession` is only used by the various *_recovery_team steps' own/
+// opponent split (snap_fumble_recovery_team, punt_bad_snap_recovery_team,
+// fg_bad_snap_recovery_team, pat_bad_snap_recovery_team) — it must be the
+// possession AT THE TIME OF THAT PLAY, not whatever gameState.possession
+// happens to be right now (which, in edit mode, is almost always a later,
+// unrelated point in the game). Every call site below passes the correct
+// value for its own context.
+function resolveBranchSteps(stepId, value, playType, possession) {
   if (stepId === 'result')                    return RESULT_BRANCHES[playType]?.[value] ?? []
   if (stepId === 'fumble_result')             return FUMBLE_RESULT_BRANCHES[value] ?? []
   if (stepId === 'fumble_2_result')           return FUMBLE_2_RESULT_BRANCHES[value] ?? []
@@ -206,6 +239,35 @@ function resolveBranchSteps(stepId, value, playType) {
   if (stepId === 'punt_block_return_result')  return PUNT_BLOCK_RETURN_BRANCHES[value] ?? []
   if (stepId === 'punt_block_ret_result')     return PUNT_BLOCK_RET_RESULT_BRANCHES[value] ?? []
   if (stepId === 'fake_punt_type')            return FAKE_PUNT_TYPE_BRANCHES[value] ?? []
+  if (stepId === 'punt_muff_result')          return PUNT_MUFF_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'snap_fumble_recovery_team') {
+    return value === possession
+      ? SNAP_FUMBLE_RECOVERY_BRANCHES.own
+      : SNAP_FUMBLE_RECOVERY_BRANCHES.opponent
+  }
+  if (stepId === 'snap_fumble_type')          return FAKE_PUNT_TYPE_BRANCHES[value] ?? []
+  if (stepId === 'snap_fumble_result')        return SNAP_FUMBLE_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'punt_bad_snap_recovery_team') {
+    return value === possession
+      ? PUNT_BAD_SNAP_RECOVERY_BRANCHES.own
+      : PUNT_BAD_SNAP_RECOVERY_BRANCHES.opponent
+  }
+  if (stepId === 'punt_bad_snap_type')        return PUNT_BAD_SNAP_TYPE_BRANCHES[value] ?? []
+  if (stepId === 'punt_bad_snap_result')      return PUNT_BAD_SNAP_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'fg_bad_snap_recovery_team') {
+    return value === possession
+      ? FG_BAD_SNAP_RECOVERY_BRANCHES.own
+      : FG_BAD_SNAP_RECOVERY_BRANCHES.opponent
+  }
+  if (stepId === 'fg_bad_snap_type')          return FAKE_PUNT_TYPE_BRANCHES[value] ?? []
+  if (stepId === 'fg_bad_snap_result')        return FG_BAD_SNAP_RESULT_BRANCHES[value] ?? []
+  if (stepId === 'pat_bad_snap_recovery_team') {
+    return value === possession
+      ? PAT_BAD_SNAP_RECOVERY_BRANCHES.own
+      : PAT_BAD_SNAP_RECOVERY_BRANCHES.opponent
+  }
+  if (stepId === 'pat_bad_snap_type')         return FAKE_PUNT_TYPE_BRANCHES[value] ?? []
+  if (stepId === 'pat_bad_snap_result')       return PAT_BAD_SNAP_RESULT_BRANCHES[value] ?? []
   return []
 }
 
@@ -225,6 +287,7 @@ export function renderAddPlay() {
     u: () => _onPlayTypeSelected('PUNT'),
     k: () => _onPlayTypeSelected('KICK'),
     a: () => _onPlayTypeSelected('PAT_TRY'),
+    s: () => _onPlayTypeSelected('SNAP_FUMBLE'),
     g: () => _onPlayTypeSelected('GAME_CTRL'),
   }
 
@@ -261,7 +324,7 @@ function _buildEditSteps(play) {
     const value = play[step.id] ?? null
     result.push({ ...step, value })
     if (RESULT_STEP_IDS.includes(step.id) && value != null) {
-      const branchSteps = resolveBranchSteps(step.id, value, playType)
+      const branchSteps = resolveBranchSteps(step.id, value, playType, play.possession)
       queue = [...branchSteps.map(s => ({ ...s })), ...queue]
     }
   }
@@ -311,7 +374,7 @@ function _onEditStepComplete(idx, value) {
   const stepId = editSteps[idx].id
   if (RESULT_STEP_IDS.includes(stepId)) {
     const playType  = editingPlay.play_type
-    const newBranch = resolveBranchSteps(stepId, value, playType)
+    const newBranch = resolveBranchSteps(stepId, value, playType, editingPlay.possession)
     const oldSuffix = editSteps.slice(idx + 1)
     const sameShape = oldSuffix.length === newBranch.length &&
       oldSuffix.every((s, i) => s.id === newBranch[i].id)
@@ -1543,9 +1606,39 @@ function _onStepComplete(stepIdx, value) {
     if (playTypeStep) playTypeStep.value = newType
   }
 
+  // Snap fumble, own offense recovered and the play developed into a real
+  // RUSH/PASS: same retargeting mechanism as fake_punt_type above, so every
+  // later RESULT_STEP_IDS step (rush_by/result, pass_by/pass_result) looks
+  // up RESULT_BRANCHES[playType] against 'RUSH'/'PASS', not 'SNAP_FUMBLE'.
+  if (stepId === 'snap_fumble_type') {
+    const newType = value === 'run' ? 'RUSH' : 'PASS'
+    setPlayField('play_type', newType)
+    setPlayField('snap_fumble', true)
+    const playTypeStep = steps.find(s => s.id === 'play_type')
+    if (playTypeStep) playTypeStep.value = newType
+  }
+
+  // Bad snap (long snapper) on a PUNT/FG/PAT_KICK, own side recovered and
+  // scrambled into a real run/pass: same retargeting mechanism again. PUNT's
+  // 'kick' option deliberately does NOT retarget — play_type is already
+  // 'PUNT' and stays there, it just re-enters the normal punt_result step
+  // (see PUNT_BAD_SNAP_TYPE_BRANCHES.kick above).
+  if (stepId === 'punt_bad_snap_type' || stepId === 'fg_bad_snap_type' || stepId === 'pat_bad_snap_type') {
+    setPlayField('bad_snap', true)
+    if (value === 'run' || value === 'pass') {
+      const newType = value === 'run' ? 'RUSH' : 'PASS'
+      setPlayField('play_type', newType)
+      const playTypeStep = steps.find(s => s.id === 'play_type')
+      if (playTypeStep) playTypeStep.value = newType
+    }
+    // 'kick' (PUNT only): no retargeting — play_type stays 'PUNT', but the
+    // bad_snap:true marker set above still lets formatPlay() flag that this
+    // otherwise-normal-looking punt started with a bad snap.
+  }
+
   if (RESULT_STEP_IDS.includes(stepId)) {
     const playType = steps.find(s => s.id === 'play_type')?.value
-    const branchSteps = resolveBranchSteps(stepId, value, playType)
+    const branchSteps = resolveBranchSteps(stepId, value, playType, gameState.possession)
 
     steps = steps.slice(0, stepIdx + 1)
     steps.push(...branchSteps.map(s => ({ ...s, value: null })))

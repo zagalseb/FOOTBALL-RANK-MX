@@ -43,7 +43,7 @@
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef, useLayoutEffect } = React;
 
 let SB_URL, SB_KEY, HDRS;
 const configReady = import('../../shared/supabase/supabase_config.js').then(m => {
@@ -52,14 +52,22 @@ const configReady = import('../../shared/supabase/supabase_config.js').then(m =>
   HDRS = m.SUPABASE_HEADERS;
 });
 
-// engine.js is the capture app's module — formatPlay() lives there and viewer.html
-// has no build step to import it statically, so we pull it in the same dynamic-import
-// pattern as supabase_config.js above. advanceGameState/applyFlags/gameState are
-// also pulled in to compute the true current score (see computeCurrentScore below) —
-// engineGameState is this viewer's own private instance of the module (a fresh
-// import() per page), never shared with the capture app running elsewhere.
+// stats-lib.js is the pure calc/display module shared with capture/ (split
+// out of capture/engine.js on 2026-09-08 specifically so viewer/ never has
+// to download the whole capture app just for these) — viewer.html has no
+// build step to import it statically, so we pull it in via dynamic import,
+// same pattern as supabase_config.js above. advanceGameState/applyFlags/
+// gameState are pulled in to compute the true current score (see
+// computeCurrentScore below) — engineGameState is this viewer's own private
+// instance of the module (a fresh import() per page), never shared with the
+// capture app running elsewhere. computeDrives/computeComparisonStats/
+// computePenalties/driveEndLabel/_effectiveNetYards/_isFirstDownPlay used to
+// be duplicated locally in this file (kept in sync by hand) — now imported
+// from the single shared copy instead.
 let formatPlay, advanceGameState, applyFlags, engineGameState, playerShortLabel, isTouchdown, calcNetYards;
-const engineReady = import('../capture/engine.js').then(m => {
+let computeDrives, computeComparisonStats, computePenalties, driveEndLabel, _effectiveNetYards, _isFirstDownPlay;
+let secondsToMMSS;
+const engineReady = import('../../shared/stats-lib.js').then(m => {
   formatPlay          = m.formatPlay;
   advanceGameState     = m.advanceGameState;
   applyFlags           = m.applyFlags;
@@ -67,6 +75,13 @@ const engineReady = import('../capture/engine.js').then(m => {
   playerShortLabel       = m.playerShortLabel;
   isTouchdown            = m.isTouchdown;
   calcNetYards           = m.calcNetYards;
+  computeDrives            = m.computeDrives;
+  computeComparisonStats   = m.computeComparisonStats;
+  computePenalties         = m.computePenalties;
+  driveEndLabel            = m.driveEndLabel;
+  _effectiveNetYards       = m._effectiveNetYards;
+  _isFirstDownPlay         = m._isFirstDownPlay;
+  secondsToMMSS            = m.secondsToMMSS;
 });
 
 // engine.js stores each play's score_home/score_away (and down/distance/
@@ -121,25 +136,30 @@ function _padClock(clock) {
   const [m, s] = String(clock).split(':');
   return `${(m || '0').padStart(2, '0')}:${(s || '00').padStart(2, '0')}`;
 }
-function formatLiveTicker(state) {
+// homeAbbr/awayAbbr/homeApodo/awayApodo: maps the raw abbreviation stored on
+// the play (state.possession/field_pos.team, permanently the real
+// abreviatura) to its display Apodo — used only for the text shown here,
+// never for matching.
+function formatLiveTicker(state, homeAbbr, awayAbbr, homeApodo, awayApodo) {
   // Only "no plays captured yet" falls back to 'Por comenzar'. down === 0 is
   // a legitimate value (right after a score/kickoff/PAT, before the next
   // snap is captured) — it's falsy in JS, so it must be excluded from the
   // "no data" gate or every between-plays live game wrongly showed the
   // pre-kickoff fallback.
   if (!state || !state.possession) return 'Por comenzar';
+  const toApodo = (abbr) => abbr === homeAbbr ? (homeApodo || abbr) : (abbr === awayAbbr ? (awayApodo || abbr) : abbr);
   const clock = _padClock(state.clock);
   const clockPart = clock ? ` · ≈${clock}` : '';
-  if (!state.down || !state.field_pos) return `POSS: ${state.possession}${clockPart}`;
-  return `${_ordinalDown(state.down)} & ${state.distance} ${state.field_pos.team} ${state.field_pos.yard}` +
-    ` · POSS: ${state.possession}${clockPart}`;
+  if (!state.down || !state.field_pos) return `POSS: ${toApodo(state.possession)}${clockPart}`;
+  return `${_ordinalDown(state.down)} & ${state.distance} ${toApodo(state.field_pos.team)} ${state.field_pos.yard}` +
+    ` · POSS: ${toApodo(state.possession)}${clockPart}`;
 }
 
-// Walks every play in order, replaying it through the same engine.js
+// Walks every play in order, replaying it through the same stats-lib.js
 // scoring functions computeCurrentScore() uses above, and records an event
 // whenever the running score actually changes. This reuses the real TD/FG/
 // PAT/safety/pick-six/etc. rules instead of re-deriving "was this a score"
-// from scratch here (which would inevitably drift from engine.js over time).
+// from scratch here (which would inevitably drift from stats-lib.js over time).
 function computeScoringPlays(plays, homeAbbr, awayAbbr) {
   if (typeof advanceGameState !== 'function') return [];
   engineGameState.teams = {
@@ -211,148 +231,10 @@ function fmtDate(kickoff, hora) {
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${t}`;
 }
 
-// ⚠️ computeComparisonStats() and its dependencies below (computeDrives,
-// driveEndLabel, _turnoverScore, _kickoffDriveOwner, _isFirstDownPlay,
-// _effectiveNetYards) are DUPLICATED in capture/engine.js for the Reports
-// tab's Box Score card (viewer.html isn't an ES module capture/ could import
-// from, and moving these here would break 10+ synchronous call sites).
-// If you fix a Comparación formula in any of these, replicate the change in
-// engine.js too.
-
-// A kickoff never starts its own drive — it's the opening play of whichever
-// team ends up with the ball. Normally that's the receiving team (the
-// opponent of the kicker), starting at the return spot. Exception: if the
-// kicking team recovers the ball on the play itself — an onside recovery, or
-// a fumble lost by the returner during the return — the drive stays theirs.
-function _kickoffDriveOwner(p, otherTeam) {
-  const kicker = p.possession;
-  const receiver = otherTeam(kicker);
-  if (p.kickoff_result === 'onside' && p.onside_recovery_team === kicker) return kicker;
-  if (p.kick_return_result === 'fumble' && p.fumble_recovery_team === kicker) return kicker;
-  return receiver;
-}
-
-function computeDrives(plays, homeAbbr, awayAbbr) {
-  const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null));
-
-  function driveOwner(p) {
-    // kick_type distinguishes a real kickoff from a field goal attempt —
-    // only the former is a "transition" play that must merge into a drive.
-    if (p.play_type === 'KICK' && p.kick_type !== 'field_goal') {
-      return _kickoffDriveOwner(p, otherTeam);
-    }
-    return p.possession;
-  }
-
-  const drives = [];
-  let cur = null;
-  for (const p of plays) {
-    if (p.play_type === 'GAME_CTRL') continue;
-
-    // A PAT try always follows the scoring play it belongs to — it's the
-    // continuation of that drive, not a new series, even when the score came
-    // off a turnover-TD (whose "owner" per driveOwner is the team that just
-    // scored on defense, different from the drive that was actually open).
-    // A score always ENDS a drive, full stop — close it out right here
-    // instead of waiting for the next play's owner to differ. That matters
-    // specifically after a turnover-TD: the ensuing kickoff's "owner" is the
-    // team that just gave the ball away, i.e. the SAME abbreviation as the
-    // drive that just closed, so a plain owner-mismatch check would silently
-    // merge the next real drive into this one instead of starting a new row.
-    if (p.play_type === 'PAT_TRY' && cur) {
-      cur.plays.push(p);
-      drives.push(cur);
-      cur = null;
-      continue;
-    }
-
-    const owner = driveOwner(p);
-    if (!cur || cur.possession !== owner) {
-      if (cur) drives.push(cur);
-      cur = { possession: owner, plays: [] };
-    }
-    cur.plays.push(p);
-
-    // A made field goal has no PAT to trigger the close above — the
-    // same-abbreviation risk on the following kickoff can't actually happen
-    // for a FG (turnovers only ever produce touchdowns, not field goals),
-    // but closing here keeps "a score always ends the drive" true uniformly.
-    if (p.play_type === 'KICK' && p.kick_type === 'field_goal' && p.fg_result === 'good') {
-      drives.push(cur);
-      cur = null;
-    }
-  }
-  if (cur && cur.plays.length) drives.push(cur);
-  return drives;
-}
-
-// A turnover play (interception / fumble recovery / blocked-kick return)
-// that reaches the end zone on the SAME play is a defensive score. Detected
-// the same way engine.js's advanceGameState()/_advanceFumble() do it — via
-// isTouchdown() against the actual recorded return/recovery position — not
-// via the play's top-level `touchdown` column, which the capture wizard only
-// ever populates for plain RUSH/PASS-complete plays (the ones using the
-// generic `at` field); turnover branches write to their own position fields
-// (return_at, fumble_recovered_at, fg_ret_at, ...) that `touchdown` never sees.
-function _turnoverScore(p, teams) {
-  if (!teams || !p.possession) return null;
-  const opponentOf = t => (t === teams.home.name ? teams.away.name : teams.home.name);
-
-  if (p.play_type === 'PASS' && p.pass_result === 'intercepted') {
-    const intTeam = opponentOf(p.possession);
-    const pos = p.return_at || p.intercepted_at;
-    if (pos && isTouchdown(teams, intTeam, pos)) return 'INTERCEPTION';
-  }
-
-  if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession && p.fumble_recovered_at) {
-    if (isTouchdown(teams, p.fumble_recovery_team, p.fumble_recovered_at)) return 'FUMBLE';
-  }
-  if (p.fumble_2_recovery_team && p.fumble_2_recovery_team !== p.possession && p.fumble_2_recovered_at) {
-    if (isTouchdown(teams, p.fumble_2_recovery_team, p.fumble_2_recovered_at)) return 'FUMBLE';
-  }
-
-  if (p.play_type === 'KICK' && p.fg_returned_by && p.fg_ret_at) {
-    const defTeam = opponentOf(p.possession);
-    if (isTouchdown(teams, defTeam, p.fg_ret_at)) return 'BLOCKED KICK';
-  }
-  if (p.play_type === 'PUNT' && p.punt_block_returned_by && p.punt_block_ret_at) {
-    const defTeam = opponentOf(p.possession);
-    if (isTouchdown(teams, defTeam, p.punt_block_ret_at)) return 'BLOCKED KICK';
-  }
-
-  return null;
-}
-
-// Shared "how did this drive end" logic — used by both the play-by-play
-// header badge (driveResult) and the Drive Chart tab (classifyDriveEnd), so
-// there's exactly one definition of what a drive's result label means.
-function driveEndLabel(plays, isLastDrive, teams) {
-  if (!plays.length) return null;
-  let last = plays[plays.length - 1];
-  // computeDrives() always appends a PAT_TRY to the drive it follows and
-  // force-closes right there — so a scoring drive's literal last play is
-  // almost always the PAT snap, not the touchdown itself. The PAT_TRY row
-  // has its own (usually blank) touchdown/turnover fields, so classifying
-  // off of it directly silently loses the drive's real result — judge the
-  // play the PAT is attached to instead.
-  if (last.play_type === 'PAT_TRY' && plays.length > 1) {
-    last = plays[plays.length - 2];
-  }
-  // Immediate-score turnover closes the OFFENSE's drive under the turnover's
-  // own label — it must not read as a plain 'TD', since the points were the
-  // defense's, not the result of an offensive scoring drive.
-  const turnover = _turnoverScore(last, teams);
-  if (turnover) return turnover;
-  if (last.touchdown) return 'TD';
-  if (last.play_type === 'KICK' && last.kick_type === 'field_goal' && last.fg_result === 'good') return 'FG';
-  if (last.play_type === 'PUNT') return 'PUNT';
-  if (last.pass_result === 'intercepted') return 'INT';
-  if (last.result === 'fumble') return 'FUMB';
-  if (last.down === 4) return 'DOWNS';
-  if (isLastDrive) return 'HALF';
-  return null;
-}
-
+// computeDrives, driveEndLabel, _turnoverScore, _kickoffDriveOwner
+// (previously duplicated here from capture/engine.js) now come from
+// stats-lib.js — see the engineReady import block above. driveResult stays
+// here: it's a viewer-only convenience wrapper over the shared driveEndLabel.
 function driveResult(plays, teams) {
   return driveEndLabel(plays, false, teams);
 }
@@ -374,204 +256,6 @@ function formatSeconds(sec) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// ── Comparación (team-vs-team box score) ─────────────────────────────────────
-// A play counts as a first down two independent ways: (1) it gained enough
-// yards or scored, and wasn't itself voided by a penalty (stats_count),
-// OR (2) an accepted penalty's down_result directly awarded one (defensive
-// PI, etc.) — that branch fires exactly on the plays (1) excludes, which is
-// why this is an OR of two truly separate signals, not a single field.
-// down_result lives under three different keys depending on how the penalty
-// was captured: flag_1_down_result / flag_2_down_result (a flag attached to
-// a normal play) or penalty_down_result (a standalone PENALTY play).
-function _isFirstDownPlay(p) {
-  const byYards = p.stats_count !== false &&
-    ((p.net_yards != null && p.distance != null && p.net_yards >= p.distance) || p.touchdown === true);
-  const byPenalty = p.flag_1_down_result === 'first_down' ||
-    p.flag_2_down_result === 'first_down' ||
-    p.penalty_down_result === 'first_down';
-  return byYards || byPenalty;
-}
-
-// Every count/sum below either (a) measures official offensive production —
-// gated on stats_count !== false, same as the rest of the app now that
-// wizard.js zeroes out voided plays at save time — or (b) measures an event
-// that happened regardless of whether a penalty also nullified the down
-// (turnovers, fumbles, sacks made, TFL made, penalties themselves) and is
-// intentionally NOT gated on stats_count, since an accepted-flag play is
-// stats_count === false by construction — gating those would make Penalties
-// always read zero.
-function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
-  const blank = () => ({
-    passYds: 0, rushYds: 0, totalPlays: 0,
-    passCompletions: 0, rushPlays: 0, sackAdjRushYds: 0, sackAdjRushPlays: 0,
-    firstDowns: 0, thirdAtt: 0, thirdConv: 0, fourthAtt: 0, fourthConv: 0,
-    redZoneTrips: 0, redZoneTDs: 0,
-    turnovers: 0, fumbles: 0, fumblesLost: 0,
-    sacksMade: 0, sacksYds: 0, tflMade: 0, tflYds: 0,
-  });
-  const out = { [homeAbbr]: blank(), [awayAbbr]: blank() };
-  const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null));
-
-  for (const p of plays) {
-    if (p.play_type === 'GAME_CTRL') continue;
-
-    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && out[p.possession]) {
-      out[p.possession].turnovers++;
-    }
-    if (p.result === 'fumble' && out[p.possession]) {
-      out[p.possession].fumbles++;
-      if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) {
-        out[p.possession].fumblesLost++;
-        out[p.possession].turnovers++;
-      }
-    }
-
-    if (p.play_type === 'PASS' && p.pass_result === 'sack') {
-      const def = out[otherTeam(p.possession)];
-      if (def) { def.sacksMade++; def.sacksYds += Math.abs(p.net_yards || 0); }
-    }
-    const isTflEligible = p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'complete');
-    if (isTflEligible && p.net_yards != null && p.net_yards < 0) {
-      const def = out[otherTeam(p.possession)];
-      if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards); }
-    }
-
-    if (out[p.possession] && _isFirstDownPlay(p)) out[p.possession].firstDowns++;
-
-    if (p.stats_count === false) continue;
-    const t = out[p.possession];
-    if (!t) continue;
-
-    if (p.play_type === 'RUSH' || p.play_type === 'PASS') {
-      t.totalPlays++;
-      if (p.down === 3) { t.thirdAtt++; if (_isFirstDownPlay(p)) t.thirdConv++; }
-      if (p.down === 4) { t.fourthAtt++; if (_isFirstDownPlay(p)) t.fourthConv++; }
-    }
-
-    if (p.play_type === 'RUSH') {
-      const y = _effectiveNetYards(p, teams) || 0;
-      t.rushYds += y; t.rushPlays++;
-      t.sackAdjRushYds += y; t.sackAdjRushPlays++;
-    } else if (p.play_type === 'PASS' && (p.pass_result === 'sack' || p.pass_result === 'scramble')) {
-      const y = _effectiveNetYards(p, teams) || 0;
-      t.rushYds += y; t.rushPlays++;
-      if (p.pass_result === 'scramble') { t.sackAdjRushYds += y; t.sackAdjRushPlays++; }
-    } else if (p.play_type === 'PASS' && ['complete', 'incomplete', 'intercepted'].includes(p.pass_result)) {
-      t.passYds += (_effectiveNetYards(p, teams) || 0);
-      if (p.pass_result === 'complete') t.passCompletions++;
-    }
-  }
-
-  // Red zone — reuses computeDrives()'s own grouping and the shared
-  // driveEndLabel() Drive Chart already uses for "how did this drive end",
-  // instead of re-deriving a TD check here. yardline_100 is a real column
-  // computed and persisted at capture time (engine.js calcYardline100),
-  // never recalculated geometrically here.
-  drives.forEach((d, i) => {
-    const t = out[d.possession];
-    if (!t) return;
-    // A PAT_TRY is always snapped a couple yards from the goal line by rule
-    // (yardline_100 ~0-5) regardless of which drive it got merged into —
-    // it never reflects how far this drive's own offense actually advanced,
-    // so it can't be allowed to trigger a "trip" on its own.
-    const enteredRedZone = d.plays.some(p =>
-      p.play_type !== 'PAT_TRY' && p.yardline_100 != null && p.yardline_100 <= 20
-    );
-    if (!enteredRedZone) return;
-    t.redZoneTrips++;
-    if (driveEndLabel(d.plays, i === drives.length - 1, teams) === 'TD') t.redZoneTDs++;
-  });
-
-  return out;
-}
-
-// ── Penalties ─────────────────────────────────────────────────────────────────
-// A penalty is either its own standalone PENALTY play (penalty_team/
-// penalty_infraction/penalty_by/penalty_result/penalty_new_los) or a flag
-// attached to another play (flag_1_*/flag_2_*, same field shapes with a
-// flag_N_ prefix) — both are collected here into one chronological list per
-// team — same field_pos-vs-new_los yardage-delta calc used everywhere else
-// a penalty's effect needs to be measured (_effectiveNetYards, Comparación).
-// ⚠️ _puntTerminalSpot() and computePenalties() below are ALSO duplicated in
-// capture/engine.js (same reason as the computeComparisonStats block above —
-// Box Score's "Penalties" row needs them). Replicate fixes there too.
-// Resolves the spot where a PUNT actually ended (pre-penalty) — the field
-// that holds it varies by which branch the punt took, since unlike RUSH/PASS
-// there's no single uniform terminal field ('at'). Returns null when no such
-// field was captured (touchback, safety) so the caller can fall back.
-function _puntTerminalSpot(p) {
-  if (p.punt_result === 'fair_catch') return p.punt_fair_catch_at || null;
-  if (p.punt_result === 'oob') return p.punt_oob_at || null;
-  if (p.punt_result === 'downed') return p.punt_downed_at || null;
-  if (p.punt_result === 'returned') {
-    if (p.punt_return_result === 'fumble') return p.fumble_recovered_at || null;
-    return p.punt_return_at || null; // tackle / oob / eop
-  }
-  if (p.punt_result === 'blocked') {
-    if (p.punt_block_return_result === 'returned') {
-      if (p.punt_block_ret_result === 'fumble') return p.fumble_recovered_at || null;
-      return p.punt_block_ret_at || null; // tackle / oob / eop
-    }
-    return p.punt_recovered_at || null; // downed right where it was recovered
-  }
-  // touchback (and 'safety' inside returned/blocked) — no terminal spot is
-  // captured anywhere for these. Real rule for a punt touchback is the
-  // receiving team's own 20 (see engine.js advanceGameState, PUNT touchback
-  // branch), but that's an inline literal there, not an exported constant,
-  // and this file has no import path into engine.js (fully standalone) — so
-  // it can't be reused from here without duplicating the literal.
-  return null;
-}
-
-function computePenalties(plays, homeAbbr) {
-  const absYd = (team, yard) => (team === homeAbbr ? yard : 100 - yard);
-  const out = [];
-
-  function pushPenalty(p, team, infraction, by, result, newLos) {
-    if (!team || !infraction) return;
-    let yards = null;
-    // PUNT: field_pos is the kick's own snap spot, which would fold the
-    // punt's flight/return distance into the "penalty" yardage — use the
-    // play's actual terminal spot instead. Every other play_type (RUSH/PASS/
-    // PAT/etc.) keeps using field_pos exactly as before — most scrimmage
-    // penalties enforce "from previous spot" (the snap), so field_pos is
-    // already correct there and must not change.
-    // KICKOFF and FG share this same underlying issue but are left out of
-    // this fix on purpose — pending a follow-up pass.
-    let base = p.field_pos;
-    if (p.play_type === 'PUNT') {
-      // TODO: touchback (and 'safety' sub-results) have no terminal spot
-      // captured — falls back to field_pos here, which can be imprecise.
-      base = _puntTerminalSpot(p) || p.field_pos;
-    }
-    if (base && newLos) {
-      yards = Math.abs(absYd(newLos.team, newLos.yard) - absYd(base.team, base.yard));
-    }
-    out.push({
-      seq: p.seq, team, quarter: p.quarter, clock: p.clock,
-      code: infraction.code, label: infraction.label,
-      player: by ? playerLabel(by) : null,
-      result: result || '—',
-      yards,
-      context: typeof formatPlay === 'function' ? formatPlay(p) : p.play_type,
-    });
-  }
-
-  for (const p of plays) {
-    if (p.play_type === 'GAME_CTRL') continue;
-    if (p.play_type === 'PENALTY') {
-      pushPenalty(p, p.penalty_team, p.penalty_infraction, p.penalty_by, p.penalty_result, p.penalty_new_los);
-    }
-    for (const num of [1, 2]) {
-      const inf = p[`flag_${num}_infraction`];
-      if (!inf) continue;
-      pushPenalty(p, p[`flag_${num}_team`], inf, p[`flag_${num}_by`], p[`flag_${num}_result`], p[`flag_${num}_new_los`]);
-    }
-  }
-
-  return out.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-}
-
 // ── Defensive stats ──────────────────────────────────────────────────────────
 // A play's defense is simply whichever team does NOT have possession on it —
 // tackle_by/sack_by/etc. player refs don't carry their own team, but since
@@ -584,7 +268,7 @@ function computeDefenseStats(plays, homeAbbr, awayAbbr) {
     if (!team || !teams[team] || !player) return;
     const label = playerLabel(player);
     if (!label) return;
-    if (!teams[team][label]) teams[team][label] = { label, solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0 };
+    if (!teams[team][label]) teams[team][label] = { label, solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0, sackYds: 0, qbh: 0, pbu: 0 };
     teams[team][label][field] += delta;
   }
 
@@ -606,6 +290,7 @@ function computeDefenseStats(plays, homeAbbr, awayAbbr) {
     if (p.play_type === 'PASS' && p.pass_result === 'sack' && p.sack_by) {
       credit(defTeam, p.sack_by, 'sacks', 1);
       credit(defTeam, p.sack_by, 'solo', 1); // a sack is also a solo tackle
+      credit(defTeam, p.sack_by, 'sackYds', Math.abs(p.net_yards || 0));
     }
 
     if (p.fumble_forced_by) credit(defTeam, p.fumble_forced_by, 'ff', 1);
@@ -614,6 +299,13 @@ function computeDefenseStats(plays, homeAbbr, awayAbbr) {
     if (p.pass_result === 'intercepted' && p.intercepted_by) {
       credit(defTeam, p.intercepted_by, 'int', 1);
     }
+
+    // qb_hurried_by/broken_up_by are optional single-player fields captured
+    // on PASS incomplete/dropped/broken_up (same team:'opponent' shape as
+    // fumble_forced_by above) — Comparación's Defense sub-tab is the first
+    // consumer of either.
+    if (p.qb_hurried_by) credit(defTeam, p.qb_hurried_by, 'qbh', 1);
+    if (p.broken_up_by) credit(defTeam, p.broken_up_by, 'pbu', 1);
   }
 
   return teams;
@@ -787,6 +479,8 @@ function computeFumbleStats(plays) {
 // further-advance spot FUMBLE_RESULT_BRANCHES records for tackle/oob/eop
 // (fumble_at_result / fumble_2_at_result) — 0 when the recovery spot was the
 // final spot (no further advance captured).
+// See computeTurnoverReturnYardsByTeam() below for the team-total, split-by-
+// origin sibling used by Comparación's summary panel (INT vs FUM-YDS).
 function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams) {
   const map = {};
   function add(team, label, yds) {
@@ -823,6 +517,100 @@ function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams) {
   }
 
   return Object.values(map);
+}
+
+// Sibling of computeTurnoverReturnYards() above — same two source loops
+// (interception returns, defensive fumble recoveries), but aggregated
+// straight to TEAM totals and kept SEPARATE by origin (INT vs FUM-YDS),
+// instead of merged into one per-player FR/IR figure. A new function
+// rather than a modification of the original so its existing consumer
+// (computeAllPurposeMap's combined FR/IR column, which wants the two
+// merged) is untouched. If the return-distance resolution logic ever
+// changes (e.g. a new return_result branch), update both copies.
+function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, teams) {
+  const out = { [homeAbbr]: { intYds: 0, fumYds: 0 }, [awayAbbr]: { intYds: 0, fumYds: 0 } };
+  const dist = (team, from, to) =>
+    (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0;
+
+  for (const p of plays) {
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
+      const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null);
+      if (intTeam && out[intTeam]) {
+        let endPos = null;
+        if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at;
+        else if (p.return_result === 'fumble') endPos = p.fumble_at;
+        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0;
+        out[intTeam].intYds += yds;
+      }
+    }
+
+    for (const prefix of ['fumble_', 'fumble_2_']) {
+      const recTeam = p[`${prefix}recovery_team`];
+      const recAt   = p[`${prefix}recovered_at`];
+      if (!recTeam || !recAt || recTeam === p.possession || !out[recTeam]) continue;
+      const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result';
+      const endPos = p[advField] || null;
+      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0;
+      out[recTeam].fumYds += yds;
+    }
+  }
+  return out;
+}
+
+// Second sibling of computeTurnoverReturnYards() — same two source loops and
+// the exact same distance-resolution logic (intercepted_at→return_at/
+// fumble_at; fumble_recovered_at→fumble_at_result), but grouped by
+// INDIVIDUAL PLAYER instead of team, kept separate by origin, and adding a
+// TD flag (via isTouchdown() against the resolved end spot — turnover plays
+// never populate the raw `touchdown` field, see _turnoverScore's comment)
+// and a Long (max single return). Feeds Comparación's Defense sub-tab
+// (Interceptions / Fumble Returns sections).
+function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams) {
+  const interceptions = { [homeAbbr]: {}, [awayAbbr]: {} };
+  const fumbleReturns = { [homeAbbr]: {}, [awayAbbr]: {} };
+
+  function credit(map, team, player, yds, isTD) {
+    if (!map[team] || !player) return;
+    const label = playerLabel(player);
+    if (!label) return;
+    if (!map[team][label]) map[team][label] = { label, no: 0, yds: 0, td: 0, long: -Infinity };
+    const row = map[team][label];
+    row.no++;
+    row.yds += yds;
+    if (isTD) row.td++;
+    if (yds > row.long) row.long = yds;
+  }
+
+  const dist = (team, from, to) =>
+    (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0;
+
+  for (const p of plays) {
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
+      const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null);
+      if (intTeam) {
+        let endPos = null;
+        if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at;
+        else if (p.return_result === 'fumble') endPos = p.fumble_at;
+        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0;
+        const isTD = !!(endPos && isTouchdown(teams, intTeam, endPos));
+        credit(interceptions, intTeam, p.intercepted_by, yds, isTD);
+      }
+    }
+
+    for (const prefix of ['fumble_', 'fumble_2_']) {
+      const recTeam = p[`${prefix}recovery_team`];
+      const recBy   = p[`${prefix}recovered_by`];
+      const recAt   = p[`${prefix}recovered_at`];
+      if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue;
+      const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result';
+      const endPos = p[advField] || null;
+      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0;
+      const isTD = !!(endPos && isTouchdown(teams, recTeam, endPos));
+      credit(fumbleReturns, recTeam, recBy, yds, isTD);
+    }
+  }
+
+  return { interceptions, fumbleReturns };
 }
 
 // Combines rushing/receiving yards (already keyed by team+player from App()'s
@@ -917,37 +705,8 @@ function computeQBProgression(plays) {
 }
 
 // ── Explosive plays ──────────────────────────────────────────────────────────
-// An accepted flag with a new LOS overrides the actual result of the down
-// (same rule engine.js's applyFlags() uses) — the play's own net_yards is
-// just the raw gain on the snap, before the penalty is applied. A play that
-// gained real yardage but got wiped out by an accepted holding/etc. call
-// must be judged by the post-penalty result, not the raw one. Only the LAST
-// accepted flag with a new LOS matters — a second flag can replace the first,
-// same order applyFlags() processes them in.
-function _effectiveNetYards(p, teams) {
-  if (!teams || typeof calcNetYards !== 'function') return p.net_yards;
-
-  // A standalone PENALTY play (false start, encroachment, ...) has no
-  // net_yards of its own — the down's real result is the LOS change, same
-  // calc advanceGameState() does for the repeat-down distance recompute.
-  if (p.play_type === 'PENALTY') {
-    if (p.penalty_result === 'accepted' && p.field_pos && p.penalty_new_los) {
-      return calcNetYards(teams, p.possession, p.field_pos, p.penalty_new_los);
-    }
-    return null;
-  }
-
-  if (!p.field_pos) return p.net_yards;
-  let eff = p.net_yards;
-  for (const num of [1, 2]) {
-    if (!p[`flag_${num}_infraction`]) break;
-    if (p[`flag_${num}_result`] !== 'accepted') continue;
-    const newLos = p[`flag_${num}_new_los`];
-    if (newLos) eff = calcNetYards(teams, p.possession, p.field_pos, newLos);
-  }
-  return eff;
-}
-
+// _effectiveNetYards (previously duplicated here) now comes from
+// stats-lib.js — see the engineReady import block near the top of this file.
 function computeExplosivePlays(plays, teams) {
   const passing = [];
   const rushing = [];
@@ -995,24 +754,67 @@ function classifyDriveStart(prevEnd, isFirstDrive) {
   }
 }
 
+// computeDrives() intentionally fuses a kickoff (and, via the PAT_TRY
+// closing check, a scoring drive's own PAT) into a drive's `.plays` for
+// display/log purposes (see the architecture note above computeDrives) —
+// but neither is a real scrimmage down. Counting them as "plays", or
+// reading the kickoff's own field_pos as the drive's start spot, produces
+// wrong numbers: e.g. a kickoff-touchback into a single 75-yard TD rush
+// used to show "3 PLAYS" (kickoff + rush + the TD's own PAT) starting at
+// the KICKING team's 35, instead of "1 PLAY" starting at the true
+// post-touchback spot. A PUNT is excluded for the same reason — it's the
+// punting team's own special-teams play, not one of its offensive downs
+// (same criterion Team Stats already uses for Offensive Plays: RUSH+PASS
+// only). Unlike a kickoff, a punt is NOT fused into the next drive — it
+// stays the last play of the punting team's own drive (computeDrives()'s
+// driveOwner() only special-cases KICK/kickoff, not PUNT) — so there's no
+// equivalent "receiving drive inflated by the punt" case to worry about.
+// Shared by computeDriveRows() (Por Equipo/Cronológico) and the Drive
+// Chart (bar position) so there's exactly one definition of "real
+// scrimmage play" — not two hand-maintained copies.
+function _isScrimmagePlay(p) {
+  if (p.play_type === 'PAT_TRY') return false;
+  if (p.play_type === 'PUNT') return false;
+  if (p.play_type === 'KICK' && p.kick_type !== 'field_goal') return false;
+  return true;
+}
+
+// The drive's real starting field position — the field_pos of its FIRST
+// scrimmage play, which the wizard already resolved correctly at capture
+// time for however the preceding kickoff turned out (touchback, return,
+// fumble recovery, onside) — no need to special-case any of those here,
+// just skip past the transition play(s) entirely. Falls back to the
+// drive's literal first play only when it has no scrimmage play yet (e.g.
+// the last drive of a still-live game, captured only through its opening
+// kickoff).
+function _driveStartPos(drive) {
+  const scrimmagePlays = drive.plays.filter(_isScrimmagePlay);
+  return (scrimmagePlays[0] || drive.plays[0])?.field_pos;
+}
+
 function computeDriveRows(drives, teams) {
   const ends = drives.map((d, i) => classifyDriveEnd(d, i === drives.length - 1, teams));
   return drives.map((d, i) => {
     const first = d.plays[0], last = d.plays[d.plays.length - 1];
-    const yds = d.plays.reduce((a, p) => a + (_effectiveNetYards(p, teams) || 0), 0);
-    const realPlays = d.plays.filter(p => p.play_type !== 'GAME_CTRL').length;
+    // Only scrimmage plays contribute to the drive's total yards. A KICK/
+    // PAT_TRY has net_yards === null so it silently added 0 either way, but
+    // a PUNT carries a real net_yards (its field-position swing, sometimes
+    // inflated further by a post-play penalty) — summing it here folded the
+    // punt's own kicking distance into the drive's OFFENSIVE yardage, e.g. a
+    // 5-yard 3-play drive (0 + 1 + 4) showing "51 YDS" because its punt had
+    // a 46-yard net swing. Same _isScrimmagePlay() filter already used for
+    // realPlays below — one shared definition of "counts toward this
+    // drive's offense", not a second hand-maintained criterion.
+    const scrimmagePlays = d.plays.filter(_isScrimmagePlay);
+    const yds = scrimmagePlays.reduce((a, p) => a + (_effectiveNetYards(p, teams) || 0), 0);
+    const realPlays = scrimmagePlays.length;
     const c1 = parseClockToSeconds(first?.clock);
     const c2 = parseClockToSeconds(last?.clock);
     const top = (c1 != null && c2 != null && c1 >= c2 && first?.quarter === last?.quarter) ? c1 - c2 : null;
-    // A drive opening with a kickoff should show the post-return (or
-    // fumble-recovery) spot, not the kickoff play's own field_pos — that's
-    // the kicking spot, not where this drive actually starts.
-    const isKickoffStart = first?.play_type === 'KICK' && first?.kick_type !== 'field_goal';
-    const startPos = isKickoffStart
-      ? (first.fumble_recovered_at || first.kick_return_at || first.field_pos)
-      : first?.field_pos;
+    const startPos = _driveStartPos(d);
     return {
       possession: d.possession,
+      startPos,
       spot: startPos ? `${startPos.team} ${startPos.yard}` : '—',
       start: classifyDriveStart(i === 0 ? null : ends[i - 1], i === 0),
       end: ends[i],
@@ -1026,7 +828,7 @@ function computeDriveRows(drives, teams) {
 // playerLabel() — used to key the individual RUSHING/PASSING/RECEIVING
 // breakdown by player once rush_by/pass_by/received_by come back as real
 // {number, nombre, apellido} objects post-flatten. Delegates to the real
-// playerShortLabel() imported from capture/engine.js (same "#22 Pérez, J."
+// playerShortLabel() imported from stats-lib.js (same "#22 J. Pérez"
 // format used everywhere else) instead of duplicating that formatting here.
 // The typeof guard covers the brief window before engineReady resolves —
 // same pattern as the `formatPlay ? formatPlay(p) : ...` fallback below.
@@ -1058,8 +860,12 @@ function TeamLogo({ team, size = 72 }) {
 
 // ── FieldStrip ──────────────────────────────────────────────────────────────
 function FieldStrip({ possession, fieldPos, home, away }) {
+  // homeAbbr/awayAbbr: matching keys only, compared against raw play-record
+  // strings — never displayed. homeApodo/awayApodo: display-only labels.
   const homeAbbr = home?.abreviatura || '';
   const awayAbbr = away?.abreviatura || '';
+  const homeApodo = home?.Apodo || homeAbbr;
+  const awayApodo = away?.Apodo || awayAbbr;
   const ballTeam = fieldPos?.team;
   const ballYard = fieldPos?.yard ?? 50;
   // pctFromLeft: 0 = away endzone, 100 = home endzone
@@ -1067,13 +873,17 @@ function FieldStrip({ possession, fieldPos, home, away }) {
   const possColor = possession === homeAbbr
     ? (home?.color_principal || '#3b82f6')
     : (away?.color_principal || '#f97316');
+  // Endzone badges are only ~10% of a 400px-max strip (~40px) — apodos longer
+  // than 3 chars (e.g. "UDLAP", "CETYS") need a smaller font to avoid overflow.
+  const awayFontSize = awayApodo.length > 3 ? 7 : 9;
+  const homeFontSize = homeApodo.length > 3 ? 7 : 9;
   return (
     <div style={{ position:'relative', flex:1, maxWidth:400, height:52, background:'#1a6b3c', borderRadius:3, overflow:'hidden', minWidth:260 }}>
       <div style={{ position:'absolute', left:0, top:0, bottom:0, width:'10%', background: away?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
-        <span style={{ color: away?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{awayAbbr}</span>
+        <span style={{ color: away?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:awayFontSize, letterSpacing:0.5 }}>{awayApodo}</span>
       </div>
       <div style={{ position:'absolute', right:0, top:0, bottom:0, width:'10%', background: home?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
-        <span style={{ color: home?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:9, letterSpacing:1 }}>{homeAbbr}</span>
+        <span style={{ color: home?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:homeFontSize, letterSpacing:0.5 }}>{homeApodo}</span>
       </div>
       <div style={{ position:'absolute', left:'10%', right:'10%', top:0, bottom:0 }}>
         {[10,20,30,40,50,40,30,20,10].map((n,i) => (
@@ -1098,8 +908,8 @@ function ScoresPanel({ games, currentId }) {
         const active  = g.id === currentId;
         const isLive  = g.status === 'live';
         const isFinal = g.status === 'final';
-        const ha = g.home?.abreviatura || '?';
-        const aa = g.away?.abreviatura || '?';
+        const ha = g.home?.Apodo || g.home?.abreviatura || '?';
+        const aa = g.away?.Apodo || g.away?.abreviatura || '?';
         const sh = g.score_home ?? '—';
         const sa = g.score_away ?? '—';
         return (
@@ -1175,10 +985,10 @@ function EmptyState({ text }) {
   );
 }
 
-function TeamFilterBar({ filt, onChange, awayAbbr, homeAbbr }) {
+function TeamFilterBar({ filt, onChange, awayAbbr, homeAbbr, awayApodo, homeApodo }) {
   return (
     <div style={{ display:'flex', gap:5 }}>
-      {[['ALL','Todos'], [awayAbbr, awayAbbr], [homeAbbr, homeAbbr]].map(([val, label]) => (
+      {[['ALL','Todos'], [awayAbbr, awayApodo||awayAbbr], [homeAbbr, homeApodo||homeAbbr]].map(([val, label]) => (
         <button key={val} onClick={() => onChange(val)} style={{
           background: filt===val ? 'rgba(17,24,39,0.06)' : 'transparent',
           border: `1px solid ${filt===val ? 'rgba(17,24,39,0.25)' : 'var(--border2)'}`,
@@ -1191,12 +1001,32 @@ function TeamFilterBar({ filt, onChange, awayAbbr, homeAbbr }) {
   );
 }
 
-function StatRow({ label, awayVal, homeVal }) {
+// awayBar/homeBar are the raw numeric magnitudes the two thin bars below the
+// numbers are proportional to (NOT necessarily the same thing as awayVal/
+// homeVal — a "12-45" composite display string has no single number to bar,
+// so callers pass whichever component they picked for that row; see
+// ComparisonTab). Bars are mirrored from a shared center divider (SidearmStats-
+// style) — each team's bar length is (its value / the larger of the two)
+// so the away/home comparison reads as "who's longer", not an absolute scale.
+function StatRow({ label, awayVal, homeVal, awayBar, homeBar, awayColor, homeColor }) {
+  const maxBar  = Math.max(awayBar || 0, homeBar || 0);
+  const awayPct = maxBar > 0 ? ((awayBar || 0) / maxBar) * 100 : 0;
+  const homePct = maxBar > 0 ? ((homeBar || 0) / maxBar) * 100 : 0;
   return (
-    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderTop:'1px solid var(--border)', fontFamily:"'Inter',sans-serif" }}>
-      <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{awayVal}</span>
-      <span style={{ fontSize:11, color:'var(--text2)' }}>{label}</span>
-      <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{homeVal}</span>
+    <div style={{ padding:'7px 0', borderTop:'1px solid var(--border)', fontFamily:"'Inter',sans-serif" }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{awayVal}</span>
+        <span style={{ fontSize:11, color:'var(--text2)' }}>{label}</span>
+        <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{homeVal}</span>
+      </div>
+      <div style={{ display:'flex', alignItems:'center', gap:3, marginTop:4 }}>
+        <div style={{ flex:1, height:4, background:'var(--border)', borderRadius:2, display:'flex', justifyContent:'flex-end', overflow:'hidden' }}>
+          <div style={{ width:`${awayPct}%`, height:'100%', background:awayColor, borderRadius:2 }} />
+        </div>
+        <div style={{ flex:1, height:4, background:'var(--border)', borderRadius:2, overflow:'hidden' }}>
+          <div style={{ width:`${homePct}%`, height:'100%', background:homeColor, borderRadius:2 }} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1251,7 +1081,7 @@ function Placeholder({ text = 'Próximamente' }) {
 }
 
 // ── Tab: Jugada por Jugada ───────────────────────────────────────────────────
-function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeColor, awayColor }) {
+function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeApodo, awayApodo, homeColor, awayColor }) {
   const [driveFilt, setDriveFilt] = useState('ALL');
   const filteredDrives = driveFilt === 'ALL' ? drives : drives.filter(d => d.possession === driveFilt);
   const anyPlays = drives.some(d => d.plays.length);
@@ -1262,7 +1092,7 @@ function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeColor, awayColor }) {
       <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:10 }}>
         <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:18, color:'var(--text)', letterSpacing:0.5 }}>Jugada por jugada</span>
         <div style={{ marginLeft:'auto' }}>
-          <TeamFilterBar filt={driveFilt} onChange={setDriveFilt} awayAbbr={awayAbbr} homeAbbr={homeAbbr} />
+          <TeamFilterBar filt={driveFilt} onChange={setDriveFilt} awayAbbr={awayAbbr} homeAbbr={homeAbbr} awayApodo={awayApodo} homeApodo={homeApodo} />
         </div>
       </div>
 
@@ -1280,7 +1110,7 @@ function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeColor, awayColor }) {
                 <div key={di} style={{ borderBottom:'1px solid var(--border)' }}>
                   <div style={{ padding:'9px 16px', background:'#f9fafb', display:'flex', alignItems:'center', gap:9 }}>
                     <span style={{ width:9, height:9, borderRadius:'50%', background:dColor, display:'inline-block', flexShrink:0 }} />
-                    <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:dColor, letterSpacing:0.3 }}>{drive.possession}</span>
+                    <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:dColor, letterSpacing:0.3 }}>{isHome ? (homeApodo||drive.possession) : (awayApodo||drive.possession)}</span>
                     <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text3)' }}>Drive {driveNum}</span>
                     {dRes && (
                       <span style={{
@@ -1325,7 +1155,7 @@ function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeColor, awayColor }) {
   );
 }
 
-// ── Tab: Comparación ─────────────────────────────────────────────────────────
+// ── Tab: Team Stats ───────────────────────────────────────────────────────────
 // Accepted-flag penalty count/yards for one team, from the already-existing
 // computePenalties() list (which mixes accepted/declined/offsetting for both
 // teams) — filtered down, not recomputed.
@@ -1334,10 +1164,43 @@ function _teamPenaltySummary(penalties, teamAbbr) {
   return { count: accepted.length, yards: accepted.reduce((a, r) => a + (r.yards || 0), 0) };
 }
 
-function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr }) {
+const TEAM_STATS_PERIOD_TABS = [
+  { key: 'all', label: 'Totals' },
+  { key: 1,     label: '1st Quarter' },
+  { key: 2,     label: '2nd Quarter' },
+  { key: 3,     label: '3rd Quarter' },
+  { key: 4,     label: '4th Quarter' },
+];
+
+function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr, homeColor, awayColor }) {
+  const [period, setPeriod] = useState('all');
   const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
-  const stats = useMemo(() => computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams), [plays, drives, homeAbbr, awayAbbr]);
-  const penalties = useMemo(() => computePenalties(plays, homeAbbr), [plays, homeAbbr]);
+
+  // Per-quarter sub-tabs re-run the SAME 17 formulas on a play list
+  // pre-filtered to that quarter alone (not accumulated) — drives are
+  // recomputed from that filtered list too, not sliced out of the
+  // full-game `drives` prop. Every stat below that's a play-by-play
+  // accumulation (all but Red Zone) is exactly correct under this filter,
+  // since none of them depend on anything outside the filtered list.
+  // Red Zone is the one drive-based stat (via computeDrives + driveEndLabel)
+  // and has a known, accepted imprecision: a real drive that enters the red
+  // zone in one quarter and scores/turns the ball over in the next (crossing
+  // a quarter boundary mid-half — 1st→2nd or 3rd→4th, never 2nd→3rd, which
+  // always has a kickoff between drives) gets truncated by the filter — its
+  // TD can be missed in the quarter it started, and the leftover fragment
+  // can register as its own "trip" in the quarter it finished. Rare
+  // (intra-half boundaries only) and accepted rather than duplicating
+  // drive-merging logic per period just for this one row.
+  const periodPlays = useMemo(
+    () => period === 'all' ? plays : plays.filter(p => p.quarter === period),
+    [plays, period]
+  );
+  const periodDrives = useMemo(
+    () => period === 'all' ? drives : computeDrives(periodPlays, homeAbbr, awayAbbr),
+    [period, drives, periodPlays, homeAbbr, awayAbbr]
+  );
+  const stats = useMemo(() => computeComparisonStats(periodPlays, periodDrives, homeAbbr, awayAbbr, teams), [periodPlays, periodDrives, homeAbbr, awayAbbr]);
+  const penalties = useMemo(() => computePenalties(periodPlays, homeAbbr), [periodPlays, homeAbbr]);
   const A = stats[awayAbbr], H = stats[homeAbbr];
   const penA = _teamPenaltySummary(penalties, awayAbbr);
   const penH = _teamPenaltySummary(penalties, homeAbbr);
@@ -1352,35 +1215,480 @@ function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr }) {
     <div style={CARD_STYLE}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <TeamLogo team={away} size={48} />
-        <div style={{ ...SECTION_TITLE_STYLE, marginBottom:0 }}>Comparación</div>
+        <div style={{ ...SECTION_TITLE_STYLE, marginBottom:0 }}>Team Stats</div>
         <TeamLogo team={home} size={48} />
       </div>
 
-      <StatRow label="Total Yds"  awayVal={totalYdsA} homeVal={totalYdsH} />
-      <StatRow label="Pass Yds"   awayVal={A.passYds}  homeVal={H.passYds} />
-      <StatRow label="Rush Yds"   awayVal={A.rushYds}  homeVal={H.rushYds} />
-      <StatRow label="Penalties"  awayVal={`${penA.count}-${penA.yards}`} homeVal={`${penH.count}-${penH.yards}`} />
-      <StatRow label="1st Downs" awayVal={A.firstDowns} homeVal={H.firstDowns} />
+      <SubTabBar tabs={TEAM_STATS_PERIOD_TABS} active={period} onChange={setPeriod} />
+
+      <StatRow label="Total Yds"  awayVal={totalYdsA} homeVal={totalYdsH} awayBar={totalYdsA} homeBar={totalYdsH} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Pass Yds"   awayVal={A.passYds}  homeVal={H.passYds} awayBar={A.passYds} homeBar={H.passYds} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Rush Yds"   awayVal={A.rushYds}  homeVal={H.rushYds} awayBar={A.rushYds} homeBar={H.rushYds} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Penalties"  awayVal={`${penA.count}-${penA.yards}`} homeVal={`${penH.count}-${penH.yards}`}
+        awayBar={penA.yards} homeBar={penH.yards} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="1st Downs" awayVal={A.firstDowns} homeVal={H.firstDowns} awayBar={A.firstDowns} homeBar={H.firstDowns} awayColor={awayColor} homeColor={homeColor} />
       {showThird && (
         <StatRow label="3rd Downs"
           awayVal={A.thirdAtt > 0 ? `${A.thirdConv}-${A.thirdAtt}` : '—'}
-          homeVal={H.thirdAtt > 0 ? `${H.thirdConv}-${H.thirdAtt}` : '—'} />
+          homeVal={H.thirdAtt > 0 ? `${H.thirdConv}-${H.thirdAtt}` : '—'}
+          awayBar={A.thirdConv} homeBar={H.thirdConv} awayColor={awayColor} homeColor={homeColor} />
       )}
       {showFourth && (
         <StatRow label="4th Downs"
           awayVal={A.fourthAtt > 0 ? `${A.fourthConv}-${A.fourthAtt}` : '—'}
-          homeVal={H.fourthAtt > 0 ? `${H.fourthConv}-${H.fourthAtt}` : '—'} />
+          homeVal={H.fourthAtt > 0 ? `${H.fourthConv}-${H.fourthAtt}` : '—'}
+          awayBar={A.fourthAtt} homeBar={H.fourthAtt} awayColor={awayColor} homeColor={homeColor} />
       )}
-      <StatRow label="Total Plays" awayVal={A.totalPlays} homeVal={H.totalPlays} />
-      <StatRow label="Avg Yds/Play"       awayVal={fmtRatio(totalYdsA, A.totalPlays)}          homeVal={fmtRatio(totalYdsH, H.totalPlays)} />
-      <StatRow label="Avg Yds/Completion" awayVal={fmtRatio(A.passYds, A.passCompletions)}      homeVal={fmtRatio(H.passYds, H.passCompletions)} />
-      <StatRow label="Avg Yds/Rush"       awayVal={fmtRatio(A.rushYds, A.rushPlays)}             homeVal={fmtRatio(H.rushYds, H.rushPlays)} />
-      <StatRow label="Sack-Adj Rush Yd (Avg)" awayVal={fmtRatio(A.sackAdjRushYds, A.sackAdjRushPlays)} homeVal={fmtRatio(H.sackAdjRushYds, H.sackAdjRushPlays)} />
-      <StatRow label="Red Zone"   awayVal={`${A.redZoneTDs}-${A.redZoneTrips}`} homeVal={`${H.redZoneTDs}-${H.redZoneTrips}`} />
-      <StatRow label="Turnovers" awayVal={A.turnovers} homeVal={H.turnovers} />
-      <StatRow label="Fumbles-Lost"     awayVal={`${A.fumbles}-${A.fumblesLost}`}   homeVal={`${H.fumbles}-${H.fumblesLost}`} />
-      <StatRow label="Sacks (Def Yds)"  awayVal={`${A.sacksMade}-${A.sacksYds}`}    homeVal={`${H.sacksMade}-${H.sacksYds}`} />
-      <StatRow label="TFL (Def Yds)"    awayVal={`${A.tflMade}-${A.tflYds}`}        homeVal={`${H.tflMade}-${H.tflYds}`} />
+      <StatRow label="Offensive Plays" awayVal={A.totalPlays} homeVal={H.totalPlays} awayBar={A.totalPlays} homeBar={H.totalPlays} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Avg Yds/Play"       awayVal={fmtRatio(totalYdsA, A.totalPlays)}          homeVal={fmtRatio(totalYdsH, H.totalPlays)}
+        awayBar={totalYdsA / (A.totalPlays || 1)} homeBar={totalYdsH / (H.totalPlays || 1)} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Avg Yds/Completion" awayVal={fmtRatio(A.passYds, A.passCompletions)}      homeVal={fmtRatio(H.passYds, H.passCompletions)}
+        awayBar={A.passYds / (A.passCompletions || 1)} homeBar={H.passYds / (H.passCompletions || 1)} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Avg Yds/Rush"       awayVal={fmtRatio(A.rushYds, A.rushPlays)}             homeVal={fmtRatio(H.rushYds, H.rushPlays)}
+        awayBar={A.rushYds / (A.rushPlays || 1)} homeBar={H.rushYds / (H.rushPlays || 1)} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Sack-Adj Rush Yd (Avg)" awayVal={fmtRatio(A.sackAdjRushYds, A.sackAdjRushPlays)} homeVal={fmtRatio(H.sackAdjRushYds, H.sackAdjRushPlays)}
+        awayBar={A.sackAdjRushYds / (A.sackAdjRushPlays || 1)} homeBar={H.sackAdjRushYds / (H.sackAdjRushPlays || 1)} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Red Zone"   awayVal={`${A.redZoneTDs}-${A.redZoneTrips}`} homeVal={`${H.redZoneTDs}-${H.redZoneTrips}`}
+        awayBar={A.redZoneTrips} homeBar={H.redZoneTrips} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Turnovers" awayVal={A.turnovers} homeVal={H.turnovers} awayBar={A.turnovers} homeBar={H.turnovers} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Fumbles-Lost"     awayVal={`${A.fumbles}-${A.fumblesLost}`}   homeVal={`${H.fumbles}-${H.fumblesLost}`}
+        awayBar={A.fumblesLost} homeBar={H.fumblesLost} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="Sacks (Def Yds)"  awayVal={`${A.sacksMade}-${A.sacksYds}`}    homeVal={`${H.sacksMade}-${H.sacksYds}`}
+        awayBar={A.sacksYds} homeBar={H.sacksYds} awayColor={awayColor} homeColor={homeColor} />
+      <StatRow label="TFL (Def Yds)"    awayVal={`${A.tflMade}-${A.tflYds}`}        homeVal={`${H.tflMade}-${H.tflYds}`}
+        awayBar={A.tflYds} homeBar={H.tflYds} awayColor={awayColor} homeColor={homeColor} />
+    </div>
+  );
+}
+
+// ── Tab: Comparación (Offense / Defense-Tackling / Special Teams) ───────────
+// Only "Offense" exists so far — Defense/Tackling and Special Teams sub-tabs,
+// plus the per-quarter progression table, are a separate follow-up and
+// deliberately not started here.
+const COMPARACION_SUBTABS = [
+  { key: 'offense', label: 'Offense' },
+  { key: 'defense', label: 'Defense' },
+];
+
+// Classic NCAA/NFL passer rating (the "old" 0-158.3 formula), NOT ESPN's
+// Total QBR — QBR is a proprietary model (win probability, garbage-time
+// discounting, etc.) we don't have the inputs to reproduce, so this table
+// uses the public formula instead:
+//   a = clamp((Comp/Att - 0.3) * 5, 0, 2.375)
+//   b = clamp((Yds/Att - 3) * 0.25, 0, 2.375)
+//   c = clamp((TD/Att) * 20, 0, 2.375)
+//   d = clamp(2.375 - (Int/Att) * 25, 0, 2.375)
+//   rating = (a + b + c + d) / 6 * 100
+function _passerRating(comp, att, yds, td, int) {
+  if (!att) return null;
+  const clamp = v => Math.max(0, Math.min(2.375, v));
+  const a = clamp((comp / att - 0.3) * 5);
+  const b = clamp((yds / att - 3) * 0.25);
+  const c = clamp((td / att) * 20);
+  const d = clamp(2.375 - (int / att) * 25);
+  return ((a + b + c + d) / 6) * 100;
+}
+
+// Int is read from computeQBProgression()'s already-correct per-QB count
+// (via qbIntMap, built by the caller) instead of a second accumulator on
+// the passers map — one source of truth for "how many times did this QB
+// throw a pick", not two that could drift apart.
+function _passingRows(passers, teamAbbr, qbIntMap) {
+  const data = passers[teamAbbr] || {};
+  return Object.entries(data).map(([name, d]) => {
+    const int = qbIntMap[`${teamAbbr}::${name}`] || 0;
+    const pct = d.att ? `${((d.comp / d.att) * 100).toFixed(1)}%` : '0.0%';
+    const rating = _passerRating(d.comp, d.att, d.yds, d.td, int);
+    const long = d.long === -Infinity ? 0 : d.long;
+    return [
+      name, d.comp, d.att, pct, d.yds, d.td, int, long,
+      d.sacked ? `${d.sacked}-${d.sackedYds}` : '0',
+      rating != null ? rating.toFixed(1) : '—',
+    ];
+  });
+}
+
+function _rushingRows(rushers, teamAbbr) {
+  const data = rushers[teamAbbr] || {};
+  return Object.entries(data).map(([name, d]) => {
+    const long = d.long === -Infinity ? 0 : d.long;
+    return [name, d.att, d.gained || 0, d.yds, d.att ? (d.yds / d.att).toFixed(1) : '0.0', d.td, long];
+  });
+}
+
+function _receivingRows(receivers, teamAbbr) {
+  const data = receivers[teamAbbr] || {};
+  return Object.entries(data).map(([name, d]) => {
+    const long = d.long === -Infinity ? 0 : d.long;
+    return [name, d.rec, d.yds, d.rec ? (d.yds / d.rec).toFixed(1) : '0.0', d.td, long];
+  });
+}
+
+// Team totals for a per-player special-teams array (specialTeamsStats'
+// punting/kickReturns/puntReturns lists) — those are keyed per-player, this
+// just folds one team's rows down to {no, yds}.
+function _sumByTeam(rows, teamAbbr) {
+  return rows.filter(r => r.team === teamAbbr).reduce((acc, r) => ({ no: acc.no + r.no, yds: acc.yds + r.yds }), { no: 0, yds: 0 });
+}
+
+function OffenseTeamCard({ abbr, label, color, passers, rushers, receivers, qbIntMap }) {
+  const passRows = _passingRows(passers, abbr, qbIntMap);
+  const rushRows = _rushingRows(rushers, abbr);
+  const recRows  = _receivingRows(receivers, abbr);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ width:10, height:10, borderRadius:'50%', background:color, display:'inline-block' }} />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)', letterSpacing:0.3 }}>{label || abbr}</span>
+      </div>
+      <SimpleStatTable title="PASSING"   cols={['Uni','Comp','Att','Pct','Yds','TD','Int','Long','Sk','Rtg']} rows={passRows} empty="Sin pases todavía."       dense col0MaxWidth={92} />
+      <SimpleStatTable title="RUSHING"   cols={['Uni','Att','Gn','Net','Avg','TD','Long']}                     rows={rushRows} empty="Sin corridas todavía."    dense col0MaxWidth={92} />
+      <SimpleStatTable title="RECEIVING" cols={['Uni','Rec','Yds','Avg','TD','Long']}                          rows={recRows}  empty="Sin recepciones todavía." dense col0MaxWidth={92} />
+    </div>
+  );
+}
+
+// ── Defense sub-tab row builders ─────────────────────────────────────────────
+// Sacks shows ONE "Sacks" column, not Solo/Ast — sack_by is multiple:false
+// (a single player per sack), so there's no shared-sack data to split.
+function _sacksRows(defenseStats, teamAbbr) {
+  const data = defenseStats[teamAbbr] || {};
+  return Object.entries(data)
+    .filter(([, d]) => d.sacks > 0 || d.qbh > 0)
+    .map(([name, d]) => [name, d.sacks, d.sackYds, d.qbh]);
+}
+
+// PBU/Int-count come from computeDefenseStats() (same source Team Stats
+// already uses); Int Yds comes from computeTurnoverStatsByPlayer()'s
+// interceptions map — merged by player label here since neither source
+// alone has both halves of this row.
+function _passDefenseRows(defenseStats, interceptions, teamAbbr) {
+  const def  = defenseStats[teamAbbr] || {};
+  const ints = interceptions[teamAbbr] || {};
+  const labels = new Set([...Object.keys(def), ...Object.keys(ints)]);
+  const rows = [];
+  labels.forEach(label => {
+    const d = def[label] || {};
+    const i = ints[label] || {};
+    const pbu   = d.pbu || 0;
+    const intNo = d.int || i.no || 0;
+    if (pbu > 0 || intNo > 0) rows.push([label, pbu, intNo, i.yds || 0]);
+  });
+  return rows;
+}
+
+function _turnoverRows(map, teamAbbr) {
+  const data = map[teamAbbr] || {};
+  return Object.entries(data).map(([name, d]) => [name, d.no, d.yds, d.td, d.long === -Infinity ? 0 : d.long]);
+}
+
+function DefenseTeamCard({ abbr, label, color, defenseStats, interceptions, fumbleReturns }) {
+  const sacksRows    = _sacksRows(defenseStats, abbr);
+  const passDefRows  = _passDefenseRows(defenseStats, interceptions, abbr);
+  const intRows      = _turnoverRows(interceptions, abbr);
+  const fumRows      = _turnoverRows(fumbleReturns, abbr);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ width:10, height:10, borderRadius:'50%', background:color, display:'inline-block' }} />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)', letterSpacing:0.3 }}>{label || abbr}</span>
+      </div>
+      <SimpleStatTable title="SACKS"          cols={['Uni','Sacks','Sack Yds','QBH']}       rows={sacksRows}   empty="No players with these stats." dense col0MaxWidth={92} />
+      <SimpleStatTable title="PASS DEFENSE"   cols={['Uni','PBU','Int','Int Yds']}           rows={passDefRows} empty="No players with these stats." dense col0MaxWidth={92} />
+      <SimpleStatTable title="FUMBLE RETURNS" cols={['Uni','Returns','Yards','TD','Long']}   rows={fumRows}     empty="No players with these stats." dense col0MaxWidth={92} />
+      <SimpleStatTable title="INTERCEPTIONS"  cols={['Uni','Returns','Yards','TD','Long']}   rows={intRows}     empty="No players with these stats." dense col0MaxWidth={92} />
+    </div>
+  );
+}
+
+// Narrow team-vs-team summary panel — SidearmStats-style sidebar of one row
+// per stat, both teams' values side by side. POS (time of possession) is
+// deliberately NOT here: it would need a quarter-length constant and a real
+// design for drives that cross a quarter boundary (see computeDriveRows'
+// per-drive `top`, which already bails to null on that case) — descoped, not
+// a forgotten placeholder.
+function TeamSummaryPanel({ awayAbbr, homeAbbr, awayColor, homeColor, rows }) {
+  return (
+    <div style={CARD_STYLE}>
+      <div style={SECTION_TITLE_STYLE}>Team Summary</div>
+      <table style={{ width:'100%', borderCollapse:'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ padding:'4px 6px' }} />
+            <th style={{ textAlign:'right', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, color:awayColor, padding:'4px 6px' }}>{awayAbbr}</th>
+            <th style={{ textAlign:'right', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, color:homeColor, padding:'4px 6px' }}>{homeAbbr}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
+              <td style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'var(--text3)', fontWeight:600, letterSpacing:0.3, padding:'5px 6px', whiteSpace:'nowrap' }}>{r.label}</td>
+              <td style={{ textAlign:'right', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'5px 6px', whiteSpace:'nowrap' }}>{r.away}</td>
+              <td style={{ textAlign:'right', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'5px 6px', whiteSpace:'nowrap' }}>{r.home}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── BasicBoxScore ─────────────────────────────────────────────────────────────
+// Rendered instead of the tabbed play-by-play UI (Team Stats/Comparación/
+// Drives/Play-by-Play/...) for a game captured via manual_stats.html —
+// team_game_stats_manual/player_game_stats_manual rows but no plays[], so
+// none of the play-derived stuff (drives, per-play breakdowns) exists to show.
+
+// Highest non-zero value of `field` among a team's player_game_stats_manual
+// rows, or null if nobody on that side has any (e.g. a team with no defensive
+// leaders entered, or the whole category left blank).
+function _topManualStat(playerManualStats, teamId, field) {
+  let best = null;
+  for (const r of playerManualStats) {
+    if (r.player?.team_id !== teamId) continue;
+    const val = r[field] || 0;
+    if (val > 0 && (!best || val > best.val)) best = { player: r.player, val };
+  }
+  return best;
+}
+
+function BoxScoreLeaderLine({ label, leader }) {
+  const name = leader ? [leader.player.nombre, leader.player.apellido].filter(Boolean).join(' ') : '';
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', padding:'6px 0', borderTop:'1px solid var(--border)', gap:10 }}>
+      <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:'var(--text3)', flexShrink:0 }}>{label}</span>
+      {leader ? (
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:'var(--text)', textAlign:'right' }}>
+          #{leader.player.number}{name ? ' ' + name : ''} — {leader.val} yds
+        </span>
+      ) : (
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text3)' }}>—</span>
+      )}
+    </div>
+  );
+}
+
+function TeamLeadersCard({ label, color, teamId, playerManualStats }) {
+  const passer   = _topManualStat(playerManualStats, teamId, 'pass_yds');
+  const rusher   = _topManualStat(playerManualStats, teamId, 'rush_yds');
+  const receiver = _topManualStat(playerManualStats, teamId, 'rec_yds');
+  return (
+    <div style={CARD_STYLE}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:13, color, marginBottom:2 }}>{label}</div>
+      <BoxScoreLeaderLine label="Líder de pase" leader={passer} />
+      <BoxScoreLeaderLine label="Líder de carrera" leader={rusher} />
+      <BoxScoreLeaderLine label="Líder de recepción" leader={receiver} />
+    </div>
+  );
+}
+
+const MANUAL_TEAM_STAT_ROWS = [
+  ['first_downs',      'First Downs'],
+  ['total_yds',        'Total Yds'],
+  ['pass_yds',         'Pass Yds'],
+  ['rush_yds',         'Rush Yds'],
+  ['penalties',        'Penalties'],
+  ['penalty_yds',      'Penalty Yds'],
+  ['red_zone_td',      'Red Zone TD'],
+  ['red_zone_trips',   'Red Zone Trips'],
+  ['turnovers',        'Turnovers'],
+  ['fumbles',          'Fumbles'],
+  ['fumbles_lost',     'Fumbles Lost'],
+  ['sacks',            'Sacks'],
+  ['sack_yds',         'Sack Yds'],
+  ['tfl',              'TFL'],
+  ['tfl_yds',          'TFL Yds'],
+  ['third_down_conv',  '3rd Down Conv'],
+  ['third_down_att',   '3rd Down Att'],
+  ['fourth_down_conv', '4th Down Conv'],
+  ['fourth_down_att',  '4th Down Att'],
+];
+
+// Manual-stats analogs of _passingRows/_rushingRows/_receivingRows — same row
+// shape SimpleStatTable already expects, sourced from player_game_stats_manual
+// instead of a plays[]-derived map. Long/Sacked have no equivalent in manual
+// capture, so they render as '—' (columns kept, not omitted, so the table
+// looks identical between live and historical games).
+function _manualPassingRows(playerManualStats, teamId) {
+  return playerManualStats
+    .filter(r => r.player?.team_id === teamId && ((r.pass_att || 0) > 0 || (r.pass_yds || 0) > 0))
+    .map(r => {
+      const att = r.pass_att || 0, comp = r.pass_comp || 0, yds = r.pass_yds || 0, td = r.pass_td || 0, int = r.pass_int || 0;
+      const pct = att ? `${((comp / att) * 100).toFixed(1)}%` : '0.0%';
+      const rating = _passerRating(comp, att, yds, td, int);
+      return [playerShortLabel(r.player), comp, att, pct, yds, td, int, '—', '—', rating != null ? rating.toFixed(1) : '—'];
+    });
+}
+
+function _manualRushingRows(playerManualStats, teamId) {
+  return playerManualStats
+    .filter(r => r.player?.team_id === teamId && ((r.rush_att || 0) > 0 || (r.rush_yds || 0) > 0))
+    .map(r => {
+      const att = r.rush_att || 0, yds = r.rush_yds || 0;
+      return [playerShortLabel(r.player), att, '—', yds, att ? (yds / att).toFixed(1) : '0.0', r.rush_td || 0, '—'];
+    });
+}
+
+function _manualReceivingRows(playerManualStats, teamId) {
+  return playerManualStats
+    .filter(r => r.player?.team_id === teamId && ((r.rec || 0) > 0 || (r.rec_yds || 0) > 0))
+    .map(r => {
+      const rec = r.rec || 0, yds = r.rec_yds || 0;
+      return [playerShortLabel(r.player), rec, yds, rec ? (yds / rec).toFixed(1) : '0.0', r.rec_td || 0, '—'];
+    });
+}
+
+// Sibling of OffenseTeamCard for the manual path — same layout/columns, fed
+// by the manual row-builders above instead of the plays[]-derived maps.
+// OffenseTeamCard itself is untouched.
+function ManualOffenseTeamCard({ abbr, label, color, teamId, playerManualStats }) {
+  const passRows = _manualPassingRows(playerManualStats, teamId);
+  const rushRows = _manualRushingRows(playerManualStats, teamId);
+  const recRows  = _manualReceivingRows(playerManualStats, teamId);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ width:10, height:10, borderRadius:'50%', background:color, display:'inline-block' }} />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)', letterSpacing:0.3 }}>{label || abbr}</span>
+      </div>
+      <SimpleStatTable title="PASSING"   cols={['Uni','Comp','Att','Pct','Yds','TD','Int','Long','Sk','Rtg']} rows={passRows} empty="Sin pases todavía."       dense col0MaxWidth={92} />
+      <SimpleStatTable title="RUSHING"   cols={['Uni','Att','Gn','Net','Avg','TD','Long']}                     rows={rushRows} empty="Sin corridas todavía."    dense col0MaxWidth={92} />
+      <SimpleStatTable title="RECEIVING" cols={['Uni','Rec','Yds','Avg','TD','Long']}                          rows={recRows}  empty="Sin recepciones todavía." dense col0MaxWidth={92} />
+    </div>
+  );
+}
+
+function BasicBoxScore({
+  teamManualStats, playerManualStats, homeTeamId, awayTeamId,
+  awayApodo, homeApodo, awayColor, homeColor,
+}) {
+  const homeRow = teamManualStats.find(r => r.team_id === homeTeamId);
+  const awayRow = teamManualStats.find(r => r.team_id === awayTeamId);
+
+  const rows = MANUAL_TEAM_STAT_ROWS.map(([key, label]) => ({
+    label, away: awayRow?.[key] ?? 0, home: homeRow?.[key] ?? 0,
+  }));
+  rows.push({
+    label: 'Time of Possession',
+    away: secondsToMMSS(awayRow?.time_of_possession_sec) || '—',
+    home: secondsToMMSS(homeRow?.time_of_possession_sec) || '—',
+  });
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:18, maxWidth:640, margin:'0 auto' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:20, color:'var(--text)' }}>Box Score</span>
+        <span style={{
+          fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color:'var(--text2)',
+          background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:4,
+          padding:'2px 8px', letterSpacing:0.5,
+        }}>CAPTURA MANUAL</span>
+      </div>
+
+      <TeamSummaryPanel awayAbbr={awayApodo} homeAbbr={homeApodo} awayColor={awayColor} homeColor={homeColor} rows={rows} />
+
+      <div>
+        <div style={SECTION_TITLE_STYLE}>Líderes del partido</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <TeamLeadersCard label={awayApodo} color={awayColor} teamId={awayTeamId} playerManualStats={playerManualStats} />
+          <TeamLeadersCard label={homeApodo} color={homeColor} teamId={homeTeamId} playerManualStats={playerManualStats} />
+        </div>
+      </div>
+
+      <div>
+        <div style={SECTION_TITLE_STYLE}>Estadísticas por jugador</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <ManualOffenseTeamCard abbr={awayApodo} label={awayApodo} color={awayColor} teamId={awayTeamId} playerManualStats={playerManualStats} />
+          <ManualOffenseTeamCard abbr={homeApodo} label={homeApodo} color={homeColor} teamId={homeTeamId} playerManualStats={playerManualStats} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComparacionTab({
+  plays, drives, homeAbbr, awayAbbr, homeApodo, awayApodo, homeColor, awayColor,
+  passers, rushers, receivers, qbProgression, specialTeamsStats, penalties, defenseStats,
+}) {
+  const [subTab, setSubTab] = useState('offense');
+  const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+
+  const stats = useMemo(() => computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams), [plays, drives, homeAbbr, awayAbbr]);
+  const turnoverYdsByTeam = useMemo(() => computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, teams), [plays, homeAbbr, awayAbbr]);
+  const turnoverStatsByPlayer = useMemo(() => computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams), [plays, homeAbbr, awayAbbr]);
+  const qbIntMap = useMemo(() => {
+    const m = {};
+    qbProgression.forEach(qb => { m[`${qb.team}::${qb.label}`] = qb.int; });
+    return m;
+  }, [qbProgression]);
+
+  const A = stats[awayAbbr], H = stats[homeAbbr];
+  const penA = _teamPenaltySummary(penalties, awayAbbr);
+  const penH = _teamPenaltySummary(penalties, homeAbbr);
+  const krA = _sumByTeam(specialTeamsStats.kickReturns, awayAbbr);
+  const krH = _sumByTeam(specialTeamsStats.kickReturns, homeAbbr);
+  const prA = _sumByTeam(specialTeamsStats.puntReturns, awayAbbr);
+  const prH = _sumByTeam(specialTeamsStats.puntReturns, homeAbbr);
+  const puA = _sumByTeam(specialTeamsStats.punting, awayAbbr);
+  const puH = _sumByTeam(specialTeamsStats.punting, homeAbbr);
+
+  const fmtRatio = (num, den) => den > 0 ? (num / den).toFixed(1) : '0.0';
+  const fmtEff   = (conv, att) => att > 0 ? `${conv}-${att} (${Math.round((conv / att) * 100)}%)` : '—';
+  const fmtPunts = (yds, no) => no > 0 ? `${no}-${yds} (${(yds / no).toFixed(1)})` : '0-0 (0.0)';
+
+  const totalYdsA = A.passYds + A.rushYds;
+  const totalYdsH = H.passYds + H.rushYds;
+
+  const summaryRows = [
+    { label: '1st DWN',  away: A.firstDowns,   home: H.firstDowns },
+    { label: 'RUSH-ATT', away: A.rushPlays,    home: H.rushPlays },
+    { label: 'RUSH-YDS', away: A.rushYds,      home: H.rushYds },
+    { label: 'RUSH-AVG', away: fmtRatio(A.rushYds, A.rushPlays), home: fmtRatio(H.rushYds, H.rushPlays) },
+    { label: 'REC',      away: A.passCompletions, home: H.passCompletions },
+    { label: 'REC-YDS',  away: A.passYds,      home: H.passYds },
+    { label: 'REC-AVG',  away: fmtRatio(A.passYds, A.passCompletions), home: fmtRatio(H.passYds, H.passCompletions) },
+    { label: 'PASS-YDS', away: A.passYds,      home: H.passYds },
+    { label: 'PASS-CAI', away: `${A.passCompletions}-${A.passAttempts}-${A.intsThrown}`, home: `${H.passCompletions}-${H.passAttempts}-${H.intsThrown}` },
+    { label: 'P-YDS',    away: totalYdsA,      home: totalYdsH },
+    { label: 'YDS-PP',   away: fmtRatio(totalYdsA, A.totalPlays), home: fmtRatio(totalYdsH, H.totalPlays) },
+    { label: 'KR-YDS',   away: krA.yds,        home: krH.yds },
+    { label: 'PR-YDS',   away: prA.yds,        home: prH.yds },
+    { label: 'INT',      away: turnoverYdsByTeam[awayAbbr].intYds, home: turnoverYdsByTeam[homeAbbr].intYds },
+    { label: 'FUM-YDS',  away: turnoverYdsByTeam[awayAbbr].fumYds, home: turnoverYdsByTeam[homeAbbr].fumYds },
+    { label: 'FUM-LST',  away: A.fumblesLost,  home: H.fumblesLost },
+    { label: 'PEN',      away: `${penA.count}-${penA.yards}`, home: `${penH.count}-${penH.yards}` },
+    { label: 'PUNTS',    away: fmtPunts(puA.yds, puA.no), home: fmtPunts(puH.yds, puH.no) },
+    { label: '3rd EFF',  away: fmtEff(A.thirdConv, A.thirdAtt), home: fmtEff(H.thirdConv, H.thirdAtt) },
+    { label: '4th EFF',  away: fmtEff(A.fourthConv, A.fourthAtt), home: fmtEff(H.fourthConv, H.fourthAtt) },
+  ];
+
+  return (
+    <div>
+      <SubTabBar tabs={COMPARACION_SUBTABS} active={subTab} onChange={setSubTab} />
+      {subTab === 'offense' && (
+        // Passing alone is 10 columns wide (Comp/Att/Pct/Yds/TD/Int/Long/
+        // Sacked/Rating) — the away/home side gets most of the row's width
+        // via flex, the summary sidebar stays a capped, narrower column next
+        // to it (SimpleStatTable's own overflow-x:auto is still the real
+        // safety net if either side gets squeezed on a narrow viewport).
+        <div style={{ display:'flex', gap:16, flexWrap:'wrap', alignItems:'flex-start' }}>
+          <div style={{ flex:'3 1 640px', display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16 }}>
+            <OffenseTeamCard abbr={awayAbbr} label={awayApodo} color={awayColor} passers={passers} rushers={rushers} receivers={receivers} qbIntMap={qbIntMap} />
+            <OffenseTeamCard abbr={homeAbbr} label={homeApodo} color={homeColor} passers={passers} rushers={rushers} receivers={receivers} qbIntMap={qbIntMap} />
+          </div>
+          <div style={{ flex:'1 1 280px', maxWidth:340 }}>
+            <TeamSummaryPanel awayAbbr={awayApodo} homeAbbr={homeApodo} awayColor={awayColor} homeColor={homeColor} rows={summaryRows} />
+          </div>
+        </div>
+      )}
+      {subTab === 'defense' && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16, alignItems:'start' }}>
+          <DefenseTeamCard abbr={awayAbbr} label={awayApodo} color={awayColor} defenseStats={defenseStats}
+            interceptions={turnoverStatsByPlayer.interceptions} fumbleReturns={turnoverStatsByPlayer.fumbleReturns} />
+          <DefenseTeamCard abbr={homeAbbr} label={homeApodo} color={homeColor} defenseStats={defenseStats}
+            interceptions={turnoverStatsByPlayer.interceptions} fumbleReturns={turnoverStatsByPlayer.fumbleReturns} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1452,11 +1760,11 @@ function PenaltiesTable({ rows }) {
   );
 }
 
-function DefenseTable({ abbr, color, rows }) {
+function DefenseTable({ abbr, label, color, rows }) {
   const THS = ['Jugador','Solo','Ast','Total','Sacks','TFL','FF','INT'];
   return (
     <div style={CARD_STYLE}>
-      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color, marginBottom:10 }}>{abbr}</div>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color, marginBottom:10 }}>{label || abbr}</div>
       {rows.length === 0
         ? <EmptyState text="Sin datos defensivos todavía." />
         : (
@@ -1494,14 +1802,14 @@ function DefenseTable({ abbr, color, rows }) {
 }
 
 // ── QB progression card (single QB) ──────────────────────────────────────────
-function QBProgressionCard({ qb, color }) {
+function QBProgressionCard({ qb, teamLabel, color }) {
   const pct = qb.att ? Math.round((qb.comp / qb.att) * 100) : 0;
   return (
     <div style={CARD_STYLE}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
         <span style={{ width:8, height:8, borderRadius:'50%', background:color, display:'inline-block', flexShrink:0 }} />
         <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color:'var(--text)' }}>{qb.label}</span>
-        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)' }}>{qb.team}</span>
+        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)' }}>{teamLabel || qb.team}</span>
         <span style={{ marginLeft:'auto', fontFamily:"'Inter',sans-serif", fontSize:12, fontWeight:700, color:'var(--text)' }}>
           {qb.comp}-{qb.att} · {pct}% · {qb.yds} yds · {qb.td} TD · {qb.int} INT
         </span>
@@ -1562,13 +1870,13 @@ function ExplosivePlayList({ title, items, homeAbbr, homeColor, awayColor }) {
 }
 
 // ── Drive table (single team or full chronological list) ────────────────────
-function DriveTable({ abbr, color, rows, showTeamCol, homeAbbr, homeColor, awayColor }) {
+function DriveTable({ abbr, label, color, rows, showTeamCol, homeAbbr, homeApodo, awayApodo, homeColor, awayColor }) {
   const THS = showTeamCol
     ? ['Equipo','Spot','Obtenido','Terminó','Plays-Yds','TOP']
     : ['Spot','Obtenido','Terminó','Plays-Yds','TOP'];
   return (
     <div style={CARD_STYLE}>
-      {abbr && <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color, marginBottom:10 }}>{abbr}</div>}
+      {abbr && <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:14, color, marginBottom:10 }}>{label || abbr}</div>}
       {rows.length === 0
         ? <EmptyState text="Sin drives todavía." />
         : (
@@ -1588,7 +1896,7 @@ function DriveTable({ abbr, color, rows, showTeamCol, homeAbbr, homeColor, awayC
               {rows.map((r,i) => (
                 <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
                   {showTeamCol && (
-                    <td style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, color: r.possession===homeAbbr?homeColor:awayColor, padding:'6px' }}>{r.possession}</td>
+                    <td style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, color: r.possession===homeAbbr?homeColor:awayColor, padding:'6px' }}>{r.possession===homeAbbr ? (homeApodo||r.possession) : (awayApodo||r.possession)}</td>
                   )}
                   <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.spot}</td>
                   <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, color:'var(--text2)', padding:'6px' }}>{r.start}</td>
@@ -1609,9 +1917,10 @@ function DriveTable({ abbr, color, rows, showTeamCol, homeAbbr, homeColor, awayC
 const DRIVES_SUBTABS = [
   { key: 'byteam', label: 'Por Equipo' },
   { key: 'chrono', label: 'Cronológico' },
+  { key: 'chart',  label: 'Chart' },
 ];
 
-function DrivesTab({ driveRows, homeAbbr, awayAbbr, homeColor, awayColor, subTab, onSubTabChange }) {
+function DrivesTab({ drives, driveRows, home, away, homeAbbr, awayAbbr, homeApodo, awayApodo, homeColor, awayColor, subTab, onSubTabChange }) {
   return (
     <div>
       <SubTabBar tabs={DRIVES_SUBTABS} active={subTab} onChange={onSubTabChange} />
@@ -1619,13 +1928,269 @@ function DrivesTab({ driveRows, homeAbbr, awayAbbr, homeColor, awayColor, subTab
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16, alignItems:'start' }}>
           {[awayAbbr, homeAbbr].map(abbr => {
             const color = abbr === homeAbbr ? homeColor : awayColor;
-            return <DriveTable key={abbr} abbr={abbr} color={color} rows={driveRows.filter(r => r.possession === abbr)} />;
+            const label = abbr === homeAbbr ? homeApodo : awayApodo;
+            return <DriveTable key={abbr} abbr={abbr} label={label} color={color} rows={driveRows.filter(r => r.possession === abbr)} />;
           })}
         </div>
       )}
       {subTab === 'chrono' && (
-        <DriveTable rows={driveRows} showTeamCol homeAbbr={homeAbbr} homeColor={homeColor} awayColor={awayColor} />
+        <DriveTable rows={driveRows} showTeamCol homeAbbr={homeAbbr} homeApodo={homeApodo} awayApodo={awayApodo} homeColor={homeColor} awayColor={awayColor} />
       )}
+      {subTab === 'chart' && (
+        <DriveGanttChart
+          drives={drives} driveRows={driveRows} home={home} away={away}
+          homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Drive Chart (Gantt-style field visualization) ────────────────────────────
+// Horizontal axis convention: LEFT = away's own endzone (0%), RIGHT = home's
+// own endzone (100%) — this MUST match FieldStrip (the live possession bar
+// already on this page), which computes its own left-to-right % the same
+// way: `ballTeam === homeAbbr ? 100 - yard : yard`. Reusing that exact
+// formula here (as pctOf below) instead of stats-lib.js's raw absYard() (whose
+// 0/100 run the other way — home=0, away=100) keeps this new chart visually
+// consistent with the field strip readers already see on this same page,
+// per the instruction to follow an established convention rather than
+// invent a new one.
+function _pctOf(fieldPos, homeAbbr) {
+  if (!fieldPos) return null;
+  return fieldPos.team === homeAbbr ? 100 - fieldPos.yard : fieldPos.yard;
+}
+
+// Best-effort visual-only end spot for a drive's bar — NOT used by, and not
+// meant to replace, any of the real stat/score calculations elsewhere
+// (computeComparisonStats, driveEndLabel, etc.), which never needed a raw
+// end coordinate, only a result label. Covers the common terminal shapes:
+// a score (bar reaches the opponent's goal line), a turnover (return/
+// recovery/interception spot), a punt or field-goal attempt (ends at the
+// kick's own snap spot — the last real scrimmage gain), or a plain
+// RUSH/PASS ending on downs/half (its own `at`). Falls back to field_pos
+// when a more specific field isn't present.
+function _driveEndPos(drive, teams) {
+  const plays = drive.plays;
+  if (!plays.length) return null;
+  let last = plays[plays.length - 1];
+  if (last.play_type === 'PAT_TRY' && plays.length > 1) last = plays[plays.length - 2];
+
+  if (last.touchdown) {
+    const opp = last.possession === teams.home.name ? teams.away.name : teams.home.name;
+    return { team: opp, yard: 0 };
+  }
+  if (last.play_type === 'PASS' && last.pass_result === 'intercepted') {
+    return last.return_at || last.intercepted_at || last.field_pos;
+  }
+  if (last.fumble_recovery_team && last.fumble_recovery_team !== last.possession) {
+    return last.fumble_recovered_at || last.field_pos;
+  }
+  if (last.fumble_2_recovery_team && last.fumble_2_recovery_team !== last.possession) {
+    return last.fumble_2_recovered_at || last.field_pos;
+  }
+  if (last.play_type === 'KICK' && last.fg_ret_at) return last.fg_ret_at;
+  if (last.play_type === 'PUNT' && last.punt_block_ret_at) return last.punt_block_ret_at;
+  if (last.play_type === 'PUNT' || (last.play_type === 'KICK' && last.kick_type === 'field_goal')) {
+    return last.field_pos;
+  }
+  return last.at || last.field_pos;
+}
+
+const DRIVE_CHART_EZ_W  = 46;   // endzone column width (px) — fixed, not to scale, just visually distinct
+const DRIVE_CHART_ROW_H = 34;
+const DRIVE_CHART_LABEL_FONT = "700 10px 'Inter', sans-serif";
+
+// Measures a label's real rendered width (not a fixed character-count
+// threshold, since the same "N PLAYS, N YDS" text needs a different bar
+// width to fit depending on how many digits it has) via an offscreen canvas
+// — one 2D context created once and reused, cheaper than mounting/measuring
+// a hidden DOM node per row. Font MUST match DRIVE_CHART_LABEL_FONT exactly
+// (same string used to render the visible label) or the measurement lies.
+let _driveChartMeasureCtx = null;
+function _measureTextWidth(text, font) {
+  if (!_driveChartMeasureCtx) _driveChartMeasureCtx = document.createElement('canvas').getContext('2d');
+  _driveChartMeasureCtx.font = font;
+  return _driveChartMeasureCtx.measureText(text).width;
+}
+
+function DriveChartRowTrack({ children }) {
+  return (
+    <div style={{
+      display:'grid', gridTemplateColumns:`${DRIVE_CHART_EZ_W}px minmax(640px, 1fr) ${DRIVE_CHART_EZ_W}px`,
+      alignItems:'stretch', minHeight:DRIVE_CHART_ROW_H,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function DriveChartHeader({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, trackRef }) {
+  const marks = [0,10,20,30,40,50,60,70,80,90,100];
+  // homeAbbr/awayAbbr kept as props for callers that still need the matching
+  // key elsewhere; the endzone labels below are display-only, so they use Apodo.
+  const homeApodo = home?.Apodo || homeAbbr;
+  const awayApodo = away?.Apodo || awayAbbr;
+  // Fixed 46px endzone column — apodos longer than 3 chars need a smaller font.
+  const awayFontSize = awayApodo.length > 3 ? 9 : 11;
+  const homeFontSize = homeApodo.length > 3 ? 9 : 11;
+  return (
+    <DriveChartRowTrack>
+      <div style={{ background:awayColor, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:awayFontSize, color: away?.color_texto || '#fff', borderRadius:'4px 0 0 0' }}>{awayApodo}</div>
+      <div ref={trackRef} style={{ position:'relative', borderBottom:'2px solid var(--border2)' }}>
+        {marks.map(m => (
+          <div key={m} style={{ position:'absolute', left:`${m}%`, top:0, bottom:0, transform:'translateX(-50%)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%' }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:10, color:'var(--text3)', marginBottom:2 }}>
+              {m === 0 || m === 100 ? 'G' : (m <= 50 ? m : 100 - m)}
+            </span>
+            <div style={{ width:1, height:6, background:'var(--border2)' }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ background:homeColor, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:homeFontSize, color: home?.color_texto || '#fff', borderRadius:'0 4px 0 0' }}>{homeApodo}</div>
+    </DriveChartRowTrack>
+  );
+}
+
+function DriveChartRow({ drive, row, homeAbbr, home, away, homeColor, awayColor, teams, awayColorBg, homeColorBg, trackWidth }) {
+  const startPos = row.startPos;
+  const endPos   = _driveEndPos(drive, teams);
+  const startPct = _pctOf(startPos, homeAbbr);
+  const endPct   = _pctOf(endPos, homeAbbr);
+  const isHomeDrive = drive.possession === homeAbbr;
+  const color = isHomeDrive ? homeColor : awayColor;
+  const isScore = row.end === 'TD' || row.end === 'FG';
+
+  if (startPct == null || endPct == null) {
+    return (
+      <DriveChartRowTrack>
+        <div style={{ background:awayColorBg }} />
+        <div />
+        <div style={{ background:homeColorBg }} />
+      </DriveChartRowTrack>
+    );
+  }
+
+  const left  = Math.min(startPct, endPct);
+  const width = Math.max(Math.abs(endPct - startPct), 1.5);
+  const pointsRight = endPct >= startPct;
+  const label = `${row.plays} PLAYS, ${row.yds} YDS` + (isScore ? '' : ` · ${row.end}`);
+
+  // Real rendered width, not a fixed character threshold — the same label
+  // text needs a wider bar to "fit" than a shorter one, and the bar's own
+  // pixel width already varies a lot by drive (a 3-yard punt drive vs. a
+  // 75-yard TD drive). Defaults to false (label outside) until trackWidth
+  // is measured, so there's never a frame where text is wrongly assumed to
+  // fit inside a bar that isn't wide enough yet.
+  const barWidthPx = trackWidth * (width / 100);
+  const labelWidthPx = _measureTextWidth(label, DRIVE_CHART_LABEL_FONT);
+  const fitsInside = trackWidth > 0 && labelWidthPx + 10 <= barWidthPx;
+
+  // Inside a bar, the label sits on the team's own color_principal — needs
+  // that team's real color_texto for contrast (same fallback to white
+  // already used for the endzone abbreviations in DriveChartHeader).
+  // Outside, the label sits on the page's white/near-white background
+  // instead, so a fixed dark color is used regardless of team colors.
+  const insideTextColor = (isHomeDrive ? home?.color_texto : away?.color_texto) || '#fff';
+  const outsideTextColor = '#1a1a1a';
+  // Keeps the outside label clear of the TD/FG score badge (which sits
+  // right at the same tip) instead of overlapping it.
+  const outsideGapPx = isScore ? 30 : 8;
+
+  // A bar that ends right at the goal line (any scoring or turnover-at-the-
+  // goal drive) has no room after its tip for an outside label — it would
+  // run straight into the endzone column. Falls back to placing it before
+  // the bar's OTHER end (still "outside", just the side that has room)
+  // instead of letting it overflow illegibly into the endzone's own color.
+  const tipPct  = pointsRight ? left + width : left;
+  const backPct = pointsRight ? left : left + width;
+  const spaceAtTipPx  = trackWidth * (pointsRight ? (100 - tipPct) : tipPct) / 100;
+  const outsideAtBack = !fitsInside && spaceAtTipPx < labelWidthPx + outsideGapPx;
+
+  return (
+    <DriveChartRowTrack>
+      <div style={{ background:awayColorBg }} />
+      <div style={{ position:'relative' }}>
+        {[10,20,30,40,50,60,70,80,90].map(m => (
+          <div key={m} style={{ position:'absolute', left:`${m}%`, top:0, bottom:0, width:1, background:'var(--border)', opacity:0.5 }} />
+        ))}
+        <div style={{
+          position:'absolute', left:`${left}%`, width:`${width}%`, top:'50%', transform:'translateY(-50%)',
+          height:14, background:color, borderRadius:3,
+          display:'flex', alignItems:'center', justifyContent:'center', overflow:'visible',
+        }}>
+          {pointsRight ? (
+            <div style={{ position:'absolute', right:-7, top:0, width:0, height:0, borderTop:'7px solid transparent', borderBottom:'7px solid transparent', borderLeft:`8px solid ${color}` }} />
+          ) : (
+            <div style={{ position:'absolute', left:-7, top:0, width:0, height:0, borderTop:'7px solid transparent', borderBottom:'7px solid transparent', borderRight:`8px solid ${color}` }} />
+          )}
+          {fitsInside && (
+            <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:10, color:insideTextColor, whiteSpace:'nowrap' }}>{label}</span>
+          )}
+        </div>
+        {!fitsInside && (() => {
+          // Normally anchored at the tip (arrow side), gap pushing further
+          // in the direction of travel. Flips to the back end (still
+          // "outside", opposite side) when the tip has no room — see
+          // outsideAtBack above.
+          const anchorPct = outsideAtBack ? backPct : tipPct;
+          const labelGoesRight = outsideAtBack ? !pointsRight : pointsRight;
+          return (
+            <div style={{
+              position:'absolute', left:`${anchorPct}%`, top:'50%',
+              transform: labelGoesRight ? `translate(${outsideGapPx}px, -50%)` : `translate(calc(-100% - ${outsideGapPx}px), -50%)`,
+              fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:10, color:outsideTextColor, whiteSpace:'nowrap',
+            }}>{label}</div>
+          );
+        })()}
+        {isScore && (
+          <div style={{
+            position:'absolute', left:`${pointsRight ? left + width : left}%`, top:'50%', transform:'translate(-50%,-50%)',
+            width:22, height:22, borderRadius:'50%', background: row.end === 'TD' ? '#d4af37' : '#9ca3af',
+            display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
+          }}>
+            <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:9, color:'#1a1a1a' }}>{row.end}</span>
+          </div>
+        )}
+      </div>
+      <div style={{ background:homeColorBg }} />
+    </DriveChartRowTrack>
+  );
+}
+
+function DriveGanttChart({ drives, driveRows, home, away, homeAbbr, awayAbbr, homeColor, awayColor }) {
+  const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+  const awayColorBg = away?.color_principal || '#444';
+  const homeColorBg = home?.color_principal || '#444';
+
+  // The field-track column's real pixel width, needed to know whether a
+  // label actually fits inside a given bar (the track can be wider than its
+  // 640px minimum on a large screen, and every row shares the same width
+  // since they're all full-width siblings of this card) — measured off the
+  // header's own track (always present, one measurement covers every row)
+  // and re-measured on resize so a window resize doesn't leave stale
+  // inside/outside placements.
+  const trackRef = useRef(null);
+  const [trackWidth, setTrackWidth] = useState(0);
+  useLayoutEffect(() => {
+    const measure = () => setTrackWidth(trackRef.current?.clientWidth || 0);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [drives.length]);
+
+  if (!drives.length) return <div style={CARD_STYLE}><EmptyState text="Sin drives todavía." /></div>;
+
+  return (
+    <div style={{ ...CARD_STYLE, overflowX:'auto', width:'100%', boxSizing:'border-box' }}>
+      <DriveChartHeader home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColorBg} awayColor={awayColorBg} trackRef={trackRef} />
+      {drives.map((d, i) => (
+        <DriveChartRow
+          key={i} drive={d} row={driveRows[i]} homeAbbr={homeAbbr} home={home} away={away}
+          homeColor={homeColor} awayColor={awayColor} teams={teams}
+          awayColorBg={awayColorBg} homeColorBg={homeColorBg} trackWidth={trackWidth}
+        />
+      ))}
     </div>
   );
 }
@@ -1658,7 +2223,7 @@ function buildTeamSpecialRows(stats, teamAbbr) {
 }
 
 function TeamStatsTab({
-  teamAbbr, teamColor, subTab, onSubTabChange,
+  teamAbbr, teamApodo, teamColor, subTab, onSubTabChange,
   passRows, rushRows, recRows, defenseStats, qbProgression, explosivePlays, specialTeamsStats, penalties,
 }) {
   const teamPassRows   = passRows.filter(r => r.team === teamAbbr);
@@ -1691,7 +2256,7 @@ function TeamStatsTab({
           }
 
           {/* Columna 2: Defensiva */}
-          <DefenseTable abbr={teamAbbr} color={teamColor} rows={teamDefRows} />
+          <DefenseTable abbr={teamAbbr} label={teamApodo} color={teamColor} rows={teamDefRows} />
 
           {/* Columna 3: Equipos Especiales */}
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
@@ -1707,7 +2272,7 @@ function TeamStatsTab({
       {subTab === 'qb' && (teamQbs.length
         ? (
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            {teamQbs.map((qb, i) => <QBProgressionCard key={i} qb={qb} color={teamColor} />)}
+            {teamQbs.map((qb, i) => <QBProgressionCard key={i} qb={qb} teamLabel={teamApodo} color={teamColor} />)}
           </div>
         )
         : <EmptyState text="Sin jugadas de pase todavía." />)}
@@ -1779,13 +2344,27 @@ function ScoringSummaryPanel({ events, homeAbbr, awayAbbr, homeColor, awayColor 
 }
 
 // ── Tab: Equipos Especiales ──────────────────────────────────────────────────
-function SimpleStatTable({ title, rows, cols, empty }) {
+// dense: tighter horizontal padding between columns (vertical unchanged) —
+// opt-in per caller so existing tables (Punting/Kickoffs/etc.) keep their
+// current spacing; only Comparación's wide Offense tables pass it.
+// col0MaxWidth: caps the first column's width, ellipsizing overflow with a
+// title tooltip carrying the full value — for a "Jugador"/"Uni" column that
+// can hold a full "#22 J. Pérez" label, not just a short number.
+function SimpleStatTable({ title, rows, cols, empty, dense, col0MaxWidth }) {
+  const padX = dense ? 3 : 6;
+  const col0Style = col0MaxWidth
+    ? { maxWidth: col0MaxWidth, overflow: 'hidden', textOverflow: 'ellipsis' }
+    : null;
   return (
     <div style={CARD_STYLE}>
       <div style={SECTION_TITLE_STYLE}>{title}</div>
       {rows.length === 0
         ? <EmptyState text={empty} />
         : (
+          // Wide tables (e.g. Comparación's 10-column Passing) can exceed a
+          // narrow card's width — scrolls internally instead of clipping
+          // columns past the card's border or overflowing the page.
+          <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead>
               <tr>
@@ -1793,7 +2372,8 @@ function SimpleStatTable({ title, rows, cols, empty }) {
                   <th key={c} style={{
                     textAlign: i===0 ? 'left' : 'center',
                     fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)',
-                    letterSpacing:0.5, padding:'4px 6px', textTransform:'uppercase',
+                    letterSpacing:0.5, padding:`4px ${padX}px`, textTransform:'uppercase', whiteSpace:'nowrap',
+                    ...(i === 0 ? col0Style : null),
                   }}>{c}</th>
                 ))}
               </tr>
@@ -1802,15 +2382,17 @@ function SimpleStatTable({ title, rows, cols, empty }) {
               {rows.map((r, i) => (
                 <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
                   {r.map((v, j) => (
-                    <td key={j} style={{
+                    <td key={j} title={j === 0 && col0MaxWidth ? String(v) : undefined} style={{
                       textAlign: j===0 ? 'left' : 'center',
-                      fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px',
+                      fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:`6px ${padX}px`, whiteSpace:'nowrap',
+                      ...(j === 0 ? col0Style : null),
                     }}>{v}</td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )
       }
     </div>
@@ -1874,10 +2456,29 @@ function SkeletonLoader() {
 }
 
 // ── App ───────────────────────────────────────────────────────────────────────
+// Skips recomputation when `needed` is false, returning the last computed
+// value instead — used so a realtime play update only re-runs the derived
+// stats for the currently active tab, not all ~10 of them on every event.
+// `needed` still lives inside the deps array: the first render where a
+// previously-inactive tab becomes active recomputes immediately (in the same
+// render pass that renders that tab), so there's no stale/undefined prop gap.
+function useTabGatedMemo(compute, needed, deps, initial) {
+  const ref = useRef(initial);
+  return useMemo(() => {
+    if (needed) ref.current = compute();
+    return ref.current;
+  }, [needed, ...deps]);
+}
+
 function App() {
   const [game,      setGame]      = useState(null);
   const [plays,     setPlays]     = useState([]);
   const [weekGames, setWeekGames] = useState([]);
+  // Manual box-score fallback (Captura Manual de Estadísticas Históricas) — a
+  // game with no plays[] but rows here still has real stats to show, just not
+  // as a live play-by-play. See isManualOnly below.
+  const [teamManualStats,   setTeamManualStats]   = useState([]);
+  const [playerManualStats, setPlayerManualStats] = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [loadErr,   setLoadErr]   = useState(null);
   const [scoresOpen,setScoresOpen]= useState(false);
@@ -1890,17 +2491,21 @@ function App() {
     if (!gameId) { setLoading(false); return; }
     (async () => {
       try {
-        const teamFields = 'nombre_corto,abreviatura,Escuela,color_principal,color_texto,logo_url';
-        const [gArr, pArr] = await Promise.all([
+        const teamFields = 'nombre_corto,abreviatura,Apodo,Escuela,color_principal,color_texto,logo_url';
+        const [gArr, pArr, tmArr, pmArr] = await Promise.all([
           sbFetch(`games?select=*,home:home_team_id(${teamFields}),away:away_team_id(${teamFields})&id=eq.${encodeURIComponent(gameId)}&limit=1`),
           sbFetch(`plays?select=*&game_id=eq.${encodeURIComponent(gameId)}&order=seq.asc`),
+          sbFetch(`team_game_stats_manual?select=*&game_id=eq.${encodeURIComponent(gameId)}`),
+          sbFetch(`player_game_stats_manual?select=*,player:player_id(id,number,nombre,apellido,team_id,position)&game_id=eq.${encodeURIComponent(gameId)}`),
           engineReady,
         ]);
         const g = gArr[0] || null;
         setGame(g);
         setPlays((pArr || []).map(_flattenPlay));
+        setTeamManualStats(tmArr || []);
+        setPlayerManualStats(pmArr || []);
         if (g?.semana) {
-          const wArr = await sbFetch(`games?select=id,status,score_home,score_away,hora,home:home_team_id(nombre_corto,abreviatura,logo_url),away:away_team_id(nombre_corto,abreviatura,logo_url)&semana=eq.${encodeURIComponent(g.semana)}&order=kickoff.asc.nullslast`);
+          const wArr = await sbFetch(`games?select=id,status,score_home,score_away,hora,home:home_team_id(nombre_corto,abreviatura,Apodo,logo_url),away:away_team_id(nombre_corto,abreviatura,Apodo,logo_url)&semana=eq.${encodeURIComponent(g.semana)}&order=kickoff.asc.nullslast`);
           setWeekGames(wArr || []);
         }
       } catch (e) {
@@ -1912,41 +2517,99 @@ function App() {
   }, []);
 
   // ── realtime ────────────────────────────────────────────────────────────────
+  // 'connecting' | 'live' | 'reconnecting' | 'error' — reflects the Realtime
+  // channel's own connection state, not the game's live/final status.
+  const [rtStatus, setRtStatus] = useState('connecting');
+  const pendingRef   = useRef([]);   // raw rows (payload.new) not yet applied to state
+  const debounceRef  = useRef(null);
+
   useEffect(() => {
     if (!gameId || !game) return;
     let sbClient;
+    let cancelled = false;
+
+    // Coalesces a burst of INSERT/UPDATE events (e.g. an operator submitting
+    // several corrections back-to-back) into a single setPlays/re-render
+    // instead of one per event.
+    function flush() {
+      debounceRef.current = null;
+      const pending = pendingRef.current;
+      pendingRef.current = [];
+      if (!pending.length) return;
+      setPlays(prev => {
+        const byId = new Map(prev.map(p => [p.id, p]));
+        for (const raw of pending) byId.set(raw.id, _flattenPlay(raw));
+        return Array.from(byId.values()).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+      });
+    }
+
+    function queueUpsert(raw) {
+      pendingRef.current.push(raw);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(flush, 400);
+    }
+
     (async () => {
       try {
         await configReady;
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+        if (cancelled) return;
         sbClient = createClient(SB_URL, SB_KEY, { db: { schema: 'covercero' } });
-        sbClient.channel('viewer-plays')
+        sbClient.channel(`viewer-plays-${gameId}`)
           .on('postgres_changes', {
             event: 'INSERT', schema: 'covercero', table: 'plays',
             filter: `game_id=eq.${gameId}`,
-          }, payload => {
-            setPlays(prev => [...prev, _flattenPlay(payload.new)]);
-          })
-          .subscribe();
+          }, payload => queueUpsert(payload.new))
+          .on('postgres_changes', {
+            event: 'UPDATE', schema: 'covercero', table: 'plays',
+            filter: `game_id=eq.${gameId}`,
+          }, payload => queueUpsert(payload.new))
+          .subscribe(status => {
+            if (cancelled) return;
+            if (status === 'SUBSCRIBED') setRtStatus('live');
+            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRtStatus('reconnecting');
+            else if (status === 'CLOSED') setRtStatus('error');
+          });
       } catch (e) {
         console.warn('[viewer] realtime init failed:', e.message);
+        if (!cancelled) setRtStatus('error');
       }
     })();
-    return () => { if (sbClient) sbClient.removeAllChannels(); };
+    return () => {
+      cancelled = true;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (sbClient) sbClient.removeAllChannels();
+    };
   }, [game?.id]);
 
   // ── derived state (always computed, so hook order never changes across renders) ──
   const { home, away } = game || {};
   const homeAbbr  = home?.abreviatura || '';
   const awayAbbr  = away?.abreviatura || '';
+  // Display-only labels — NEVER use these for matching against play/drive data,
+  // which is always keyed by the real abreviatura (see homeAbbr/awayAbbr above).
+  const homeApodo = home?.Apodo || home?.abreviatura || '';
+  const awayApodo = away?.Apodo || away?.abreviatura || '';
   const homeColor = home?.color_principal || '#3b82f6';
   const awayColor = away?.color_principal || '#f97316';
   const isLive    = game?.status === 'live';
   const isFinal   = game?.status === 'final';
 
-  const drives = useMemo(() => computeDrives(plays, homeAbbr, awayAbbr), [plays, homeAbbr, awayAbbr]);
+  // typeof guard: this useMemo runs on every render (including the very
+  // first, before `if (loading) return` further down and before engineReady
+  // resolves) — computeDrives isn't assigned yet at that point. Always
+  // computed (not tab-gated): the live situation strip's current-drive
+  // summary needs it regardless of which tab is active.
+  const drives = useMemo(() => (typeof computeDrives === 'function' ? computeDrives(plays, homeAbbr, awayAbbr) : []), [plays, homeAbbr, awayAbbr]);
 
-  const { passers, rushers, receivers } = useMemo(() => {
+  // Which tabs actually consume each derived stat block below — realtime
+  // updates only re-run the ones the visible tab needs (see useTabGatedMemo).
+  const offenseTabsNeeded = activeTab === 'away' || activeTab === 'home' || activeTab === 'comparacion';
+  const explosiveNeeded   = activeTab === 'away' || activeTab === 'home';
+  const scoringNeeded     = activeTab === 'scoring';
+  const driveRowsNeeded   = activeTab === 'drives';
+
+  const { passers, rushers, receivers } = useTabGatedMemo(() => {
     const pa = {}, ru = {}, re = {};
 
     for (const p of plays) {
@@ -1962,9 +2625,11 @@ function App() {
         const yds = p.net_yards || 0;
         const key = p.rush_by ? playerLabel(p.rush_by) : 'Desconocido';
         if (!ru[t]) ru[t] = {};
-        if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0 };
+        if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0, gained:0, long:-Infinity };
         ru[t][key].att++;
         ru[t][key].yds += yds;
+        if (yds > 0) ru[t][key].gained += yds;
+        if (yds > ru[t][key].long) ru[t][key].long = yds;
         if (p.touchdown) ru[t][key].td++;
       }
 
@@ -1977,44 +2642,62 @@ function App() {
         const yds = p.net_yards || 0;
         const key = p.pass_by ? playerLabel(p.pass_by) : 'Desconocido';
         if (!ru[t]) ru[t] = {};
-        if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0 };
+        if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0, gained:0, long:-Infinity };
         ru[t][key].att++;
         ru[t][key].yds += yds;
+        if (yds > 0) ru[t][key].gained += yds;
+        if (yds > ru[t][key].long) ru[t][key].long = yds;
         if (p.touchdown) ru[t][key].td++;
+
+        // "Sacked" is tracked on the PASSER's own passing line (Comparación's
+        // Offense table) even though the sack itself is credited to RUSHING
+        // above for yardage purposes — same play, two different box-score
+        // conventions, not a contradiction. Lazily inits pa[t][key] here since
+        // a QB's first charted play of the game could be a sack, before the
+        // passing block below ever runs for him.
+        if (p.pass_result === 'sack') {
+          if (!pa[t]) pa[t] = {};
+          if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 };
+          pa[t][key].sacked++;
+          pa[t][key].sackedYds += Math.abs(yds);
+        }
       }
 
       if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack') {
         const key = p.pass_by ? playerLabel(p.pass_by) : 'Desconocido';
         if (!pa[t]) pa[t] = {};
-        if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0 };
+        if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 };
         pa[t][key].att++;
         if (p.pass_result === 'complete') {
           const yds = p.net_yards || 0;
           pa[t][key].comp++;
           pa[t][key].yds += yds;
+          if (yds > pa[t][key].long) pa[t][key].long = yds;
           if (p.touchdown) pa[t][key].td++;
           if (p.received_by) {
             const rk = playerLabel(p.received_by);
             if (!re[t]) re[t] = {};
-            if (!re[t][rk]) re[t][rk] = { rec:0, yds:0, td:0 };
+            if (!re[t][rk]) re[t][rk] = { rec:0, yds:0, td:0, long:-Infinity };
             re[t][rk].rec++;
             re[t][rk].yds += yds;
+            if (yds > re[t][rk].long) re[t][rk].long = yds;
             if (p.touchdown) re[t][rk].td++;
           }
         }
       }
     }
     return { passers: pa, rushers: ru, receivers: re };
-  }, [plays, homeAbbr, awayAbbr]);
+  }, offenseTabsNeeded, [plays, homeAbbr, awayAbbr], { passers: {}, rushers: {}, receivers: {} });
 
-  const scoringEvents = useMemo(() => computeScoringPlays(plays, homeAbbr, awayAbbr), [plays, homeAbbr, awayAbbr]);
+  const scoringEvents = useTabGatedMemo(() => computeScoringPlays(plays, homeAbbr, awayAbbr), scoringNeeded, [plays, homeAbbr, awayAbbr], []);
 
-  const penalties = useMemo(() => computePenalties(plays, homeAbbr), [plays, homeAbbr]);
+  // Same pre-engineReady guard as `drives` above.
+  const penalties = useTabGatedMemo(() => (typeof computePenalties === 'function' ? computePenalties(plays, homeAbbr) : []), offenseTabsNeeded, [plays, homeAbbr], []);
 
-  const specialTeamsStats = useMemo(() => {
+  const specialTeamsStats = useTabGatedMemo(() => {
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
     return computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams);
-  }, [plays, homeAbbr, awayAbbr]);
+  }, offenseTabsNeeded, [plays, homeAbbr, awayAbbr], {});
 
   const { apRows, fumbleRows } = useMemo(() => {
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
@@ -2030,16 +2713,16 @@ function App() {
     };
   }, [plays, homeAbbr, awayAbbr, rushers, receivers, specialTeamsStats]);
 
-  const defenseStats = useMemo(() => computeDefenseStats(plays, homeAbbr, awayAbbr), [plays, homeAbbr, awayAbbr]);
-  const qbProgression = useMemo(() => computeQBProgression(plays), [plays]);
-  const explosivePlays = useMemo(() => {
+  const defenseStats = useTabGatedMemo(() => computeDefenseStats(plays, homeAbbr, awayAbbr), offenseTabsNeeded, [plays, homeAbbr, awayAbbr], {});
+  const qbProgression = useTabGatedMemo(() => computeQBProgression(plays), offenseTabsNeeded, [plays], []);
+  const explosivePlays = useTabGatedMemo(() => {
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
     return computeExplosivePlays(plays, teams);
-  }, [plays, homeAbbr, awayAbbr]);
-  const driveRows = useMemo(() => {
+  }, explosiveNeeded, [plays, homeAbbr, awayAbbr], []);
+  const driveRows = useTabGatedMemo(() => {
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
     return computeDriveRows(drives, teams);
-  }, [drives, homeAbbr, awayAbbr]);
+  }, driveRowsNeeded, [drives, homeAbbr, awayAbbr], []);
 
   // ── no game_id ──────────────────────────────────────────────────────────────
   if (!gameId) return (
@@ -2104,7 +2787,8 @@ function App() {
       const td = dataMap[abbr];
       if (!td || !Object.keys(td).length) continue;
       const color = abbr === homeAbbr ? homeColor : awayColor;
-      rows.push({ isHeader: true, name: abbr, color, team: abbr });
+      const label = abbr === homeAbbr ? homeApodo : awayApodo;
+      rows.push({ isHeader: true, name: label || abbr, color, team: abbr });
       Object.entries(td).forEach(([name, d]) => {
         rows.push({ name, vals: keyFn(d), team: abbr });
       });
@@ -2116,12 +2800,37 @@ function App() {
   const rushRows = buildRows(rushers,  ['ATT','YDS','TD'],        d => [d.att, d.yds, d.td]);
   const recRows  = buildRows(receivers,['REC','YDS','TD'],        d => [d.rec, d.yds, d.td]);
 
+  // A game captured via manual_stats.html (no play-by-play) has team_game_stats_manual
+  // rows but no plays[] — shows BasicBoxScore instead of the tabbed play-by-play
+  // UI below. If a game somehow has BOTH (plays[] AND manual rows — e.g. an
+  // operator loaded manual stats for a game later captured live), plays[] wins
+  // here since plays.length===0 is false — the richer source takes priority
+  // automatically, no extra logic needed.
+  const isManualOnly = plays.length === 0 && teamManualStats.length > 0;
+
+  // Hero's quarter-score table is shared between both paths (see the JSX
+  // below) — for a manual-only game it reads q1-q4/ot directly off
+  // team_game_stats_manual instead of replaying plays[] via qScores().
+  // OT column only appears when at least one side actually has OT points,
+  // so a normal 4-quarter manual game doesn't show an empty OT column.
+  const manualHomeStats = teamManualStats.find(r => r.team_id === game?.home_team_id);
+  const manualAwayStats = teamManualStats.find(r => r.team_id === game?.away_team_id);
+  const manualHasOt = (manualHomeStats?.ot || 0) > 0 || (manualAwayStats?.ot || 0) > 0;
+  const heroQuarterLabels = isManualOnly ? (manualHasOt ? ['1','2','3','4','OT'] : ['1','2','3','4']) : ['1','2','3','4'];
+  const heroQsAway = isManualOnly
+    ? ['q1','q2','q3','q4', ...(manualHasOt ? ['ot'] : [])].map(k => manualAwayStats?.[k] || 0)
+    : qScoreAway;
+  const heroQsHome = isManualOnly
+    ? ['q1','q2','q3','q4', ...(manualHasOt ? ['ot'] : [])].map(k => manualHomeStats?.[k] || 0)
+    : qScoreHome;
+
   // Labels depend on the loaded game's real team abbreviations, so this
   // can't be a module-level constant like the old TABS list was.
   const mainTabs = [
-    { key: 'away',    label: `${awayAbbr} Stats` },
-    { key: 'home',    label: `${homeAbbr} Stats` },
-    { key: 'compare', label: 'Comparación' },
+    { key: 'away',    label: `${awayApodo} Stats` },
+    { key: 'home',    label: `${homeApodo} Stats` },
+    { key: 'compare', label: 'Team Stats' },
+    { key: 'comparacion', label: 'Comparación' },
     { key: 'drives',  label: 'Drives' },
     { key: 'scoring', label: 'Anotaciones' },
     { key: 'pbp',     label: 'Play by Play' },
@@ -2147,6 +2856,23 @@ function App() {
         <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', letterSpacing:0.3, flexShrink:0 }}>
           {game.liga ? `${game.liga} · ` : ''}{fmtWeek(game.semana)}
         </span>
+
+        {/* Realtime connection indicator — only meaningful while the game is
+            live; reflects the Realtime channel's own state, separate from
+            the "EN VIVO" badge in the scoreboard below (that one is the
+            game's status, this one is whether updates are actually flowing). */}
+        {isLive && (
+          <span style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }} title="Estado de la conexión en tiempo real">
+            <span style={{
+              width:7, height:7, borderRadius:'50%', display:'inline-block',
+              background: rtStatus === 'live' ? '#16a34a' : rtStatus === 'reconnecting' ? '#f59e0b' : rtStatus === 'error' ? '#dc2626' : '#9ca3af',
+              animation: rtStatus === 'live' ? 'pulse 2s infinite' : 'none',
+            }} />
+            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:700, letterSpacing:0.6, color:'var(--text2)' }}>
+              {rtStatus === 'live' ? 'EN VIVO' : rtStatus === 'reconnecting' ? 'RECONECTANDO' : rtStatus === 'error' ? 'SIN CONEXIÓN' : 'CONECTANDO'}
+            </span>
+          </span>
+        )}
 
         {/* Scores toggle — centered */}
         <div style={{ flex:1, display:'flex', justifyContent:'center' }}>
@@ -2182,7 +2908,7 @@ function App() {
             <TeamLogo team={away} size={72} />
             <div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'var(--text)' }}>
-                {away?.nombre_corto || awayAbbr}
+                {away?.nombre_corto || awayApodo}
               </div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', marginTop:2, letterSpacing:0.4 }}>
                 {away?.Escuela || ''}
@@ -2213,7 +2939,7 @@ function App() {
             )}
             {isLive && (
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', marginBottom:10, fontVariantNumeric:'tabular-nums' }}>
-                {formatLiveTicker(situation)}
+                {formatLiveTicker(situation, homeAbbr, awayAbbr, homeApodo, awayApodo)}
               </div>
             )}
             {isFinal && (
@@ -2230,7 +2956,7 @@ function App() {
               <thead>
                 <tr>
                   <th style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', padding:'2px 2px', fontWeight:600, letterSpacing:0.5, textAlign:'left' }}></th>
-                  {['1','2','3','4'].map(q => (
+                  {heroQuarterLabels.map(q => (
                     <th key={q} style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', padding:'2px 2px', fontWeight:600, letterSpacing:0.5 }}>{q}</th>
                   ))}
                   <th style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text)', padding:'2px 2px', fontWeight:700 }}>T</th>
@@ -2238,11 +2964,11 @@ function App() {
               </thead>
               <tbody>
                 {[
-                  { abbr: awayAbbr, qs: qScoreAway, total: scoreAway, color: awayColor },
-                  { abbr: homeAbbr, qs: qScoreHome, total: scoreHome, color: homeColor },
+                  { abbr: awayAbbr, label: awayApodo, qs: heroQsAway, total: scoreAway, color: awayColor },
+                  { abbr: homeAbbr, label: homeApodo, qs: heroQsHome, total: scoreHome, color: homeColor },
                 ].map(row => (
                   <tr key={row.abbr}>
-                    <td style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, color:row.color, padding:'4px 2px', textAlign:'left' }}>{row.abbr}</td>
+                    <td style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12, color:row.color, padding:'4px 2px', textAlign:'left' }}>{row.label}</td>
                     {row.qs.map((q, i) => (
                       <td key={i} style={{ fontFamily:"'Inter',sans-serif", fontSize:12, padding:'4px 2px', textAlign:'center', color:'var(--text)' }}>{q}</td>
                     ))}
@@ -2266,7 +2992,7 @@ function App() {
             </div>
             <div style={{ textAlign:'right' }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'var(--text)' }}>
-                {home?.nombre_corto || homeAbbr}
+                {home?.nombre_corto || homeApodo}
               </div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', marginTop:2, letterSpacing:0.4 }}>
                 {home?.Escuela || ''}
@@ -2287,7 +3013,7 @@ function App() {
             fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, letterSpacing:1,
           }}>
             <span>●</span>
-            <span>POSESIÓN · {situation.possession}</span>
+            <span>POSESIÓN · {situation.possession === homeAbbr ? homeApodo : (situation.possession === awayAbbr ? awayApodo : situation.possession)}</span>
           </div>
 
           {situation.down > 0 && (
@@ -2303,7 +3029,7 @@ function App() {
             <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, letterSpacing:1.4, color:'var(--text3)', fontWeight:600 }}>POSICIÓN</div>
               <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1 }}>
-                {situation.field_pos.team} {situation.field_pos.yard}
+                {situation.field_pos.team === homeAbbr ? homeApodo : (situation.field_pos.team === awayAbbr ? awayApodo : situation.field_pos.team)} {situation.field_pos.yard}
               </div>
             </div>
           )}
@@ -2321,45 +3047,69 @@ function App() {
         </div>
       )}
 
-      {/* ── TABS ──────────────────────────────────────────────────────────────── */}
-      <TabBar tabs={mainTabs} active={activeTab} onChange={setActiveTab} />
+      {isManualOnly ? (
+        <div style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
+          <BasicBoxScore
+            teamManualStats={teamManualStats} playerManualStats={playerManualStats}
+            homeTeamId={game.home_team_id} awayTeamId={game.away_team_id}
+            homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeApodo={homeApodo} awayApodo={awayApodo}
+            homeColor={homeColor} awayColor={awayColor}
+          />
+        </div>
+      ) : (
+        <>
+          {/* ── TABS ──────────────────────────────────────────────────────────── */}
+          <TabBar tabs={mainTabs} active={activeTab} onChange={setActiveTab} />
 
-      {/* ── TAB CONTENT ───────────────────────────────────────────────────────── */}
-      <div style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
-        {activeTab === 'away' && (
-          <TeamStatsTab
-            teamAbbr={awayAbbr} teamColor={awayColor}
-            subTab={teamSubTab} onSubTabChange={setTeamSubTab}
-            passRows={passRows} rushRows={rushRows} recRows={recRows}
-            defenseStats={defenseStats} qbProgression={qbProgression} explosivePlays={explosivePlays}
-            specialTeamsStats={specialTeamsStats} penalties={penalties}
-          />
-        )}
-        {activeTab === 'home' && (
-          <TeamStatsTab
-            teamAbbr={homeAbbr} teamColor={homeColor}
-            subTab={teamSubTab} onSubTabChange={setTeamSubTab}
-            passRows={passRows} rushRows={rushRows} recRows={recRows}
-            defenseStats={defenseStats} qbProgression={qbProgression} explosivePlays={explosivePlays}
-            specialTeamsStats={specialTeamsStats} penalties={penalties}
-          />
-        )}
-        {activeTab === 'compare' && (
-          <ComparisonTab plays={plays} drives={drives} home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} />
-        )}
-        {activeTab === 'drives' && (
-          <DrivesTab
-            driveRows={driveRows} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
-            subTab={drivesSubTab} onSubTabChange={setDrivesSubTab}
-          />
-        )}
-        {activeTab === 'scoring' && (
-          <ScoringSummaryPanel events={scoringEvents} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
-        )}
-        {activeTab === 'pbp' && (
-          <PlayByPlayTab drives={drives} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
-        )}
-      </div>
+          {/* ── TAB CONTENT ───────────────────────────────────────────────────── */}
+          <div style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
+            {activeTab === 'away' && (
+              <TeamStatsTab
+                teamAbbr={awayAbbr} teamApodo={awayApodo} teamColor={awayColor}
+                subTab={teamSubTab} onSubTabChange={setTeamSubTab}
+                passRows={passRows} rushRows={rushRows} recRows={recRows}
+                defenseStats={defenseStats} qbProgression={qbProgression} explosivePlays={explosivePlays}
+                specialTeamsStats={specialTeamsStats} penalties={penalties}
+              />
+            )}
+            {activeTab === 'home' && (
+              <TeamStatsTab
+                teamAbbr={homeAbbr} teamApodo={homeApodo} teamColor={homeColor}
+                subTab={teamSubTab} onSubTabChange={setTeamSubTab}
+                passRows={passRows} rushRows={rushRows} recRows={recRows}
+                defenseStats={defenseStats} qbProgression={qbProgression} explosivePlays={explosivePlays}
+                specialTeamsStats={specialTeamsStats} penalties={penalties}
+              />
+            )}
+            {activeTab === 'compare' && (
+              <ComparisonTab plays={plays} drives={drives} home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
+            )}
+            {activeTab === 'comparacion' && (
+              <ComparacionTab
+                plays={plays} drives={drives} homeAbbr={homeAbbr} awayAbbr={awayAbbr}
+                homeApodo={homeApodo} awayApodo={awayApodo} homeColor={homeColor} awayColor={awayColor}
+                passers={passers} rushers={rushers} receivers={receivers}
+                qbProgression={qbProgression} specialTeamsStats={specialTeamsStats} penalties={penalties}
+                defenseStats={defenseStats}
+              />
+            )}
+            {activeTab === 'drives' && (
+              <DrivesTab
+                drives={drives} driveRows={driveRows} home={home} away={away}
+                homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeApodo={homeApodo} awayApodo={awayApodo}
+                homeColor={homeColor} awayColor={awayColor}
+                subTab={drivesSubTab} onSubTabChange={setDrivesSubTab}
+              />
+            )}
+            {activeTab === 'scoring' && (
+              <ScoringSummaryPanel events={scoringEvents} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
+            )}
+            {activeTab === 'pbp' && (
+              <PlayByPlayTab drives={drives} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeApodo={homeApodo} awayApodo={awayApodo} homeColor={homeColor} awayColor={awayColor} />
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

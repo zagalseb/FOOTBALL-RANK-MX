@@ -36,44 +36,65 @@ function drawImageCover(ctx, img, x, y, w, h) {
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h)
 }
 
+// Dark semi-transparent pill behind a raster logo — legible over anything
+// behind it (an arbitrary photo, or the Stat Card's hex pattern), unlike a
+// CSS-style stroke which only works on text. Shared by Player Card's photo
+// corner overlay and the Stat Card's footer, so there's one definition of
+// "how a logo pill is sized/drawn", not two hand-kept copies.
+function _pillLogoDims(img, h) {
+  const logoW = h * (img.width / img.height)
+  const padX = h * 0.35, padY = h * 0.25
+  return { logoW, padX, padY, boxW: logoW + padX * 2, boxH: h + padY * 2 }
+}
+function _drawPillLogo(ctx, img, x, y, h) {
+  if (!img) return { boxW: 0, boxH: 0 }
+  const { logoW, padX, padY, boxW, boxH } = _pillLogoDims(img, h)
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'
+  roundRectPath(ctx, x, y, boxW, boxH, boxH * 0.2)
+  ctx.fill()
+  ctx.drawImage(img, x + padX, y + padY, logoW, h)
+  return { boxW, boxH }
+}
+
+// Same idea for a short line of text — dark pill, white text. Shared by
+// Player Card's photo-credit overlay and the Stat Card's footer credit.
+function _textPillDims(ctx, text, fontPx, FAMILY) {
+  ctx.font = `600 ${fontPx}px ${FAMILY}`
+  const textW = ctx.measureText(text).width
+  const padX = fontPx * 0.55, padY = fontPx * 0.5
+  return { textW, padX, padY, boxW: textW + padX * 2, boxH: fontPx + padY * 2 }
+}
+function _drawTextPill(ctx, text, x, y, fontPx, FAMILY) {
+  const { padX, boxW, boxH } = _textPillDims(ctx, text, fontPx, FAMILY)
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'
+  roundRectPath(ctx, x, y, boxW, boxH, boxH * 0.25)
+  ctx.fill()
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, x + padX, y + boxH / 2)
+  return { boxW, boxH }
+}
+
 // Site logo (bottom-right) and photo credit (bottom-left), overlaid directly
 // on the player photo — which can be light or dark at that exact spot, so
-// neither element can rely on a fixed text/image color for legibility. Same
-// problem as the site wordmark's -webkit-text-stroke/text-shadow treatment,
-// solved here with a dark semi-transparent pill behind each element instead
-// (works uniformly for both an arbitrary photo image AND a raster logo,
-// where a CSS-style stroke isn't applicable).
+// neither element can rely on a fixed text/image color for legibility.
 function drawPhotoOverlays(ctx, photoX, photoY, photoW, photoH, siteLogoImg, photoCredit, badgeH, FAMILY) {
   const margin = Math.min(photoW, photoH) * 0.025
 
   if (siteLogoImg) {
-    const logoH = badgeH
-    const logoW = logoH * (siteLogoImg.width / siteLogoImg.height)
-    const padX = logoH * 0.35, padY = logoH * 0.25
-    const boxW = logoW + padX * 2, boxH = logoH + padY * 2
+    const { boxW, boxH } = _pillLogoDims(siteLogoImg, badgeH)
     const boxX = photoX + photoW - margin - boxW
     const boxY = photoY + photoH - margin - boxH
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'
-    roundRectPath(ctx, boxX, boxY, boxW, boxH, boxH * 0.2)
-    ctx.fill()
-    ctx.drawImage(siteLogoImg, boxX + padX, boxY + padY, logoW, logoH)
+    _drawPillLogo(ctx, siteLogoImg, boxX, boxY, badgeH)
   }
 
   if (photoCredit && photoCredit.trim()) {
     const fontPx = badgeH * 0.32
-    ctx.font = `600 ${fontPx}px ${FAMILY}`
-    const textW = ctx.measureText(photoCredit).width
-    const padX = fontPx * 0.55, padY = fontPx * 0.5
-    const boxW = textW + padX * 2, boxH = fontPx + padY * 2
+    const { boxH } = _textPillDims(ctx, photoCredit, fontPx, FAMILY)
     const boxX = photoX + margin
     const boxY = photoY + photoH - margin - boxH
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'
-    roundRectPath(ctx, boxX, boxY, boxW, boxH, boxH * 0.25)
-    ctx.fill()
-    ctx.fillStyle = '#ffffff'
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(photoCredit, boxX + padX, boxY + boxH / 2)
+    _drawTextPill(ctx, photoCredit, boxX, boxY, fontPx, FAMILY)
   }
 }
 
@@ -552,4 +573,186 @@ function drawStatsGrid(ctx, x, y, w, h, stats, textColor, FAMILY, cols) {
     ctx.font = `800 ${valuePx}px ${FAMILY}`
     ctx.fillText(String(s.value), cx, cy + cellH * 0.88)
   })
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────
+
+// One hexagon outline, `r` = center-to-vertex radius (pointy-top).
+function _strokeHex(ctx, cx, cy, r) {
+  ctx.beginPath()
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 180) * (60 * i - 30)
+    const px = cx + r * Math.cos(angle)
+    const py = cy + r * Math.sin(angle)
+    if (i === 0) ctx.moveTo(px, py)
+    else ctx.lineTo(px, py)
+  }
+  ctx.closePath()
+  ctx.stroke()
+}
+
+// Subtle repeating hex-grid background, tinted from the team's own
+// color_principal — lightened via the existing shade() helper (same one
+// used for the photo-placeholder fallback, not a new lighten function) well
+// past normal readability range, since this sits BEHIND all card content
+// and must never compete with it. Drawn fresh every render (not cached as
+// an <img>) since W/H change with orientation and the tint follows whatever
+// team is selected.
+function _drawHexPattern(ctx, x, y, w, h, teamColor) {
+  const bg   = shade(teamColor, 0.94)
+  const line = shade(teamColor, 0.82)
+  ctx.fillStyle = bg
+  ctx.fillRect(x, y, w, h)
+
+  const hexR = Math.max(w, h) * 0.02
+  const colStep = hexR * 1.5
+  const rowStep = hexR * Math.sqrt(3)
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x, y, w, h)
+  ctx.clip()
+  ctx.strokeStyle = line
+  ctx.lineWidth = Math.max(1, hexR * 0.06)
+
+  let col = 0
+  for (let cx = x - hexR; cx < x + w + hexR; cx += colStep, col++) {
+    const rowOffset = (col % 2) ? rowStep / 2 : 0
+    for (let cy = y - hexR + rowOffset; cy < y + h + hexR; cy += rowStep) {
+      _strokeHex(ctx, cx, cy, hexR)
+    }
+  }
+  ctx.restore()
+}
+
+// opts: {
+//   orientation: 'vertical' | 'horizontal',
+//   teamColor, teamText, teamAbbr,   // teams.color_principal/color_texto + abbreviation, for the header wordmark
+//   teamLogoImg,                     // loaded image or null
+//   siteLogoImg,                     // loaded image or null — footer, same pill treatment as Player Card
+//   avatarImg,                       // loaded image or null — small circular creator/source avatar (NOT a play photo)
+//   creditText,                      // free text (same input as Player Card's photo credit) — footer renders "Vía {creditText}"
+//   playerLastName,                  // apellido only, shown uppercase in the nameplate
+//   playerNumber,
+//   stats: [{ label, value }],       // same computePlayerStats() checklist as Player Card, UI caps this at 4
+// }
+export function drawStatCard(ctx, W, H, opts) {
+  const {
+    orientation, teamColor, teamText, teamAbbr, teamLogoImg, siteLogoImg,
+    avatarImg, creditText, playerLastName, playerNumber, stats,
+  } = opts
+  const textColor = teamText || readableTextColor(teamColor)
+  const FAMILY = "'IBM Plex Mono', monospace"
+  const isV = orientation === 'vertical'
+
+  const headerH = H * (isV ? 0.075 : 0.13)
+  const footerH = H * (isV ? 0.05  : 0.09)
+  const statsH  = H * (isV ? 0.14  : 0.20)
+
+  _drawHexPattern(ctx, 0, 0, W, H, teamColor)
+
+  // Header bar — team logo (same white-circle "contain" badge as Box
+  // Score's header) + "{ABBR} FOOTBALL" wordmark.
+  ctx.fillStyle = teamColor
+  ctx.fillRect(0, 0, W, headerH)
+  const logoR = headerH * 0.32
+  const logoCx = headerH * 0.18 + logoR
+  const logoCy = headerH / 2
+  if (teamLogoImg) _drawCircleLogo(ctx, teamLogoImg, logoCx, logoCy, logoR)
+  ctx.fillStyle = textColor
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'middle'
+  ctx.font = `800 ${headerH * 0.4}px ${FAMILY}`
+  ctx.fillText(`${(teamAbbr || '').toUpperCase()} FOOTBALL`, logoCx + logoR + headerH * 0.22, logoCy)
+
+  const bodyTop    = headerH
+  const bodyBottom = H - statsH - footerH
+  const bodyH      = bodyBottom - bodyTop
+
+  // Nameplate — white box, thick black border, apellido centered (a
+  // "hanging sign" look, per the reference).
+  const plateW = W * 0.86
+  const plateH = bodyH * 0.16
+  const plateX = (W - plateW) / 2
+  const plateY = bodyTop + bodyH * 0.08
+  const borderW = Math.max(3, plateH * 0.09)
+
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(plateX, plateY, plateW, plateH)
+  ctx.strokeStyle = '#111318'
+  ctx.lineWidth = borderW
+  ctx.strokeRect(plateX + borderW / 2, plateY + borderW / 2, plateW - borderW, plateH - borderW)
+
+  const lastName = (playerLastName || '').toUpperCase()
+  ctx.fillStyle = teamColor
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const namePx = fitFontSize(ctx, lastName, plateW * 0.88, plateH * 0.62, 800, FAMILY)
+  ctx.font = `800 ${namePx}px ${FAMILY}`
+  ctx.fillText(lastName, plateX + plateW / 2, plateY + plateH / 2)
+
+  // Two vertical "posts" hanging from the nameplate's bottom edge down
+  // toward the number, behind it.
+  const numZoneTop    = plateY + plateH
+  const numZoneBottom = bodyBottom - bodyH * 0.03
+  ctx.strokeStyle = '#111318'
+  ctx.lineWidth = Math.max(2, plateH * 0.07)
+  const postInset = plateW * 0.16
+  ;[plateX + postInset, plateX + plateW - postInset].forEach((px) => {
+    ctx.beginPath()
+    ctx.moveTo(px, numZoneTop)
+    ctx.lineTo(px, numZoneBottom)
+    ctx.stroke()
+  })
+
+  // Giant number — team-color fill with a dark outline (canvas equivalent
+  // of the site wordmark's -webkit-text-stroke/text-shadow treatment).
+  const numStr = String(playerNumber ?? '')
+  const numZoneH = numZoneBottom - numZoneTop
+  const numPx = fitFontSize(ctx, numStr, W * 0.7, numZoneH * 0.95, 800, FAMILY)
+  ctx.font = `800 ${numPx}px ${FAMILY}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = numPx * 0.045
+  ctx.strokeStyle = '#111318'
+  ctx.strokeText(numStr, W / 2, numZoneTop + numZoneH / 2)
+  ctx.fillStyle = teamColor
+  ctx.fillText(numStr, W / 2, numZoneTop + numZoneH / 2)
+
+  // Stats row — same drawStatsRow() mechanic as Player Card, on the same
+  // near-white bar background used everywhere else for a stats zone.
+  const statsY = H - footerH - statsH
+  ctx.fillStyle = '#f7f7f4'
+  ctx.fillRect(0, statsY, W, statsH)
+  drawStatsRow(ctx, 0, statsY, W, statsH, stats, '#111318', FAMILY)
+
+  // Footer — creator avatar (small circle, same badge treatment as the team/
+  // site logos) + "Vía {creditText}" and the Cover Cero logo, each in the
+  // same dark pill Player Card already uses for its photo-corner overlays —
+  // laid out inline left-to-right instead of corner-anchored, since there's
+  // no photo here to overlay onto.
+  const footerY = H - footerH
+  const pad = footerH * 0.18
+  const avatarR = (footerH - pad * 2) / 2
+  const avatarCx = pad + avatarR
+  const avatarCy = footerY + footerH / 2
+  if (avatarImg) _drawCircleLogo(ctx, avatarImg, avatarCx, avatarCy, avatarR)
+
+  let cursorX = avatarCx + avatarR + pad
+  if (creditText && creditText.trim()) {
+    const fontPx = footerH * 0.34
+    const text = `Vía ${creditText}`
+    const dims = _textPillDims(ctx, text, fontPx, FAMILY)
+    const boxY = footerY + (footerH - dims.boxH) / 2
+    _drawTextPill(ctx, text, cursorX, boxY, fontPx, FAMILY)
+    cursorX += dims.boxW + pad
+  }
+
+  if (siteLogoImg) {
+    const logoH = footerH * 0.4
+    const dims = _pillLogoDims(siteLogoImg, logoH)
+    const boxY = footerY + (footerH - dims.boxH) / 2
+    _drawPillLogo(ctx, siteLogoImg, cursorX, boxY, logoH)
+  }
 }

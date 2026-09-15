@@ -1,24 +1,23 @@
 import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
+// getAuthHeaders() carries the signed-in operator's session token (see
+// auth_gate.js) — used ONLY for writes (plays/games), since those tables'
+// INSERT/UPDATE RLS policies now require role=authenticated. Reads
+// (loadPlays/loadRoster below) stay on the static anon SUPABASE_HEADERS —
+// SELECT is still public.
+import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
 
-// ── Game state ────────────────────────────────────────────────────────────────
-
-export const gameState = {
-  seq: 1,
-  quarter: 1,
-  clock: '15:00',
-  possession: 'MTY',
-  field_pos: { team: 'MTY', yard: 35 },
-  down: 1,
-  distance: 10,
-  score: { home: 0, away: 0 },
-  ended: false,
-  // Teams config — home attacks toward yard 100, away attacks toward yard 0.
-  // abreviatura: real team abbreviation (from Supabase) used for shorthand input (e.g. "CCM40" → CCM 40)
-  teams: {
-    home: { name: 'MTY', abreviatura: 'MTY' },
-    away: { name: 'UANL', abreviatura: 'UANL' },
-  },
-}
+// stats-lib.js holds the pure calculation/display logic shared with
+// viewer/ (split out 2026-09-08 — see its own file header). engine.js only
+// uses gameState/absYard/advanceGameState/applyFlags internally below; the
+// rest (isTouchdown, calcNetYards, formatPlay, playerShortLabel) are
+// re-exported at the bottom of this file purely so wizard.js's existing
+// `import {...} from './engine.js'` keeps working unchanged — capture/
+// components should feel free to import those two straight from
+// stats-lib.js instead, going forward.
+import {
+  gameState, absYard, advanceGameState, applyFlags,
+  isTouchdown, calcNetYards, formatPlay, playerShortLabel,
+} from '../../shared/stats-lib.js'
 
 // ── Play storage ──────────────────────────────────────────────────────────────
 
@@ -169,7 +168,7 @@ async function _syncPlayToSupabase(play) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/plays`, {
       method: 'POST',
       headers: {
-        ...SUPABASE_HEADERS,
+        ...(await getAuthHeaders()),
         'Content-Type': 'application/json',
         'Prefer':       'return=minimal',
       },
@@ -200,7 +199,7 @@ export async function syncPlayUpdate(play) {
       {
         method: 'PATCH',
         headers: {
-          ...SUPABASE_HEADERS,
+          ...(await getAuthHeaders()),
           'Content-Type': 'application/json',
           'Prefer':       'return=minimal',
         },
@@ -232,7 +231,7 @@ async function syncGameStatus(status, scoreHome, scoreAway) {
       {
         method: 'PATCH',
         headers: {
-          ...SUPABASE_HEADERS,
+          ...(await getAuthHeaders()),
           'Content-Type': 'application/json',
           'Prefer':       'return=minimal',
         },
@@ -380,22 +379,6 @@ export function getRoster(teamName) {
 
 // ── Field position helpers ────────────────────────────────────────────────────
 
-// Returns absolute yard 0-100 where home endzone = 0, home TD = 100.
-// home team yard maps directly; away team yard mirrors (100 - yard).
-export function absYard(teams, teamName, yard) {
-  return teamName === teams.home.name ? yard : (100 - yard)
-}
-
-// Net yards gained by the possession team from snapPos to atPos.
-// Positive = forward progress for whoever has the ball.
-export function calcNetYards(teams, possession, snapPos, atPos) {
-  const dir = possession === teams.home.name ? 1 : -1
-  return dir * (absYard(teams, atPos.team, atPos.yard) - absYard(teams, snapPos.team, snapPos.yard))
-}
-
-export function fieldPosLabel(team, yard) {
-  return `${team} ${yard}`
-}
 
 // Parses AT shorthand input into { team, yard } or null if invalid.
 // Accepts: "M40" "m40" "U30" "u30" "40" "0" "50"
@@ -451,12 +434,6 @@ function _calcAllAbsYards(playObj, teams) {
   return result
 }
 
-// Returns true if the AT position is a touchdown for the possessing team.
-// TD = reaching yard 0 of the opponent's endzone.
-export function isTouchdown(teams, possession, atPos) {
-  const opponent = possession === teams.home.name ? teams.away.name : teams.home.name
-  return atPos.team === opponent && atPos.yard === 0
-}
 
 // ── Result option sets ────────────────────────────────────────────────────────
 
@@ -501,6 +478,18 @@ RESULT_OPTIONS.FAKE_PUNT_TYPE = [
   { key: 'pass', label: 'Pass', kbd: 'P', color: '--green'  },
 ]
 
+// Chosen after a punt's own snapper/punter recovers a bad snap ('own' branch
+// of PUNT_RESULT_BRANCHES.bad_snap). Unlike FG/PAT_KICK's equivalent (which
+// only offer run/pass — there's no realistic way to reset a botched hold),
+// a punter recovering a bad snap can still realistically get the kick away,
+// so this adds a third 'kick' option that does NOT retarget play_type (it's
+// already 'PUNT') — it just re-enters the normal punt_result step.
+RESULT_OPTIONS.BAD_SNAP_PUNT_TYPE = [
+  { key: 'run',  label: 'Run',  kbd: 'R', color: '--yellow' },
+  { key: 'pass', label: 'Pass', kbd: 'P', color: '--green'  },
+  { key: 'kick', label: 'Kick', kbd: 'K', color: '--accent' },
+]
+
 export const PASS_RESULT_OPTIONS = [
   { key: 'complete',    label: 'Complete',    kbd: 'C', color: '--green'  },
   { key: 'incomplete',  label: 'Incomplete',  kbd: 'I', color: '--text2'  },
@@ -525,9 +514,10 @@ export const KICKOFF_RESULT_OPTIONS = [
 ]
 
 export const FG_RESULT_OPTIONS = [
-  { key: 'good',    label: 'Good',    kbd: 'G', color: '--green'  },
-  { key: 'missed',  label: 'Missed',  kbd: 'M', color: '--red'    },
-  { key: 'blocked', label: 'Blocked', kbd: 'B', color: '--orange' },
+  { key: 'good',     label: 'Good',     kbd: 'G', color: '--green'  },
+  { key: 'missed',   label: 'Missed',   kbd: 'M', color: '--red'    },
+  { key: 'blocked',  label: 'Blocked',  kbd: 'B', color: '--orange' },
+  { key: 'bad_snap', label: 'Bad Snap', kbd: 'S', color: '--red'    },
 ]
 
 export const FG_MISS_OPTIONS = [
@@ -558,9 +548,10 @@ export const PAT_PASS_RESULT_OPTIONS = [
 ]
 
 export const PAT_KICK_RESULT_OPTIONS = [
-  { key: 'good',    label: 'Good (1pt)', kbd: 'G', color: '--green'  },
-  { key: 'missed',  label: 'Missed',     kbd: 'M', color: '--red'    },
-  { key: 'blocked', label: 'Blocked',    kbd: 'B', color: '--orange' },
+  { key: 'good',     label: 'Good (1pt)', kbd: 'G', color: '--green'  },
+  { key: 'missed',   label: 'Missed',     kbd: 'M', color: '--red'    },
+  { key: 'blocked',  label: 'Blocked',    kbd: 'B', color: '--orange' },
+  { key: 'bad_snap', label: 'Bad Snap',   kbd: 'S', color: '--red'    },
 ]
 
 export const PAT_BLOCK_RESULT_OPTIONS = [
@@ -635,6 +626,17 @@ export const PUNT_RESULT_OPTIONS = [
   { key: 'downed',     label: 'Downed',       kbd: 'D', color: '--text2'  },
   { key: 'blocked',    label: 'Blocked',      kbd: 'B', color: '--orange' },
   { key: 'fake',       label: 'Fake Punt',    kbd: 'X', color: '--purple' },
+  // Distinct from 'returned' + fumble: the returner never had controlled
+  // possession here, so this must never share fumble_* field names (see
+  // punt_muff_* fields below) — that's what keeps computeFumbleStats() in
+  // viewer.html from crediting the returner with a fumble he never had.
+  { key: 'muffed',     label: 'Muffed',       kbd: 'M', color: '--red'    },
+  // A bad LONG SNAP to the punter — distinct from 'muffed' (which is the
+  // returner failing to catch a clean punt downfield) and from 'blocked'
+  // (a defensive play at the line). This is a pre-kick execution error, same
+  // spirit as SNAP_FUMBLE for scrimmage plays but nested here since play_type
+  // is already correctly 'PUNT' — no reason to retarget it away.
+  { key: 'bad_snap',   label: 'Bad Snap',     kbd: 'S', color: '--red'    },
 ]
 
 // ── Result branch definitions ─────────────────────────────────────────────────
@@ -959,6 +961,16 @@ export const FG_RESULT_BRANCHES = {
     { id: 'fg_return_result', label: 'Return Result', component: 'FG_RETURN',
       config: { stateKey: 'fg_return_result' } },
   ],
+  // Bad snap to the holder — no realistic way to reset the hold, so unlike
+  // PUNT's equivalent there's no "kick anyway" option here: the kicker/holder
+  // recovering just falls on it (an ordinary 0-yard RUSH, no special option
+  // needed) or scrambles into a real run/pass via FAKE_PUNT_TYPE_BRANCHES.
+  bad_snap: [
+    { id: 'fg_bad_snap_at', label: 'Bad Snap AT', component: 'AT',
+      config: { stateKey: 'fg_bad_snap_at' } },
+    { id: 'fg_bad_snap_recovery_team', label: 'Recovery Team', component: 'TEAM',
+      config: { stateKey: 'fg_bad_snap_recovery_team' } },
+  ],
 }
 
 export const FG_BLOCKED_RETURN_BRANCHES = {
@@ -1073,6 +1085,15 @@ export const PAT_KICK_RESULT_BRANCHES = {
     { id: 'pat_block_result', label: 'Block Result', component: 'PAT_BLOCK_RESULT',
       config: { stateKey: 'pat_block_result' } },
   ],
+  // Same reasoning as FG's bad_snap: no realistic way to reset the hold, so
+  // no "kick anyway" option — the holder/kicker recovering just falls on it
+  // (an ordinary 0-yard RUSH) or scrambles via FAKE_PUNT_TYPE_BRANCHES.
+  bad_snap: [
+    { id: 'pat_bad_snap_at', label: 'Bad Snap AT', component: 'AT',
+      config: { stateKey: 'pat_bad_snap_at' } },
+    { id: 'pat_bad_snap_recovery_team', label: 'Recovery Team', component: 'TEAM',
+      config: { stateKey: 'pat_bad_snap_recovery_team' } },
+  ],
 }
 
 export const PUNT_RESULT_BRANCHES = {
@@ -1119,6 +1140,261 @@ export const PUNT_RESULT_BRANCHES = {
     { id: 'fake_punt_type', label: 'Fake Punt Type', component: 'RESULT',
       config: { stateKey: 'fake_punt_type', optionsKey: 'FAKE_PUNT_TYPE' } },
   ],
+  // The returner never had controlled possession — deliberately its own
+  // punt_muff_* field namespace, NOT fumble_*/fumble_2_*, so this can never
+  // be picked up by computeFumbleStats()/_fumbleCarrier() in viewer.html
+  // (those only read fumble_* fields). There's no "muffed by" step here on
+  // purpose — see PUNT_MUFF_RESULT_BRANCHES below for why a subsequent loss
+  // of the ball at the recovery stage IS captured as a real fumble_2_*.
+  muffed: [
+    { id: 'punt_muff_at', label: 'Muff AT', component: 'AT',
+      config: { stateKey: 'punt_muff_at' } },
+    { id: 'punt_muff_recovery_team', label: 'Recovery Team', component: 'TEAM',
+      config: { stateKey: 'punt_muff_recovery_team' } },
+    { id: 'punt_muff_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'punt_muff_recovered_by', multiple: false, optional: true, teamFrom: 'punt_muff_recovery_team' } },
+    { id: 'punt_muff_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'punt_muff_recovered_at' } },
+    { id: 'punt_muff_result', label: 'Result', component: 'RESULT',
+      config: { stateKey: 'punt_muff_result', optionsKey: 'STANDARD' } },
+  ],
+  // Bad LONG SNAP to the punter — a pre-kick execution error, distinct from
+  // both 'blocked' (a defensive play at the line) and 'muffed' (the returner
+  // failing to field a clean punt downfield). own-vs-opponent recovery split
+  // resolved dynamically in wizard.js's resolveBranchSteps (see
+  // PUNT_BAD_SNAP_RECOVERY_BRANCHES below), same mechanism as SNAP_FUMBLE.
+  bad_snap: [
+    { id: 'punt_bad_snap_at', label: 'Bad Snap AT', component: 'AT',
+      config: { stateKey: 'punt_bad_snap_at' } },
+    { id: 'punt_bad_snap_recovery_team', label: 'Recovery Team', component: 'TEAM',
+      config: { stateKey: 'punt_bad_snap_recovery_team' } },
+  ],
+}
+
+// Level-2 branches for a muff's RECOVERY result. tackle/oob/eop/safety get
+// their own punt_muff_* fields (still isolated from fumble_*, since nobody
+// controlled the ball before the muff). 'fumble' is the one exception on
+// purpose: once punt_muff_recovered_by actually has the ball, losing it from
+// there on is a genuine fumble (real possession, then lost) — so that leaf
+// reuses FUMBLE_RESULT_BRANCHES.fumble verbatim (the existing fumble_2_*
+// fields/branches), not a third namespace, since it IS the same kind of
+// event the rest of the app already tracks as a fumble.
+export const PUNT_MUFF_RESULT_BRANCHES = {
+  tackle: [
+    { id: 'punt_muff_tackle_by', label: 'Tackle By', component: 'BY',
+      config: { stateKey: 'punt_muff_tackle_by', multiple: true, optional: true, teamFrom: 'punt_muff_recovery_team', invertTeamFrom: true } },
+    { id: 'punt_muff_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'punt_muff_at_result' } },
+  ],
+  oob: [
+    { id: 'punt_muff_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'punt_muff_at_result' } },
+  ],
+  eop: [
+    { id: 'punt_muff_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'punt_muff_at_result' } },
+  ],
+  safety: [
+    { id: 'punt_muff_safety_time', label: 'Set Time', component: 'TIME',
+      config: { stateKey: 'punt_muff_safety_time' } },
+  ],
+  fumble: FUMBLE_RESULT_BRANCHES.fumble,
+}
+
+// ── Snap fumble (bad center snap, before the play develops) ─────────────────
+// Distinct from a real in-play fumble: this is an execution error, not a
+// defensive play, so there's deliberately no "forced_by" field anywhere here.
+// wizard.js's resolveBranchSteps picks 'own' vs 'opponent' by comparing the
+// chosen snap_fumble_recovery_team against the play's actual possession —
+// not a static lookup keyed by team abbreviation (that varies per game).
+export const SNAP_FUMBLE_RECOVERY_BRANCHES = {
+  // Offense recovers its own botched snap and the play develops into a real
+  // RUSH or PASS — snap_fumble_type mirrors fake_punt_type's retargeting
+  // mechanism exactly (wizard.js's _onStepComplete sets play_type to
+  // RUSH/PASS, then resolveBranchSteps splices in that type's own remaining
+  // steps via FAKE_PUNT_TYPE_BRANCHES, reused verbatim here).
+  own: [
+    { id: 'snap_fumble_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'snap_fumble_recovered_by', multiple: false, optional: true } },
+    { id: 'snap_fumble_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'snap_fumble_recovered_at' } },
+    { id: 'snap_fumble_type', label: 'Snap Fumble Type', component: 'RESULT',
+      config: { stateKey: 'snap_fumble_type', optionsKey: 'FAKE_PUNT_TYPE' } },
+  ],
+  // Opponent recovers — immediate turnover, no RUSH/PASS ever developed.
+  // play_type stays 'SNAP_FUMBLE' (never retargeted) so this can never be
+  // counted as anyone's rush/pass attempt in viewer.html's stat maps, which
+  // are keyed strictly by play_type === 'RUSH'/'PASS'.
+  opponent: [
+    { id: 'snap_fumble_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'snap_fumble_recovered_by', multiple: false, optional: true, team: 'opponent' } },
+    { id: 'snap_fumble_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'snap_fumble_recovered_at' } },
+    { id: 'snap_fumble_result', label: 'Result', component: 'RESULT',
+      config: { stateKey: 'snap_fumble_result', optionsKey: 'STANDARD' } },
+  ],
+}
+
+// Level-2 branches for the 'opponent recovers' terminal case above. 'fumble'
+// reuses FUMBLE_RESULT_BRANCHES.fumble verbatim (same reasoning as
+// PUNT_MUFF_RESULT_BRANCHES.fumble above) — once the recovering player has
+// the ball, losing it again is a real fumble, not part of the snap-fumble
+// namespace.
+export const SNAP_FUMBLE_RESULT_BRANCHES = {
+  tackle: [
+    { id: 'snap_fumble_tackle_by', label: 'Tackle By', component: 'BY',
+      config: { stateKey: 'snap_fumble_tackle_by', multiple: true, optional: true, teamFrom: 'snap_fumble_recovery_team', invertTeamFrom: true } },
+    { id: 'snap_fumble_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'snap_fumble_at_result' } },
+  ],
+  oob: [
+    { id: 'snap_fumble_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'snap_fumble_at_result' } },
+  ],
+  eop: [
+    { id: 'snap_fumble_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'snap_fumble_at_result' } },
+  ],
+  safety: [
+    { id: 'snap_fumble_safety_time', label: 'Set Time', component: 'TIME',
+      config: { stateKey: 'snap_fumble_safety_time' } },
+  ],
+  fumble: FUMBLE_RESULT_BRANCHES.fumble,
+}
+
+// ── Bad snap (long snapper) for PUNT/FG/PAT_KICK ─────────────────────────────
+// Same shape/reasoning as SNAP_FUMBLE_RECOVERY_BRANCHES/SNAP_FUMBLE_RESULT_
+// BRANCHES above, nested per-tree instead of a top-level play_type since
+// play_type is already correctly PUNT/KICK/PAT_TRY by the time a bad snap
+// happens here — there's no reason to retarget away from it. Only the 'own
+// recovers, scrambles into a real run/pass' leaf ever changes play_type
+// (via *_bad_snap_type, reusing FAKE_PUNT_TYPE_BRANCHES verbatim in
+// wizard.js) — the 'kick anyway' (PUNT only) and 'opponent recovers' leaves
+// never do, exactly like 'blocked'/'muffed' already don't.
+
+export const PUNT_BAD_SNAP_RECOVERY_BRANCHES = {
+  own: [
+    { id: 'punt_bad_snap_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'punt_bad_snap_recovered_by', multiple: false, optional: true } },
+    { id: 'punt_bad_snap_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'punt_bad_snap_recovered_at' } },
+    // 3-way (run/pass/kick) — see RESULT_OPTIONS.BAD_SNAP_PUNT_TYPE above for
+    // why PUNT alone gets a "kick anyway" option that FG/PAT_KICK don't.
+    { id: 'punt_bad_snap_type', label: 'Bad Snap Type', component: 'RESULT',
+      config: { stateKey: 'punt_bad_snap_type', optionsKey: 'BAD_SNAP_PUNT_TYPE' } },
+  ],
+  opponent: [
+    { id: 'punt_bad_snap_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'punt_bad_snap_recovered_by', multiple: false, optional: true, team: 'opponent' } },
+    { id: 'punt_bad_snap_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'punt_bad_snap_recovered_at' } },
+    { id: 'punt_bad_snap_result', label: 'Result', component: 'RESULT',
+      config: { stateKey: 'punt_bad_snap_result', optionsKey: 'STANDARD' } },
+  ],
+}
+
+export const PUNT_BAD_SNAP_RESULT_BRANCHES = {
+  tackle: [
+    { id: 'punt_bad_snap_tackle_by', label: 'Tackle By', component: 'BY',
+      config: { stateKey: 'punt_bad_snap_tackle_by', multiple: true, optional: true, teamFrom: 'punt_bad_snap_recovery_team', invertTeamFrom: true } },
+    { id: 'punt_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'punt_bad_snap_at_result' } },
+  ],
+  oob: [
+    { id: 'punt_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'punt_bad_snap_at_result' } },
+  ],
+  eop: [
+    { id: 'punt_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'punt_bad_snap_at_result' } },
+  ],
+  safety: [
+    { id: 'punt_bad_snap_safety_time', label: 'Set Time', component: 'TIME',
+      config: { stateKey: 'punt_bad_snap_safety_time' } },
+  ],
+  fumble: FUMBLE_RESULT_BRANCHES.fumble,
+}
+
+export const FG_BAD_SNAP_RECOVERY_BRANCHES = {
+  own: [
+    { id: 'fg_bad_snap_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'fg_bad_snap_recovered_by', multiple: false, optional: true } },
+    { id: 'fg_bad_snap_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'fg_bad_snap_recovered_at' } },
+    { id: 'fg_bad_snap_type', label: 'Bad Snap Type', component: 'RESULT',
+      config: { stateKey: 'fg_bad_snap_type', optionsKey: 'FAKE_PUNT_TYPE' } },
+  ],
+  opponent: [
+    { id: 'fg_bad_snap_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'fg_bad_snap_recovered_by', multiple: false, optional: true, team: 'opponent' } },
+    { id: 'fg_bad_snap_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'fg_bad_snap_recovered_at' } },
+    { id: 'fg_bad_snap_result', label: 'Result', component: 'RESULT',
+      config: { stateKey: 'fg_bad_snap_result', optionsKey: 'STANDARD' } },
+  ],
+}
+
+export const FG_BAD_SNAP_RESULT_BRANCHES = {
+  tackle: [
+    { id: 'fg_bad_snap_tackle_by', label: 'Tackle By', component: 'BY',
+      config: { stateKey: 'fg_bad_snap_tackle_by', multiple: true, optional: true, teamFrom: 'fg_bad_snap_recovery_team', invertTeamFrom: true } },
+    { id: 'fg_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'fg_bad_snap_at_result' } },
+  ],
+  oob: [
+    { id: 'fg_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'fg_bad_snap_at_result' } },
+  ],
+  eop: [
+    { id: 'fg_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'fg_bad_snap_at_result' } },
+  ],
+  safety: [
+    { id: 'fg_bad_snap_safety_time', label: 'Set Time', component: 'TIME',
+      config: { stateKey: 'fg_bad_snap_safety_time' } },
+  ],
+  fumble: FUMBLE_RESULT_BRANCHES.fumble,
+}
+
+export const PAT_BAD_SNAP_RECOVERY_BRANCHES = {
+  own: [
+    { id: 'pat_bad_snap_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'pat_bad_snap_recovered_by', multiple: false, optional: true } },
+    { id: 'pat_bad_snap_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'pat_bad_snap_recovered_at' } },
+    { id: 'pat_bad_snap_type', label: 'Bad Snap Type', component: 'RESULT',
+      config: { stateKey: 'pat_bad_snap_type', optionsKey: 'FAKE_PUNT_TYPE' } },
+  ],
+  opponent: [
+    { id: 'pat_bad_snap_recovered_by', label: 'Recovered By', component: 'BY',
+      config: { stateKey: 'pat_bad_snap_recovered_by', multiple: false, optional: true, team: 'opponent' } },
+    { id: 'pat_bad_snap_recovered_at', label: 'Recovered AT', component: 'AT',
+      config: { stateKey: 'pat_bad_snap_recovered_at' } },
+    { id: 'pat_bad_snap_result', label: 'Result', component: 'RESULT',
+      config: { stateKey: 'pat_bad_snap_result', optionsKey: 'STANDARD' } },
+  ],
+}
+
+export const PAT_BAD_SNAP_RESULT_BRANCHES = {
+  tackle: [
+    { id: 'pat_bad_snap_tackle_by', label: 'Tackle By', component: 'BY',
+      config: { stateKey: 'pat_bad_snap_tackle_by', multiple: true, optional: true, teamFrom: 'pat_bad_snap_recovery_team', invertTeamFrom: true } },
+    { id: 'pat_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'pat_bad_snap_at_result' } },
+  ],
+  oob: [
+    { id: 'pat_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'pat_bad_snap_at_result' } },
+  ],
+  eop: [
+    { id: 'pat_bad_snap_at_result', label: 'AT', component: 'AT',
+      config: { stateKey: 'pat_bad_snap_at_result' } },
+  ],
+  safety: [
+    { id: 'pat_bad_snap_safety_time', label: 'Set Time', component: 'TIME',
+      config: { stateKey: 'pat_bad_snap_safety_time' } },
+  ],
+  fumble: FUMBLE_RESULT_BRANCHES.fumble,
 }
 
 export const PUNT_BLOCK_RETURN_BRANCHES = {
@@ -1199,1494 +1475,6 @@ export const PUNT_BLOCK_RET_RESULT_BRANCHES = {
     { id: 'fumble_result', label: 'Fumble Result', component: 'RESULT',
       config: { stateKey: 'fumble_result', optionsKey: 'STANDARD' } },
   ],
-}
-
-// ── Single-player stat aggregation (Reports / Player Card) ───────────────────
-// Purpose-built for capture/'s Reports tab: stats for ONE player in the
-// current game only. Deliberately NOT a reuse of viewer.html's passers/
-// rushers/receivers map (that's built inline inside a useMemo, all players
-// of both teams at once, and viewer.html isn't an ES module capture/ could
-// import from) — but it applies the exact same business rules already
-// validated there, read from the same fields, so the numbers match:
-//   - stats_count === false plays are excluded from offense categories
-//     (same as viewer.html's passers/rushers/receivers), but NOT from
-//     defense (viewer.html's computeDefenseStats doesn't gate on it either).
-//   - A scramble or a sack is credited as a RUSH to the QB (pass_by), never
-//     as a passing attempt — same NCAA-convention rule as Comparación.
-//   - Individual stats use raw net_yards, not _effectiveNetYards — that
-//     distinction (team/drive yardage vs. individual credit) was established
-//     earlier this session and viewer.html's own player maps already follow it.
-// Player matching is by `number` only (not name) — real captured play_data
-// includes rows from before the wizard wrote {nombre,apellido}, so number is
-// the only field guaranteed present across old and new data.
-function _isSamePlayer(ref, player) {
-  return !!(ref && player && Number(ref.number) === Number(player.number))
-}
-
-export function computePlayerStats(plays, player, teamAbbr) {
-  let rushing = null, passing = null, receiving = null, defense = null
-  const ensureRushing   = () => rushing   ?? (rushing   = { att: 0, yds: 0, td: 0 })
-  const ensurePassing   = () => passing   ?? (passing   = { att: 0, comp: 0, yds: 0, td: 0, int: 0 })
-  const ensureReceiving = () => receiving ?? (receiving = { rec: 0, yds: 0, td: 0 })
-  const ensureDefense   = () => defense   ?? (defense   = { solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0 })
-
-  for (const p of plays) {
-    if (p.play_type === 'GAME_CTRL') continue
-
-    if (p.possession === teamAbbr && p.stats_count !== false) {
-      if (p.play_type === 'RUSH' && _isSamePlayer(p.rush_by, player)) {
-        const r = ensureRushing()
-        r.att++
-        r.yds += p.net_yards || 0
-        if (p.touchdown) r.td++
-      }
-
-      if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack') &&
-          _isSamePlayer(p.pass_by, player)) {
-        const r = ensureRushing()
-        r.att++
-        r.yds += p.net_yards || 0
-        if (p.touchdown) r.td++
-      }
-
-      // Any non-scramble/non-sack pass_result is an attempt — including
-      // 'dropped'/'broken_up' — same rule as viewer.html:1975, not just
-      // complete/incomplete/intercepted.
-      if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack' &&
-          _isSamePlayer(p.pass_by, player)) {
-        const pa = ensurePassing()
-        pa.att++
-        if (p.pass_result === 'complete') {
-          pa.comp++
-          pa.yds += p.net_yards || 0
-          if (p.touchdown) pa.td++
-        }
-        if (p.pass_result === 'intercepted') pa.int++
-      }
-
-      if (p.play_type === 'PASS' && p.pass_result === 'complete' && _isSamePlayer(p.received_by, player)) {
-        const rc = ensureReceiving()
-        rc.rec++
-        rc.yds += p.net_yards || 0
-        if (p.touchdown) rc.td++
-      }
-    }
-
-    // Defense credit belongs to the team that did NOT snap this play —
-    // same defTeam pattern as viewer.html's computeDefenseStats.
-    if (p.possession && p.possession !== teamAbbr) {
-      const tackleArrays = [p.tackle_by, p.fumble_tackle_by, p.punt_block_ret_tackle_by, p.return_tackle_by]
-      for (const arr of tackleArrays) {
-        if (!Array.isArray(arr) || !arr.length) continue
-        const isSolo = arr.length === 1
-        for (const ref of arr) {
-          if (!_isSamePlayer(ref, player)) continue
-          const d = ensureDefense()
-          d[isSolo ? 'solo' : 'ast']++
-          if (p.net_yards != null && p.net_yards < 0) d.tfl++
-        }
-      }
-      if (p.play_type === 'PASS' && p.pass_result === 'sack' && _isSamePlayer(p.sack_by, player)) {
-        const d = ensureDefense()
-        d.sacks++
-        d.solo++
-      }
-      if (_isSamePlayer(p.fumble_forced_by, player) || _isSamePlayer(p.fumble_2_forced_by, player)) {
-        ensureDefense().ff++
-      }
-      if (p.pass_result === 'intercepted' && _isSamePlayer(p.intercepted_by, player)) {
-        ensureDefense().int++
-      }
-    }
-  }
-
-  if (rushing) rushing.avg = rushing.att ? +(rushing.yds / rushing.att).toFixed(1) : 0
-  if (passing) passing.compAtt = `${passing.comp}-${passing.att}`
-
-  const out = {}
-  if (passing)   out.passing   = passing
-  if (rushing)   out.rushing   = rushing
-  if (receiving) out.receiving = receiving
-  if (defense)   out.defense   = defense
-  return out
-}
-
-// ── Team comparison stats (Reports / Box Score) ──────────────────────────────
-// ⚠️ DUPLICADO INTENCIONAL de viewer.html (computeComparisonStats y sus
-// dependencias: computeDrives, driveEndLabel, _turnoverScore,
-// _kickoffDriveOwner, _isFirstDownPlay, _effectiveNetYards — más
-// computePenalties/_puntTerminalSpot un poco más abajo, para la fila
-// "Penalties" de Comparación, que Comparación deriva por separado).
-// Motivo: viewer.html no es módulo ES, mover estas funciones ahí rompería
-// 10+ call sites síncronos (Drive Chart, play-by-play, Explosive Plays,
-// banner de drive en vivo) que las usan fuera de cualquier guard async.
-// Si se corrige una fórmula de Comparación en viewer.html, replicar el
-// cambio aquí también. Única diferencia real con el original: aquí
-// isTouchdown/calcNetYards/formatPlay/playerShortLabel se llaman directas
-// (nativas del módulo) en vez de vía import() con guards typeof — misma
-// lógica, sin el paso async.
-
-function _kickoffDriveOwner(p, otherTeam) {
-  const kicker = p.possession
-  const receiver = otherTeam(kicker)
-  if (p.kickoff_result === 'onside' && p.onside_recovery_team === kicker) return kicker
-  if (p.kick_return_result === 'fumble' && p.fumble_recovery_team === kicker) return kicker
-  return receiver
-}
-
-function _turnoverScore(p, teams) {
-  if (!teams || !p.possession) return null
-  const opponentOf = t => (t === teams.home.name ? teams.away.name : teams.home.name)
-
-  if (p.play_type === 'PASS' && p.pass_result === 'intercepted') {
-    const intTeam = opponentOf(p.possession)
-    const pos = p.return_at || p.intercepted_at
-    if (pos && isTouchdown(teams, intTeam, pos)) return 'INTERCEPTION'
-  }
-
-  if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession && p.fumble_recovered_at) {
-    if (isTouchdown(teams, p.fumble_recovery_team, p.fumble_recovered_at)) return 'FUMBLE'
-  }
-  if (p.fumble_2_recovery_team && p.fumble_2_recovery_team !== p.possession && p.fumble_2_recovered_at) {
-    if (isTouchdown(teams, p.fumble_2_recovery_team, p.fumble_2_recovered_at)) return 'FUMBLE'
-  }
-
-  if (p.play_type === 'KICK' && p.fg_returned_by && p.fg_ret_at) {
-    const defTeam = opponentOf(p.possession)
-    if (isTouchdown(teams, defTeam, p.fg_ret_at)) return 'BLOCKED KICK'
-  }
-  if (p.play_type === 'PUNT' && p.punt_block_returned_by && p.punt_block_ret_at) {
-    const defTeam = opponentOf(p.possession)
-    if (isTouchdown(teams, defTeam, p.punt_block_ret_at)) return 'BLOCKED KICK'
-  }
-
-  return null
-}
-
-export function computeDrives(plays, homeAbbr, awayAbbr) {
-  const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null))
-
-  function driveOwner(p) {
-    if (p.play_type === 'KICK' && p.kick_type !== 'field_goal') {
-      return _kickoffDriveOwner(p, otherTeam)
-    }
-    return p.possession
-  }
-
-  const drives = []
-  let cur = null
-  for (const p of plays) {
-    if (p.play_type === 'GAME_CTRL') continue
-
-    if (p.play_type === 'PAT_TRY' && cur) {
-      cur.plays.push(p)
-      drives.push(cur)
-      cur = null
-      continue
-    }
-
-    const owner = driveOwner(p)
-    if (!cur || cur.possession !== owner) {
-      if (cur) drives.push(cur)
-      cur = { possession: owner, plays: [] }
-    }
-    cur.plays.push(p)
-
-    if (p.play_type === 'KICK' && p.kick_type === 'field_goal' && p.fg_result === 'good') {
-      drives.push(cur)
-      cur = null
-    }
-  }
-  if (cur && cur.plays.length) drives.push(cur)
-  return drives
-}
-
-function driveEndLabel(plays, isLastDrive, teams) {
-  if (!plays.length) return null
-  let last = plays[plays.length - 1]
-  if (last.play_type === 'PAT_TRY' && plays.length > 1) {
-    last = plays[plays.length - 2]
-  }
-  const turnover = _turnoverScore(last, teams)
-  if (turnover) return turnover
-  if (last.touchdown) return 'TD'
-  if (last.play_type === 'KICK' && last.kick_type === 'field_goal' && last.fg_result === 'good') return 'FG'
-  if (last.play_type === 'PUNT') return 'PUNT'
-  if (last.pass_result === 'intercepted') return 'INT'
-  if (last.result === 'fumble') return 'FUMB'
-  if (last.down === 4) return 'DOWNS'
-  if (isLastDrive) return 'HALF'
-  return null
-}
-
-function _isFirstDownPlay(p) {
-  const byYards = p.stats_count !== false &&
-    ((p.net_yards != null && p.distance != null && p.net_yards >= p.distance) || p.touchdown === true)
-  const byPenalty = p.flag_1_down_result === 'first_down' ||
-    p.flag_2_down_result === 'first_down' ||
-    p.penalty_down_result === 'first_down'
-  return byYards || byPenalty
-}
-
-function _effectiveNetYards(p, teams) {
-  if (!teams) return p.net_yards
-
-  if (p.play_type === 'PENALTY') {
-    if (p.penalty_result === 'accepted' && p.field_pos && p.penalty_new_los) {
-      return calcNetYards(teams, p.possession, p.field_pos, p.penalty_new_los)
-    }
-    return null
-  }
-
-  if (!p.field_pos) return p.net_yards
-  let eff = p.net_yards
-  for (const num of [1, 2]) {
-    if (!p[`flag_${num}_infraction`]) break
-    if (p[`flag_${num}_result`] !== 'accepted') continue
-    const newLos = p[`flag_${num}_new_los`]
-    if (newLos) eff = calcNetYards(teams, p.possession, p.field_pos, newLos)
-  }
-  return eff
-}
-
-export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
-  const blank = () => ({
-    passYds: 0, rushYds: 0, totalPlays: 0,
-    passCompletions: 0, rushPlays: 0, sackAdjRushYds: 0, sackAdjRushPlays: 0,
-    firstDowns: 0, thirdAtt: 0, thirdConv: 0, fourthAtt: 0, fourthConv: 0,
-    redZoneTrips: 0, redZoneTDs: 0,
-    turnovers: 0, fumbles: 0, fumblesLost: 0,
-    sacksMade: 0, sacksYds: 0, tflMade: 0, tflYds: 0,
-  })
-  const out = { [homeAbbr]: blank(), [awayAbbr]: blank() }
-  const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null))
-
-  for (const p of plays) {
-    if (p.play_type === 'GAME_CTRL') continue
-
-    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && out[p.possession]) {
-      out[p.possession].turnovers++
-    }
-    if (p.result === 'fumble' && out[p.possession]) {
-      out[p.possession].fumbles++
-      if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) {
-        out[p.possession].fumblesLost++
-        out[p.possession].turnovers++
-      }
-    }
-
-    if (p.play_type === 'PASS' && p.pass_result === 'sack') {
-      const def = out[otherTeam(p.possession)]
-      if (def) { def.sacksMade++; def.sacksYds += Math.abs(p.net_yards || 0) }
-    }
-    const isTflEligible = p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'complete')
-    if (isTflEligible && p.net_yards != null && p.net_yards < 0) {
-      const def = out[otherTeam(p.possession)]
-      if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards) }
-    }
-
-    if (out[p.possession] && _isFirstDownPlay(p)) out[p.possession].firstDowns++
-
-    if (p.stats_count === false) continue
-    const t = out[p.possession]
-    if (!t) continue
-
-    if (p.play_type === 'RUSH' || p.play_type === 'PASS') {
-      t.totalPlays++
-      if (p.down === 3) { t.thirdAtt++; if (_isFirstDownPlay(p)) t.thirdConv++ }
-      if (p.down === 4) { t.fourthAtt++; if (_isFirstDownPlay(p)) t.fourthConv++ }
-    }
-
-    if (p.play_type === 'RUSH') {
-      const y = _effectiveNetYards(p, teams) || 0
-      t.rushYds += y; t.rushPlays++
-      t.sackAdjRushYds += y; t.sackAdjRushPlays++
-    } else if (p.play_type === 'PASS' && (p.pass_result === 'sack' || p.pass_result === 'scramble')) {
-      const y = _effectiveNetYards(p, teams) || 0
-      t.rushYds += y; t.rushPlays++
-      if (p.pass_result === 'scramble') { t.sackAdjRushYds += y; t.sackAdjRushPlays++ }
-    } else if (p.play_type === 'PASS' && ['complete', 'incomplete', 'intercepted'].includes(p.pass_result)) {
-      t.passYds += (_effectiveNetYards(p, teams) || 0)
-      if (p.pass_result === 'complete') t.passCompletions++
-    }
-  }
-
-  drives.forEach((d, i) => {
-    const t = out[d.possession]
-    if (!t) return
-    const enteredRedZone = d.plays.some(p =>
-      p.play_type !== 'PAT_TRY' && p.yardline_100 != null && p.yardline_100 <= 20
-    )
-    if (!enteredRedZone) return
-    t.redZoneTrips++
-    if (driveEndLabel(d.plays, i === drives.length - 1, teams) === 'TD') t.redZoneTDs++
-  })
-
-  return out
-}
-
-// Box Score's "Penalties" row needs computePenalties() too (Comparación
-// derives it the same way via _teamPenaltySummary, not from
-// computeComparisonStats' own output) — same duplication rationale as above,
-// _puntTerminalSpot included since computePenalties depends on it.
-function _puntTerminalSpot(p) {
-  if (p.punt_result === 'fair_catch') return p.punt_fair_catch_at || null
-  if (p.punt_result === 'oob') return p.punt_oob_at || null
-  if (p.punt_result === 'downed') return p.punt_downed_at || null
-  if (p.punt_result === 'returned') {
-    if (p.punt_return_result === 'fumble') return p.fumble_recovered_at || null
-    return p.punt_return_at || null
-  }
-  if (p.punt_result === 'blocked') {
-    if (p.punt_block_return_result === 'returned') {
-      if (p.punt_block_ret_result === 'fumble') return p.fumble_recovered_at || null
-      return p.punt_block_ret_at || null
-    }
-    return p.punt_recovered_at || null
-  }
-  return null
-}
-
-export function computePenalties(plays, homeAbbr) {
-  const absYd = (team, yard) => (team === homeAbbr ? yard : 100 - yard)
-  const out = []
-
-  function pushPenalty(p, team, infraction, by, result, newLos) {
-    if (!team || !infraction) return
-    let yards = null
-    let base = p.field_pos
-    if (p.play_type === 'PUNT') {
-      base = _puntTerminalSpot(p) || p.field_pos
-    }
-    if (base && newLos) {
-      yards = Math.abs(absYd(newLos.team, newLos.yard) - absYd(base.team, base.yard))
-    }
-    out.push({
-      seq: p.seq, team, quarter: p.quarter, clock: p.clock,
-      code: infraction.code, label: infraction.label,
-      player: by ? playerShortLabel(by) : null,
-      result: result || '—',
-      yards,
-      context: formatPlay(p),
-    })
-  }
-
-  for (const p of plays) {
-    if (p.play_type === 'GAME_CTRL') continue
-    if (p.play_type === 'PENALTY') {
-      pushPenalty(p, p.penalty_team, p.penalty_infraction, p.penalty_by, p.penalty_result, p.penalty_new_los)
-    }
-    for (const num of [1, 2]) {
-      const inf = p[`flag_${num}_infraction`]
-      if (!inf) continue
-      pushPenalty(p, p[`flag_${num}_team`], inf, p[`flag_${num}_by`], p[`flag_${num}_result`], p[`flag_${num}_new_los`])
-    }
-  }
-
-  return out.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
-}
-
-// ── Play text formatter ───────────────────────────────────────────────────────
-
-// Shared short label for a captured player reference ({number, nombre, apellido}),
-// e.g. {number:22, nombre:'Juan', apellido:'Pérez'} → "#22 Pérez, J.".
-// Plays captured before rosters had real names (or any incomplete playerRef)
-// fall back to just "#{number}" instead of breaking.
-export function playerShortLabel(playerRef) {
-  if (!playerRef) return '—'
-  const { number, nombre, apellido } = playerRef
-  if (!apellido) return `#${number}`
-  const initial = nombre ? `, ${nombre.charAt(0).toUpperCase()}.` : ''
-  return `#${number} ${apellido}${initial}`
-}
-
-function _playerStr(p) {
-  return playerShortLabel(p)
-}
-
-function _playersStr(val) {
-  if (!val) return null
-  if (Array.isArray(val)) return val.map(_playerStr).join(', ')
-  return _playerStr(val)
-}
-
-function _downDistStr(down, distance) {
-  const labels = ['', '1st', '2nd', '3rd', '4th']
-  return `${labels[down] || down} & ${distance}`
-}
-
-function _posStr(pos) {
-  return pos ? `${pos.team} ${pos.yard}` : '—'
-}
-
-// Shared "— FUMBLE forced by X at Y (rec: Z #n) ..." tail, reused by RUSH,
-// sack, and PAT-run fumbles — all three write the same flat field names
-// (fumble_at, fumble_forced_by, fumble_recovery_team, fumble_recovered_by,
-// fumble_recovered_at, fumble_result) via the shared RESULT_BRANCHES.RUSH.fumble
-// sub-tree. fumble_at is omitted gracefully (no "at —") for PAT-run fumbles,
-// since PAT_TYPE_BRANCHES.run's reuse of the 'result' RESULT step never
-// actually appends fumble sub-steps today (RESULT_BRANCHES is keyed by
-// playType, and 'PAT_TRY' has no entry) — a separate, already-known capture
-// bug, not something this text change can or should paper over.
-function _formatFumbleTail(play) {
-  const forcedBy = play.fumble_forced_by ? ` forced by ${playerShortLabel(play.fumble_forced_by)}` : ''
-  const atStr    = play.fumble_at ? ` at ${_posStr(play.fumble_at)}` : ''
-  const recTeam  = play.fumble_recovery_team || '—'
-  const recBy    = play.fumble_recovered_by ? ` ${playerShortLabel(play.fumble_recovered_by)}` : ''
-
-  let fumbleResultStr = ''
-  if (play.fumble_result) {
-    if (play.fumble_result === 'touchdown') {
-      fumbleResultStr = ' TOUCHDOWN'
-    } else if (play.fumble_result === 'tackle' && play.fumble_at_result) {
-      const tackleBy = play.fumble_tackle_by
-        ? ` tackle: #${Array.isArray(play.fumble_tackle_by)
-            ? play.fumble_tackle_by.map(p => p.number).join(', #')
-            : play.fumble_tackle_by.number}`
-        : ''
-      fumbleResultStr = ` to ${_posStr(play.fumble_at_result)}${tackleBy}`
-    } else if (play.fumble_result === 'oob' && play.fumble_at_result) {
-      fumbleResultStr = ` to ${_posStr(play.fumble_at_result)} (OOB)`
-    } else if (play.fumble_result === 'eop' && play.fumble_at_result) {
-      fumbleResultStr = ` to ${_posStr(play.fumble_at_result)}`
-    } else if (play.fumble_result === 'safety') {
-      fumbleResultStr = ' SAFETY'
-    }
-  }
-
-  return ` — FUMBLE${forcedBy}${atStr} (rec: ${recTeam}${recBy})${fumbleResultStr}`
-}
-
-// Recomputes the kickoff-OOB receiving spot for display, mirroring
-// advanceGameState's kickRes==='oob' formula exactly (same absYard/dir/
-// clamp math) — kept identical on purpose so the printed text can never
-// drift from what actually got applied to game state.
-function _kickoffOobFinalSpot(play) {
-  const choice = play.kickoff_oob_spot_choice
-  if (choice === 'actual_spot') return play.kickoff_oob_at || null
-  if (choice === 'twenty_five' && play.field_pos && play.teams) {
-    const defTeam = play.possession === play.teams.home.name
-      ? play.teams.away.name : play.teams.home.name
-    const kickAbs = absYard(play.teams, play.field_pos.team, play.field_pos.yard)
-    const dir     = play.possession === play.teams.home.name ? 1 : -1
-    const spotAbs = Math.max(0, Math.min(100, kickAbs + dir * 25))
-    return { team: defTeam, yard: defTeam === play.teams.home.name ? spotAbs : 100 - spotAbs }
-  }
-  return null
-}
-
-function _formatFlags(play) {
-  const flags = []
-  for (const num of [1, 2]) {
-    const inf = play[`flag_${num}_infraction`]
-    if (!inf) break
-    const team   = play[`flag_${num}_team`] || '—'
-    const res    = play[`flag_${num}_result`] || ''
-    const by     = play[`flag_${num}_by`] ? ` on ${_playerStr(play[`flag_${num}_by`])}` : ''
-    const newLos = play[`flag_${num}_new_los`] ? ` → ${_posStr(play[`flag_${num}_new_los`])}` : ''
-    // timing undefined = plays captured before this field existed — treated
-    // the same as 'live' (today's default behavior), not flagged specially.
-    const isDead = play[`flag_${num}_timing`] === 'dead'
-    const label  = isDead ? 'FLAG (post-play)' : 'FLAG'
-    const note   = isDead ? ', play stands + penalty' : ''
-    flags.push(`${label}: ${inf.code} ${team}${by} (${res})${note}${newLos}`)
-  }
-  return flags.length ? ' | ' + flags.join(' | ') : ''
-}
-
-// Formats a completed play object into a human-readable string.
-// play must have at minimum: down, distance, field_pos, play_type
-export function formatPlay(play) {
-  const text = _formatPlayCore(play)
-  return play.fake_punt ? `[FAKE PUNT] ${text}` : text
-}
-
-function _formatPlayCore(play) {
-  const { down, distance, field_pos, play_type, result,
-          rush_by, tackle_by, at, net_yards, touchdown } = play
-
-  let situation
-  if (play_type === 'KICK') {
-    const kickLabel = play.kick_type === 'field_goal' ? 'Field Goal' : 'Kickoff'
-    situation = `${kickLabel} at ${_posStr(field_pos)}`
-  } else if (play_type === 'PUNT') {
-    situation = `Punt at ${_posStr(field_pos)}`
-  } else if (play_type === 'PAT_TRY') {
-    situation = 'PAT'
-  } else if (down === 0) {
-    situation = `at ${_posStr(field_pos)}`
-  } else {
-    situation = `${_downDistStr(down, distance)} at ${_posStr(field_pos)}`
-  }
-
-  if (play_type === 'RUSH') {
-    const carrier = _playersStr(rush_by) || '—'
-    const atStr   = at ? ` to ${_posStr(at)}` : ''
-    const yds     = net_yards != null ? Math.abs(net_yards) : null
-
-    if (touchdown) {
-      return `${situation}: ${carrier} rush for ${yds} yard${yds === 1 ? '' : 's'} TOUCHDOWN${_formatFlags(play)}`
-    }
-
-    if (result === 'safety') {
-      return `${situation}: ${carrier} tackled in the end zone — SAFETY (${_posStr({ team: play.possession, yard: 0 })})${_formatFlags(play)}`
-    }
-
-    const gainLoss = net_yards != null
-      ? net_yards >= 0
-        ? `rush for ${net_yards} yard${net_yards === 1 ? '' : 's'}`
-        : `rush for loss of ${Math.abs(net_yards)} yard${Math.abs(net_yards) === 1 ? '' : 's'}`
-      : 'rush'
-
-    let suffix = ''
-    if (result === 'tackle' && tackle_by) {
-      suffix = ` (tackle: ${_playersStr(tackle_by)})`
-    } else if (result === 'oob') {
-      suffix = ' (out of bounds)'
-    }
-    // eop = no suffix
-
-    if (play.fumble_at) {
-      return `${situation}: ${carrier} ${gainLoss}${_formatFumbleTail(play)}${_formatFlags(play)}`
-    }
-
-    return `${situation}: ${carrier} ${gainLoss}${atStr}${suffix}${_formatFlags(play)}`
-  }
-
-  if (play_type === 'PASS') {
-    const passer  = _playerStr(play.pass_by)
-    const passRes = play.pass_result
-
-    if (['incomplete', 'dropped', 'broken_up'].includes(passRes)) {
-      const target  = play.intended_for  ? ` intended for ${_playerStr(play.intended_for)}`  : ''
-      const buBy    = play.broken_up_by  ? ` broken up by ${_playerStr(play.broken_up_by)}`  : ''
-      const hurried = play.qb_hurried_by ? ` (hurried by ${_playerStr(play.qb_hurried_by)})` : ''
-      const label   = passRes === 'dropped' ? 'DROPPED'
-                    : passRes === 'broken_up' ? 'BROKEN UP' : 'INCOMPLETE'
-      return `${situation}: ${passer} pass ${label}${target}${buBy}${hurried}${_formatFlags(play)}`
-    }
-
-    if (passRes === 'sack') {
-      const sackBy = play.sack_by ? ` by ${_playerStr(play.sack_by)}` : ''
-
-      if (result === 'fumble') {
-        return `${situation}: ${passer} SACK${sackBy}${_formatFumbleTail(play)}${_formatFlags(play)}`
-      }
-
-      const atStr  = play.at ? ` to ${_posStr(play.at)}` : ''
-      const yds    = play.net_yards != null ? Math.abs(play.net_yards) : null
-      const ydsStr = yds != null ? ` for loss of ${yds} yard${yds === 1 ? '' : 's'}` : ''
-      return `${situation}: ${passer} SACK${sackBy}${ydsStr}${atStr}${_formatFlags(play)}`
-    }
-
-    if (passRes === 'scramble') {
-      const yds = play.net_yards != null ? play.net_yards : null
-      const gainLoss = yds != null
-        ? yds >= 0
-          ? `scramble for ${yds} yard${yds === 1 ? '' : 's'}`
-          : `scramble for loss of ${Math.abs(yds)} yard${Math.abs(yds) === 1 ? '' : 's'}`
-        : 'scramble'
-      const atStr = play.at ? ` to ${_posStr(play.at)}` : ''
-      if (play.touchdown) return `${situation}: ${passer} ${gainLoss} TOUCHDOWN${_formatFlags(play)}`
-      return `${situation}: ${passer} ${gainLoss}${atStr}${_formatFlags(play)}`
-    }
-
-    if (passRes === 'intercepted') {
-      const intBy = play.intercepted_by ? ` by ${_playerStr(play.intercepted_by)}` : ''
-      const intAt = play.intercepted_at ? ` at ${_posStr(play.intercepted_at)}` : ''
-      const retBy = play.returned_by    ? ` returned by ${_playerStr(play.returned_by)}` : ''
-      const retAt = play.return_at      ? ` to ${_posStr(play.return_at)}` : ''
-      let retTD = ''
-      if (play.return_at && play.teams) {
-        const intTeam = play.possession === play.teams.home.name
-          ? play.teams.away.name
-          : play.teams.home.name
-        if (isTouchdown(play.teams, intTeam, play.return_at)) retTD = ' TOUCHDOWN'
-      }
-      return `${situation}: ${passer} INTERCEPTED${intBy}${intAt}${retBy}${retAt}${retTD}${_formatFlags(play)}`
-    }
-
-    if (passRes === 'complete') {
-      const receiver = _playerStr(play.received_by)
-      const atStr    = play.at ? ` to ${_posStr(play.at)}` : ''
-      const yds      = play.net_yards != null ? play.net_yards : null
-      const gainLoss = yds != null
-        ? yds >= 0
-          ? `pass complete to ${receiver} for ${yds} yard${yds === 1 ? '' : 's'}`
-          : `pass complete to ${receiver} for loss of ${Math.abs(yds)} yard${Math.abs(yds) === 1 ? '' : 's'}`
-        : `pass complete to ${receiver}`
-      if (play.touchdown) return `${situation}: ${passer} ${gainLoss} TOUCHDOWN${_formatFlags(play)}`
-      let suffix = ''
-      if (play.result === 'tackle' && play.tackle_by) {
-        suffix = ` (tackle: ${_playersStr(play.tackle_by)})`
-      } else if (play.result === 'oob') {
-        suffix = ' (out of bounds)'
-      }
-      return `${situation}: ${passer} ${gainLoss}${atStr}${suffix}${_formatFlags(play)}`
-    }
-
-    return `${situation}: ${passer} pass${_formatFlags(play)}`
-  }
-
-  if (play_type === 'PENALTY') {
-    const inf     = play.penalty_infraction
-      ? `${play.penalty_infraction.code} (${play.penalty_infraction.label})`
-      : '—'
-    const team    = play.penalty_team || '—'
-    const res     = play.penalty_result || '—'
-    const by      = play.penalty_by     ? ` on ${_playerStr(play.penalty_by)}` : ''
-    const newLos  = play.penalty_new_los ? ` → New LOS: ${_posStr(play.penalty_new_los)}` : ''
-    const downRes = play.penalty_down_result
-      ? ` (${play.penalty_down_result.replace(/_/g, ' ')})` : ''
-    const stats   = play.penalty_stats_count != null
-      ? ` stats: ${play.penalty_stats_count ? 'count' : 'no count'}` : ''
-    return `${situation}: PENALTY ${inf} on ${team}${by} — ${res}${newLos}${downRes}${stats}${_formatFlags(play)}`
-  }
-
-  if (play_type === 'KICK') {
-    const kickedBy = play.kicked_by ? _playerStr(play.kicked_by) : '—'
-
-    if (play.kick_type === 'field_goal') {
-      const dist    = play.kick_distance ? `${play.kick_distance} yds` : ''
-      const res     = play.fg_result || '—'
-      const missHow = play.fg_miss_type
-        ? ` (${play.fg_miss_type.replace(/_/g, ' ')})` : ''
-      const blockedBy = play.fg_blocked_by
-        ? ` blocked by ${_playerStr(play.fg_blocked_by)}` : ''
-      const retBy   = play.fg_returned_by
-        ? ` returned by ${_playerStr(play.fg_returned_by)}` : ''
-      const retAt   = play.fg_ret_at
-        ? ` to ${_posStr(play.fg_ret_at)}` : ''
-      const retTD   = play.fg_ret_at && play.teams
-        ? (() => {
-            const retTeam = play.possession === play.teams.home.name
-              ? play.teams.away.name : play.teams.home.name
-            return isTouchdown(play.teams, retTeam, play.fg_ret_at)
-              ? ' TOUCHDOWN' : ''
-          })()
-        : ''
-
-      if (res === 'good') {
-        return `${situation}: ${kickedBy} FIELD GOAL ${dist} GOOD${_formatFlags(play)}`
-      }
-      if (res === 'missed') {
-        return `${situation}: ${kickedBy} FIELD GOAL ${dist} MISSED${missHow}${_formatFlags(play)}`
-      }
-      if (res === 'blocked') {
-        return `${situation}: ${kickedBy} FIELD GOAL ${dist} BLOCKED${blockedBy}${retBy}${retAt}${retTD}${_formatFlags(play)}`
-      }
-      return `${situation}: ${kickedBy} FIELD GOAL${_formatFlags(play)}`
-    }
-
-    // Kickoff
-    const kickRes   = play.kickoff_result || '—'
-    const kickedTo  = play.kicked_to
-      ? ` to ${_posStr(play.kicked_to)}` : ''
-    const retBy     = play.kick_returned_by
-      ? ` returned by ${_playerStr(play.kick_returned_by)}` : ''
-    const retAt     = play.kick_return_at
-      ? ` to ${_posStr(play.kick_return_at)}` : ''
-    const retTD     = play.kick_return_at && play.teams
-      ? (() => {
-          const retTeam = play.possession === play.teams.home.name
-            ? play.teams.away.name : play.teams.home.name
-          return isTouchdown(play.teams, retTeam, play.kick_return_at)
-            ? ' TOUCHDOWN' : ''
-        })()
-      : ''
-    const fairBy    = play.fair_catch_by
-      ? ` fair catch by ${_playerStr(play.fair_catch_by)}` : ''
-    const fairAt    = play.fair_catch_at
-      ? ` at ${_posStr(play.fair_catch_at)}` : ''
-    const onsideRec = play.onside_recovery_team
-      ? ` recovered by ${play.onside_recovery_team}` : ''
-
-    if (kickRes === 'returned') {
-      return `${situation}: ${kickedBy} kickoff${kickedTo}${retBy}${retAt}${retTD}${_formatFlags(play)}`
-    }
-    if (kickRes === 'oob') {
-      const oobAtStr = play.kickoff_oob_at ? ` at ${_posStr(play.kickoff_oob_at)}` : ''
-      const choiceLabel = play.kickoff_oob_spot_choice === 'actual_spot' ? ' (spot real)'
-        : play.kickoff_oob_spot_choice === 'twenty_five' ? ' (25 yardas desde el kick)' : ''
-      const finalSpot = _kickoffOobFinalSpot(play)
-      const finalStr = finalSpot ? ` → ${_posStr(finalSpot)}` : ''
-      return `${situation}: ${kickedBy} kickoff OUT OF BOUNDS${oobAtStr}${choiceLabel}${finalStr}${_formatFlags(play)}`
-    }
-    if (kickRes === 'fair_catch') {
-      return `${situation}: ${kickedBy} kickoff${kickedTo}${fairBy}${fairAt}${_formatFlags(play)}`
-    }
-    if (kickRes === 'touchback') {
-      return `${situation}: ${kickedBy} kickoff TOUCHBACK${_formatFlags(play)}`
-    }
-    if (kickRes === 'onside') {
-      return `${situation}: ${kickedBy} kickoff ONSIDE${onsideRec}${_formatFlags(play)}`
-    }
-    return `${situation}: ${kickedBy} kickoff${_formatFlags(play)}`
-  }
-
-  if (play_type === 'PAT_TRY') {
-    const patType = play.pat_type
-
-    if (patType === 'kick') {
-      const kickedBy = play.kicked_by ? _playerStr(play.kicked_by) : '—'
-      const res      = play.pat_kick_result
-      if (res === 'good')   return `PAT: ${kickedBy} kick GOOD (1pt)${_formatFlags(play)}`
-      if (res === 'missed') return `PAT: ${kickedBy} kick MISSED${_formatFlags(play)}`
-      if (res === 'blocked') {
-        const blkBy  = play.pat_blocked_by
-          ? ` blocked by ${_playerStr(play.pat_blocked_by)}` : ''
-        const retBy  = play.pat_block_returned_by
-          ? ` returned by ${_playerStr(play.pat_block_returned_by)}` : ''
-        const blkRes = play.pat_block_result === 'good'
-          ? ' GOOD (2pt defense)' : ' downed'
-        return `PAT: ${kickedBy} kick BLOCKED${blkBy}${retBy}${blkRes}${_formatFlags(play)}`
-      }
-      return `PAT: ${kickedBy} kick${_formatFlags(play)}`
-    }
-
-    if (patType === 'run') {
-      const carrier = play.rush_by ? _playerStr(play.rush_by) : '—'
-      if (play.touchdown) {
-        return `PAT: ${carrier} rush GOOD (2pt)${_formatFlags(play)}`
-      }
-      if (play.result === 'fumble') {
-        // fumble_forced_by/fumble_recovered_by/fumble_at rarely populate here
-        // today — PAT_TYPE_BRANCHES.run's reuse of the 'result' RESULT step
-        // never appends fumble sub-steps in the current wizard flow, since
-        // RESULT_BRANCHES is keyed by playType and 'PAT_TRY' has no entry
-        // (separate, already-known capture gap). _formatFumbleTail degrades
-        // gracefully when those fields are absent.
-        const defScored = play.pat_two_pt_defense ? ' — DEFENSE 2pt' : ''
-        return `PAT: ${carrier} rush${_formatFumbleTail(play)}${defScored}${_formatFlags(play)}`
-      }
-      return `PAT: ${carrier} rush NO GOOD${_formatFlags(play)}`
-    }
-
-    if (patType === 'pass') {
-      const passer  = play.pass_by ? _playerStr(play.pass_by) : '—'
-      const passRes = play.pass_result
-      if (passRes === 'complete' && play.touchdown) {
-        const rec = play.received_by ? ` to ${_playerStr(play.received_by)}` : ''
-        return `PAT: ${passer} pass${rec} GOOD (2pt)${_formatFlags(play)}`
-      }
-      if (passRes === 'intercepted') {
-        const intBy     = play.intercepted_by
-          ? ` by ${_playerStr(play.intercepted_by)}` : ''
-        const defScored = play.pat_two_pt_defense ? ' — DEFENSE 2pt' : ''
-        return `PAT: ${passer} pass INTERCEPTED${intBy}${defScored}${_formatFlags(play)}`
-      }
-      if (passRes === 'complete') {
-        return `PAT: ${passer} pass complete NO GOOD${_formatFlags(play)}`
-      }
-      return `PAT: ${passer} pass ${passRes || 'NO GOOD'}${_formatFlags(play)}`
-    }
-
-    return `PAT: ${patType || '—'}${_formatFlags(play)}`
-  }
-
-  if (play_type === 'PUNT') {
-    const puntedBy  = play.punted_by ? _playerStr(play.punted_by) : '—'
-    const puntRes   = play.punt_result
-    const kickedTo  = play.punt_kicked_to
-      ? ` to ${_posStr(play.punt_kicked_to)}` : ''
-    const retBy     = play.punt_returned_by
-      ? ` returned by ${_playerStr(play.punt_returned_by)}` : ''
-    const retAt     = play.punt_return_at
-      ? ` to ${_posStr(play.punt_return_at)}` : ''
-    const retTD     = play.punt_return_at && play.teams
-      ? (() => {
-          const defTeam = play.possession === play.teams.home.name
-            ? play.teams.away.name : play.teams.home.name
-          return isTouchdown(play.teams, defTeam, play.punt_return_at)
-            ? ' TOUCHDOWN' : ''
-        })()
-      : ''
-    const fairBy    = play.punt_fair_catch_by
-      ? ` fair catch by ${_playerStr(play.punt_fair_catch_by)}` : ''
-    const fairAt    = play.punt_fair_catch_at
-      ? ` at ${_posStr(play.punt_fair_catch_at)}` : ''
-    const oobAt     = play.punt_oob_at
-      ? ` at ${_posStr(play.punt_oob_at)}` : ''
-    const downedAt  = play.punt_downed_at
-      ? ` at ${_posStr(play.punt_downed_at)}` : ''
-    const blockedBy = play.punt_blocked_by
-      ? ` blocked by ${_playerStr(play.punt_blocked_by)}` : ''
-    const blkRetBy  = play.punt_block_returned_by
-      ? ` returned by ${_playerStr(play.punt_block_returned_by)}` : ''
-    const blkRetAt  = play.punt_block_ret_at
-      ? ` to ${_posStr(play.punt_block_ret_at)}` : ''
-    const blkTD     = play.punt_block_ret_at && play.teams
-      ? (() => {
-          const defTeam = play.possession === play.teams.home.name
-            ? play.teams.away.name : play.teams.home.name
-          return isTouchdown(play.teams, defTeam, play.punt_block_ret_at)
-            ? ' TOUCHDOWN' : ''
-        })()
-      : ''
-
-    if (puntRes === 'returned') {
-      return `${situation}: ${puntedBy} punt${kickedTo}${retBy}${retAt}${retTD}${_formatFlags(play)}`
-    }
-    if (puntRes === 'fair_catch') {
-      return `${situation}: ${puntedBy} punt${kickedTo}${fairBy}${fairAt}${_formatFlags(play)}`
-    }
-    if (puntRes === 'touchback') {
-      return `${situation}: ${puntedBy} punt TOUCHBACK${_formatFlags(play)}`
-    }
-    if (puntRes === 'oob') {
-      return `${situation}: ${puntedBy} punt OUT OF BOUNDS${oobAt}${_formatFlags(play)}`
-    }
-    if (puntRes === 'downed') {
-      return `${situation}: ${puntedBy} punt DOWNED${downedAt}${_formatFlags(play)}`
-    }
-    if (puntRes === 'blocked') {
-      return `${situation}: ${puntedBy} punt BLOCKED${blockedBy}${blkRetBy}${blkRetAt}${blkTD}${_formatFlags(play)}`
-    }
-    return `${situation}: ${puntedBy} punt${_formatFlags(play)}`
-  }
-
-  // Fallback for play types not yet formatted
-  return `${situation}: ${play_type}${_formatFlags(play)}`
-}
-
-// ── Game state advancement ────────────────────────────────────────────────────
-
-export function advanceGameState(state, play) {
-  const { net_yards, touchdown, at, result } = play
-
-  if (play.play_type === 'PENALTY') {
-    const res = play.penalty_result
-
-    if (res === 'declined' || res === 'offsetting') return
-
-    if (res === 'accepted') {
-      if (play.penalty_new_los) {
-        state.field_pos = { ...play.penalty_new_los }
-      }
-
-      const downRes = play.penalty_down_result
-      if (downRes === 'first_down') {
-        state.down     = 1
-        state.distance = 10
-      } else if (downRes === 'loss_of_down') {
-        if (state.down >= 4) {
-          state.down     = 1
-          state.distance = 10
-        } else {
-          state.down = state.down + 1
-        }
-      } else {
-        // repeat_down — mismo down, recalcular distance desde nuevo LOS
-        if (play.penalty_new_los) {
-          const net = calcNetYards(
-            gameState.teams,
-            state.possession,
-            play.field_pos,
-            play.penalty_new_los
-          )
-          const newDist = state.distance - net
-          state.distance = newDist > 0 ? newDist : 10
-        }
-      }
-    }
-    return
-  }
-
-  if (play.play_type === 'KICK') {
-
-    if (play.kick_type === 'field_goal') {
-      const res = play.fg_result
-
-      if (res === 'good') {
-        _addPoints(state, play.possession, 3)
-        state.down     = 0
-        state.distance = 0
-        return
-      }
-
-      if (res === 'missed') {
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name : gameState.teams.home.name
-        state.possession = defTeam
-        state.down       = 1
-        state.distance   = 10
-        return
-      }
-
-      if (res === 'blocked') {
-        const retRes  = play.fg_return_result
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name : gameState.teams.home.name
-
-        if (retRes === 'returned') {
-          const retAt = play.fg_ret_at
-          const isTD  = retAt ? isTouchdown(gameState.teams, defTeam, retAt) : false
-
-          if (isTD) {
-            _addPoints(state, defTeam, 6)
-            state.possession = defTeam
-            state.down       = 0
-            state.distance   = 0
-            if (retAt) state.field_pos = { ...retAt }
-            return
-          }
-
-          if (play.fg_ret_result === 'fumble') {
-            state.possession = defTeam
-            _advanceFumble(state, play, '')
-            return
-          }
-
-          state.possession = defTeam
-          if (retAt) state.field_pos = { ...retAt }
-          state.down     = 1
-          state.distance = 10
-          return
-        }
-
-        // Downed
-        if (play.fg_recovered_at) state.field_pos = { ...play.fg_recovered_at }
-        state.possession = defTeam
-        state.down       = 1
-        state.distance   = 10
-        return
-      }
-      return
-    }
-
-    // Kickoff
-    const kickRes = play.kickoff_result
-    const defTeam = play.possession === gameState.teams.home.name
-      ? gameState.teams.away.name : gameState.teams.home.name
-
-    state.down     = 0
-    state.distance = 0
-
-    if (kickRes === 'touchback') {
-      state.possession = defTeam
-      state.field_pos  = { team: defTeam, yard: 25 }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (kickRes === 'oob') {
-      // NCAA: kickoff OOB before being touched by the receiving team between
-      // the goal lines is a foul on the kicking team — receiver picks
-      // whichever spot is more favorable, operator-chosen (kickoff_oob_spot_choice),
-      // never auto-selected. 'twenty_five' is measured from the kick's own
-      // spot (play.field_pos), not from either goal line.
-      state.possession = defTeam
-      const choice = play.kickoff_oob_spot_choice
-      if (choice === 'actual_spot' && play.kickoff_oob_at) {
-        state.field_pos = { ...play.kickoff_oob_at }
-      } else if (choice === 'twenty_five' && play.field_pos) {
-        const kickAbs = absYard(gameState.teams, play.field_pos.team, play.field_pos.yard)
-        const dir     = play.possession === gameState.teams.home.name ? 1 : -1
-        const spotAbs = Math.max(0, Math.min(100, kickAbs + dir * 25))
-        state.field_pos = {
-          team: defTeam,
-          yard: defTeam === gameState.teams.home.name ? spotAbs : 100 - spotAbs,
-        }
-      } else {
-        // Legacy plays captured before this field existed (branch used to be
-        // empty) — falls back to the old fixed spot instead of crashing.
-        state.field_pos = { team: defTeam, yard: 40 }
-      }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (kickRes === 'fair_catch') {
-      state.possession = defTeam
-      state.field_pos  = { team: defTeam, yard: 25 }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (kickRes === 'onside') {
-      const recoveryTeam = play.onside_recovery_team || defTeam
-      state.possession = recoveryTeam
-      if (play.onside_recovered_at) state.field_pos = { ...play.onside_recovered_at }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (kickRes === 'returned') {
-      const retAt = play.kick_return_at
-      const isTD  = retAt ? isTouchdown(gameState.teams, defTeam, retAt) : false
-
-      if (isTD) {
-        _addPoints(state, defTeam, 6)
-        state.possession = defTeam
-        state.down       = 0
-        state.distance   = 0
-        if (retAt) state.field_pos = { ...retAt }
-        return
-      }
-
-      if (play.kick_return_result === 'safety') {
-        _addPoints(state, play.possession, 2)
-      }
-
-      if (play.kick_return_result === 'fumble') {
-        state.possession = defTeam
-        _advanceFumble(state, play, '')
-        return
-      }
-
-      state.possession = defTeam
-      if (retAt) state.field_pos = { ...retAt }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-    return
-  }
-
-  if (play.play_type === 'PUNT') {
-    const puntRes = play.punt_result
-    const defTeam = play.possession === gameState.teams.home.name
-      ? gameState.teams.away.name : gameState.teams.home.name
-
-    if (puntRes === 'touchback') {
-      state.possession = defTeam
-      state.field_pos  = { team: defTeam, yard: 20 }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (puntRes === 'oob') {
-      state.possession = defTeam
-      if (play.punt_oob_at) state.field_pos = { ...play.punt_oob_at }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (puntRes === 'downed') {
-      state.possession = defTeam
-      if (play.punt_downed_at) state.field_pos = { ...play.punt_downed_at }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (puntRes === 'fair_catch') {
-      state.possession = defTeam
-      if (play.punt_fair_catch_at) state.field_pos = { ...play.punt_fair_catch_at }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (puntRes === 'returned') {
-      const retAt = play.punt_return_at
-      const isTD  = retAt ? isTouchdown(gameState.teams, defTeam, retAt) : false
-
-      if (isTD) {
-        _addPoints(state, defTeam, 6)
-        state.possession = defTeam
-        state.down       = 0
-        state.distance   = 0
-        if (retAt) state.field_pos = { ...retAt }
-        return
-      }
-
-      if (play.punt_return_result === 'safety') {
-        _addPoints(state, play.possession, 2)
-      }
-
-      if (play.punt_return_result === 'fumble') {
-        state.possession = defTeam
-        _advanceFumble(state, play, '')
-        return
-      }
-
-      state.possession = defTeam
-      if (retAt) state.field_pos = { ...retAt }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    if (puntRes === 'blocked') {
-      const blkRetRes = play.punt_block_return_result
-      const recovTeam = play.punt_recovery_team || defTeam
-
-      if (blkRetRes === 'returned') {
-        const retAt   = play.punt_block_ret_at
-        const retTeam = play.punt_recovery_team || defTeam
-        const isTD    = retAt ? isTouchdown(gameState.teams, retTeam, retAt) : false
-
-        if (isTD) {
-          _addPoints(state, retTeam, 6)
-          state.possession = retTeam
-          state.down       = 0
-          state.distance   = 0
-          if (retAt) state.field_pos = { ...retAt }
-          return
-        }
-
-        if (play.punt_block_ret_result === 'fumble') {
-          state.possession = retTeam
-          _advanceFumble(state, play, '')
-          return
-        }
-
-        state.possession = retTeam
-        if (retAt) state.field_pos = { ...retAt }
-        state.down       = 1
-        state.distance   = 10
-        return
-      }
-
-      state.possession = recovTeam
-      if (play.punt_recovered_at) state.field_pos = { ...play.punt_recovered_at }
-      state.down       = 1
-      state.distance   = 10
-      return
-    }
-
-    return
-  }
-
-  if (play.play_type === 'PAT_TRY') {
-    const patType = play.pat_type
-
-    state.down       = 0
-    state.distance   = 0
-    state.possession = play.possession
-    state.field_pos  = { team: play.possession, yard: 35 }
-
-    if (patType === 'kick') {
-      if (play.pat_kick_result === 'good') {
-        _addPoints(state, play.possession, 1)
-      }
-      if (play.pat_block_result === 'good') {
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name : gameState.teams.home.name
-        _addPoints(state, defTeam, 2)
-      }
-      return
-    }
-
-    if (patType === 'run') {
-      if (play.touchdown) {
-        _addPoints(state, play.possession, 2)
-        return
-      }
-      if (play.result === 'fumble') {
-        const fumbleAtResult = play.fumble_at_result
-        if (fumbleAtResult) {
-          const defTeam = play.possession === gameState.teams.home.name
-            ? gameState.teams.away.name : gameState.teams.home.name
-          const possChanged = play.fumble_recovery_team &&
-            play.fumble_recovery_team !== play.possession
-          if (possChanged &&
-              isTouchdown(gameState.teams, play.fumble_recovery_team, fumbleAtResult)) {
-            _addPoints(state, play.fumble_recovery_team, 2)
-          }
-        }
-      }
-      return
-    }
-
-    if (patType === 'pass') {
-      const passRes = play.pass_result
-      if (passRes === 'complete' && play.touchdown) {
-        _addPoints(state, play.possession, 2)
-        return
-      }
-      if (passRes === 'intercepted') {
-        const returnPos = play.return_at || play.intercepted_at
-        if (returnPos) {
-          const defTeam = play.possession === gameState.teams.home.name
-            ? gameState.teams.away.name : gameState.teams.home.name
-          if (isTouchdown(gameState.teams, defTeam, returnPos)) {
-            _addPoints(state, defTeam, 2)
-          }
-        }
-      }
-      return
-    }
-
-    return
-  }
-
-  if (play.play_type === 'PASS') {
-    const passRes = play.pass_result
-
-    if (['incomplete', 'dropped', 'broken_up'].includes(passRes)) {
-      if (state.down >= 4) {
-        state.down     = 1
-        state.distance = 10
-      } else {
-        state.down = state.down + 1
-      }
-      return
-    }
-
-    if (passRes === 'sack') {
-      // A sack that ends in a fumble goes through the same RESULT_BRANCHES.RUSH
-      // 'fumble' sub-tree as any other fumble (result === 'fumble') — must be
-      // routed through _advanceFumble like RUSH/PASS-complete already are,
-      // not treated as a normal down advance.
-      if (result === 'fumble') {
-        _advanceFumble(state, play, '')
-        return
-      }
-      if (play.at) state.field_pos = { ...play.at }
-      _advanceDownDistance(state, play.net_yards ?? 0)
-      return
-    }
-
-    if (passRes === 'scramble') {
-      if (touchdown) {
-        state.down     = 0
-        state.distance = 0
-        if (at) state.field_pos = { ...at }
-        _addPoints(state, play.possession, 6)
-        return
-      }
-      if (result === 'fumble') {
-        _advanceFumble(state, play, '')
-        return
-      }
-      if (at) state.field_pos = { ...at }
-      _advanceDownDistance(state, play.net_yards ?? 0)
-      return
-    }
-
-    if (passRes === 'intercepted') {
-      const intTeam = state.possession === gameState.teams.home.name
-        ? gameState.teams.away.name
-        : gameState.teams.home.name
-
-      const returnPos = play.return_at || play.intercepted_at
-      const isTD = returnPos ? isTouchdown(gameState.teams, intTeam, returnPos) : false
-
-      if (isTD) {
-        _addPoints(state, intTeam, 6)
-        state.possession = intTeam
-        state.down       = 0
-        state.distance   = 0
-        if (returnPos) state.field_pos = { ...returnPos }
-        return
-      }
-
-      if (play.return_result === 'safety') {
-        _addPoints(state, play.possession, 2)
-      }
-
-      if (play.return_result === 'fumble') {
-        state.possession = intTeam
-        _advanceFumble(state, play, '')
-        return
-      }
-
-      state.possession = intTeam
-      if (play.return_at)           state.field_pos = { ...play.return_at }
-      else if (play.intercepted_at) state.field_pos = { ...play.intercepted_at }
-      state.down     = 1
-      state.distance = 10
-      return
-    }
-
-    if (passRes === 'complete') {
-      if (touchdown) {
-        state.down     = 0
-        state.distance = 0
-        if (at) state.field_pos = { ...at }
-        _addPoints(state, play.possession, 6)
-        return
-      }
-      if (result === 'safety') {
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name
-          : gameState.teams.home.name
-        _addPoints(state, defTeam, 2)
-      }
-      if (result === 'fumble') {
-        _advanceFumble(state, play, '')
-        return
-      }
-      if (at) state.field_pos = { ...at }
-      _advanceDownDistance(state, play.net_yards ?? 0)
-      return
-    }
-
-    return
-  }
-
-  if (touchdown) {
-    state.down     = 0
-    state.distance = 0
-    if (at) state.field_pos = { ...at }
-    _addPoints(state, play.possession, 6)
-    return
-  }
-
-  if (result === 'fumble') {
-    _advanceFumble(state, play, '')
-    return
-  }
-
-  if (at) state.field_pos = { ...at }
-  _advanceDownDistance(state, net_yards ?? 0)
-
-  if (result === 'safety') {
-    const defensiveTeam = play.possession === gameState.teams.home.name
-      ? gameState.teams.away.name
-      : gameState.teams.home.name
-    _addPoints(state, defensiveTeam, 2)
-  }
-
-}
-
-export function applyFlags(state, play) {
-  _applyFlag(state, play, 1)
-  _applyFlag(state, play, 2)
-}
-
-function _applyFlag(state, play, num) {
-  const inf = play[`flag_${num}_infraction`]
-  if (!inf) return
-
-  const res = play[`flag_${num}_result`]
-  if (res !== 'accepted') return
-
-  const newLos  = play[`flag_${num}_new_los`]
-  const downRes = play[`flag_${num}_down_result`]
-
-  if (newLos) state.field_pos = { ...newLos }
-
-  // A flag's down_result overrides whatever this play's own result already
-  // advanced state.down/state.distance to (advanceGameState ran before this,
-  // for whichever play_type the flag was attached to) — it must be computed
-  // from the play's own PRE-snap down/distance/field_pos, not from the
-  // already-advanced state. Otherwise "repeat down"/"loss of down" compound
-  // on top of the play's natural progression instead of replacing it.
-  if (downRes === 'first_down') {
-    state.down     = 1
-    state.distance = 10
-  } else if (downRes === 'loss_of_down') {
-    if (play.down >= 4) {
-      state.down     = 1
-      state.distance = 10
-    } else {
-      state.down = play.down + 1
-      if (newLos) {
-        const net = calcNetYards(gameState.teams, state.possession, play.field_pos, newLos)
-        const newDist = play.distance - net
-        state.distance = newDist > 0 ? newDist : 10
-      } else {
-        state.distance = play.distance
-      }
-    }
-  } else if (newLos) {
-    // repeat_down — same down number as before this play, distance
-    // recomputed from the play's original pre-snap distance and the flag's
-    // new line of scrimmage.
-    state.down = play.down
-    const net = calcNetYards(
-      gameState.teams,
-      state.possession,
-      play.field_pos,
-      newLos
-    )
-    const newDist = play.distance - net
-    state.distance = newDist > 0 ? newDist : 10
-  }
-}
-
-function _addPoints(state, teamName, points) {
-  if (teamName === gameState.teams.home.name) {
-    state.score.home += points
-  } else if (teamName === gameState.teams.away.name) {
-    state.score.away += points
-  }
-}
-
-function _advanceFumble(state, play, prefix) {
-  const recoveryTeam   = play[`${prefix}fumble_recovery_team`]
-  const recoveredAt    = play[`${prefix}fumble_recovered_at`]
-  const fumbleResult   = play[`${prefix}fumble_result`]
-  const fumbleAtResult = play[`${prefix}fumble_at_result`]
-
-  const possessionChanged = recoveryTeam && recoveryTeam !== state.possession
-
-  let isTD = false
-  if (fumbleAtResult) {
-    if (!possessionChanged) {
-      isTD = isTouchdown(gameState.teams, state.possession, fumbleAtResult)
-    } else {
-      isTD = isTouchdown(gameState.teams, recoveryTeam, fumbleAtResult)
-    }
-  }
-
-  if (possessionChanged) {
-    state.possession = recoveryTeam
-  }
-
-  if (isTD) {
-    state.down     = 0
-    state.distance = 0
-    if (fumbleAtResult) state.field_pos = { ...fumbleAtResult }
-    if (possessionChanged) _addPoints(state, recoveryTeam, 6)
-    return
-  }
-
-  if (fumbleResult === 'fumble') {
-    _advanceFumble(state, play, 'fumble_2_')
-    return
-  }
-
-  if (fumbleResult === 'safety') {
-    const fumbleDefTeam = recoveryTeam === gameState.teams.home.name
-      ? gameState.teams.away.name
-      : gameState.teams.home.name
-    _addPoints(state, fumbleDefTeam, 2)
-    return
-  }
-
-  if (fumbleAtResult) {
-    state.field_pos = { ...fumbleAtResult }
-  } else if (recoveredAt) {
-    state.field_pos = { ...recoveredAt }
-  }
-
-  if (possessionChanged) {
-    state.down     = 1
-    state.distance = 10
-  } else {
-    if (fumbleAtResult) {
-      const net = calcNetYards(
-        gameState.teams, state.possession,
-        play.field_pos,
-        fumbleAtResult
-      )
-      _advanceDownDistance(state, net)
-    }
-  }
-}
-
-function _advanceDownDistance(state, gained) {
-  const newDistance = state.distance - gained
-  if (newDistance <= 0) {
-    state.down     = 1
-    state.distance = 10
-  } else if (state.down >= 4) {
-    state.down     = 1
-    state.distance = 10
-  } else {
-    state.down     = state.down + 1
-    state.distance = newDistance
-  }
 }
 
 // ── Game CTRL ─────────────────────────────────────────────────────────────────
@@ -2803,7 +1591,7 @@ export async function startGame(openingKickoffTeamId, openingKickerName) {
       {
         method: 'PATCH',
         headers: {
-          ...SUPABASE_HEADERS,
+          ...(await getAuthHeaders()),
           'Content-Type': 'application/json',
           'Prefer':       'return=minimal',
         },
@@ -2908,3 +1696,9 @@ export function deriveNextPlayContext() {
 
   return state
 }
+
+// ── Re-exports (pass-through) ─────────────────────────────────────────────────
+// Purely so wizard.js's `import { isTouchdown, calcNetYards, gameState,
+// formatPlay, playerShortLabel } from './engine.js'` keeps working unchanged
+// after the stats-lib.js split — these all live in stats-lib.js now.
+export { gameState, isTouchdown, calcNetYards, formatPlay, playerShortLabel }

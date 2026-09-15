@@ -50,21 +50,6 @@
       justify-content: space-between;
     }
 
-    .operator-link {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text3);
-      text-decoration: none;
-      padding: 6px 10px;
-      border-radius: 6px;
-      transition: color 0.12s, background 0.12s;
-    }
-
-    .operator-link:hover {
-      color: var(--text2);
-      background: #f3f4f6;
-    }
-
     .brand { text-decoration: none; display: flex; align-items: center; gap: 10px; }
 
     .wordmark { display: flex; flex-direction: column; line-height: 1; }
@@ -462,14 +447,17 @@
   <!-- HEADER -->
   <header class="site-header">
     <div class="site-header__inner">
-      <a class="brand" href="/">
+      <a class="brand" href="index.html">
         <div class="wordmark">
           <div class="wordmark__line"><span class="wordmark__cover">COVER</span><span class="wordmark__cero">CERO</span></div>
           <div class="wordmark__stats">STATS</div>
         </div>
         <span class="brand__league">ONEFA 2026</span>
       </a>
-      <a class="operator-link" href="../capture/games.html">Modo Operador →</a>
+      <span id="rt-indicator" style="display:none;align-items:center;gap:5px" title="Estado de la conexión en tiempo real">
+        <span id="rt-indicator__dot" style="width:7px;height:7px;border-radius:50%;display:inline-block;background:#9ca3af"></span>
+        <span id="rt-indicator__label" style="font-size:11px;font-weight:700;letter-spacing:0.6px;color:var(--text2)">CONECTANDO</span>
+      </span>
     </div>
   </header>
 
@@ -505,15 +493,18 @@
   </div>
 
   <script type="module">
-    import { SUPABASE_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
 
-    // engine.js is the capture app's module — advanceGameState/applyFlags/gameState
-    // live there and this file has no build step to import them statically, so
-    // it's pulled in the same dynamic-import pattern viewer.html already uses.
-    // engineGameState is this page's own private instance (a fresh import() per
-    // page load), never shared with the capture app running elsewhere.
+    // stats-lib.js is the pure calc/display module shared with capture/ (split
+    // out of capture/engine.js on 2026-09-08 specifically so viewer/ never has
+    // to download the whole capture app just for these) — advanceGameState/
+    // applyFlags/gameState live there, and this file has no build step to
+    // import them statically, so it's pulled in the same dynamic-import
+    // pattern viewer.html already uses. engineGameState is this page's own
+    // private instance (a fresh import() per page load), never shared with
+    // the capture app running elsewhere.
     let advanceGameState, applyFlags, engineGameState
-    const engineReady = import('../capture/engine.js').then(m => {
+    const engineReady = import('../../shared/stats-lib.js').then(m => {
       advanceGameState = m.advanceGameState
       applyFlags        = m.applyFlags
       engineGameState    = m.gameState
@@ -556,18 +547,27 @@
       const [m, s] = String(clock).split(':')
       return `${(m || '0').padStart(2, '0')}:${(s || '00').padStart(2, '0')}`
     }
-    function formatLiveTicker(state) {
+    // home/away: the game's team objects, used only to map the raw
+    // abbreviation stored on the play (state.possession/field_pos.team,
+    // permanently the real abreviatura) to its display Apodo — never used
+    // for matching, only for the text shown to the user.
+    function formatLiveTicker(state, home, away) {
       // Only "no plays captured yet" falls back to 'Por comenzar'. down === 0
       // is a legitimate value (right after a score/kickoff/PAT, before the
       // next snap is captured) — it's falsy in JS, so it must be checked with
       // != null, not truthiness, or every between-plays live game wrongly
       // showed the pre-kickoff fallback.
       if (!state || !state.possession) return 'Por comenzar'
+      const toApodo = (abbr) => {
+        if (home?.abreviatura && abbr === home.abreviatura) return home.Apodo || abbr
+        if (away?.abreviatura && abbr === away.abreviatura) return away.Apodo || abbr
+        return abbr
+      }
       const clock = padClock(state.clock)
       const clockPart = clock ? ` · ≈${clock}` : ''
-      if (!state.down || !state.field_pos) return `POSS: ${state.possession}${clockPart}`
-      return `${ordinalDown(state.down)} & ${state.distance} ${state.field_pos.team} ${state.field_pos.yard}` +
-        ` · POSS: ${state.possession}${clockPart}`
+      if (!state.down || !state.field_pos) return `POSS: ${toApodo(state.possession)}${clockPart}`
+      return `${ordinalDown(state.down)} & ${state.distance} ${toApodo(state.field_pos.team)} ${state.field_pos.yard}` +
+        ` · POSS: ${toApodo(state.possession)}${clockPart}`
     }
 
     async function fetchLastPlay(gameId) {
@@ -591,6 +591,96 @@
       }))
       liveStates = Object.fromEntries(entries)
     }
+
+    // ── Realtime ───────────────────────────────────────────────────────────
+    // Read-only: one shared channel filtered to the currently 'live' games'
+    // plays, so every open tab of this list reflects new/edited plays
+    // without a manual refresh. Only re-renders the affected card's status
+    // area (badge + ticker) — never the whole list. Out of scope by design:
+    // capture/ and cross-operator sync.
+    let rtClient = null
+
+    function setRtIndicator(status) {
+      const wrap  = document.getElementById('rt-indicator')
+      const dot   = document.getElementById('rt-indicator__dot')
+      const label = document.getElementById('rt-indicator__label')
+      if (!wrap) return
+      wrap.style.display = 'inline-flex'
+      const COLORS = { live: '#16a34a', reconnecting: '#f59e0b', error: '#dc2626', connecting: '#9ca3af' }
+      const LABELS = { live: 'EN VIVO', reconnecting: 'RECONECTANDO', error: 'SIN CONEXIÓN', connecting: 'CONECTANDO' }
+      dot.style.background = COLORS[status] || COLORS.connecting
+      dot.style.animation  = status === 'live' ? 'livepulse 1.4s ease-in-out infinite' : 'none'
+      label.textContent    = LABELS[status] || LABELS.connecting
+    }
+
+    function updateCardStatus(gameId) {
+      const card = document.querySelector(`.game-card[data-id="${CSS.escape(gameId)}"]`)
+      if (!card) return
+      const game = allGames.find(g => g.id === gameId)
+      if (!game) return
+      const statusEl = card.querySelector('.card-status')
+      if (statusEl) statusEl.innerHTML = renderStatus(game)
+    }
+
+    async function setupRealtime(liveGames) {
+      if (!liveGames.length) return
+      if (rtClient) { rtClient.removeAllChannels(); rtClient = null }
+
+      // Coalesces a burst of events (several plays captured back-to-back)
+      // into a single batch of card updates instead of one re-render each.
+      const pendingIds = new Set()
+      let debounceTimer = null
+
+      async function flush() {
+        debounceTimer = null
+        const ids = Array.from(pendingIds)
+        pendingIds.clear()
+        if (!ids.length) return
+        // The postgres_changes payload carries the changed row, but the
+        // ticker needs the game's actual LAST play (a burst could include an
+        // UPDATE to an older play) — one small fetch per affected game,
+        // reusing the same fetchLastPlay() the initial load already uses.
+        await Promise.all(ids.map(async id => {
+          const game = allGames.find(g => g.id === id)
+          if (!game) return
+          const lastPlay = await fetchLastPlay(id)
+          liveStates[id] = computeDerivedState(lastPlay, game.home?.abreviatura || '', game.away?.abreviatura || '')
+        }))
+        ids.forEach(updateCardStatus)
+      }
+
+      function queueUpdate(gameId) {
+        pendingIds.add(gameId)
+        if (debounceTimer) clearTimeout(debounceTimer)
+        debounceTimer = setTimeout(flush, 400)
+      }
+
+      try {
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
+        rtClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: 'covercero' } })
+        const ids = liveGames.map(g => g.id).join(',')
+        rtClient.channel('index-live-plays')
+          .on('postgres_changes', {
+            event: 'INSERT', schema: 'covercero', table: 'plays',
+            filter: `game_id=in.(${ids})`,
+          }, payload => queueUpdate(payload.new.game_id))
+          .on('postgres_changes', {
+            event: 'UPDATE', schema: 'covercero', table: 'plays',
+            filter: `game_id=in.(${ids})`,
+          }, payload => queueUpdate(payload.new.game_id))
+          .subscribe(status => {
+            if (status === 'SUBSCRIBED') setRtIndicator('live')
+            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRtIndicator('reconnecting')
+            else if (status === 'CLOSED') setRtIndicator('error')
+          })
+      } catch (e) {
+        console.warn('[Cover Cero] realtime init failed:', e.message)
+        setRtIndicator('error')
+      }
+    }
+
+    window.addEventListener('beforeunload', () => { if (rtClient) rtClient.removeAllChannels() })
+    window.addEventListener('pagehide',      () => { if (rtClient) rtClient.removeAllChannels() })
 
     // Canonical week order
     const WEEK_ORDER = ['TEST','1','2','3','4','5','6','7','8','9','10','QF','SF','F']
@@ -618,8 +708,14 @@
 
     async function fetchGames() {
       const qs = new URLSearchParams({
-        select: '*,home:home_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url),away:away_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url)',
+        select: '*,home:home_team_id(nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url),away:away_team_id(nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url)',
         order:  'kickoff.asc.nullslast',
+        // Test games (semana='TEST') never belong in the public listing —
+        // filtered server-side so they're never fetched, not hidden after the
+        // fact. `neq` alone would also drop rows with semana IS NULL (SQL
+        // `<> 'TEST'` is NULL, not true, for a NULL column), so those are
+        // explicitly kept.
+        or: '(semana.neq.TEST,semana.is.null)',
       })
       const res = await fetch(`${SUPABASE_URL}/rest/v1/games?${qs}`, { headers: SB_HEADERS })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -692,7 +788,7 @@
 
     function renderStatus(game) {
       if (game.status === 'live') {
-        const ticker = formatLiveTicker(liveStates[game.id])
+        const ticker = formatLiveTicker(liveStates[game.id], game.home, game.away)
         return `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%">
           <div class="badge-live"><span class="badge-live__dot"></span>EN VIVO</div>
           <span style="font-size:10px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(ticker)}</span>
@@ -871,7 +967,10 @@
       // fallback (formatLiveTicker's null-state) until this resolves, then
       // re-render with the real down/distance/spot.
       if (allGames.some(g => g.status === 'live')) {
-        loadLiveStates(allGames).then(() => renderGames()).catch(err => {
+        loadLiveStates(allGames).then(() => {
+          renderGames()
+          setupRealtime(allGames.filter(g => g.status === 'live'))
+        }).catch(err => {
           console.error('[Cover Cero] Error loading live ticker data:', err)
         })
       }

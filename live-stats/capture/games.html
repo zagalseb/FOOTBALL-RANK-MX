@@ -320,6 +320,130 @@
       align-items: center;
     }
 
+    /* ── TEST TOGGLE ── */
+    .test-toggle {
+      position: relative;
+      width: 34px;
+      height: 18px;
+      border-radius: 999px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      cursor: pointer;
+      padding: 0;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .test-toggle::after {
+      content: '';
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--text2);
+      transition: transform 0.15s, background 0.15s;
+    }
+
+    .test-toggle--on {
+      background: rgba(168,85,247,0.18);
+      border-color: rgba(168,85,247,0.4);
+    }
+
+    .test-toggle--on::after {
+      transform: translateX(16px);
+      background: #a855f7;
+    }
+
+    .test-toggle:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+    }
+
+    .modal-box {
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 22px;
+      width: 320px;
+      max-width: calc(100vw - 32px);
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .modal-sub {
+      font-size: 12px;
+      color: var(--text2);
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .modal-input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 8px 10px;
+      margin-bottom: 16px;
+    }
+
+    .modal-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .modal-btn {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 7px 16px;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+
+    .modal-btn--cancel {
+      background: var(--bg3);
+      color: var(--text2);
+      border: 1px solid var(--border2);
+    }
+
+    .modal-btn--cancel:hover { color: var(--text); }
+
+    .modal-btn--confirm {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .modal-btn--confirm:hover { opacity: 0.88; }
+
     /* ── SKELETON ── */
     .skeleton-row td {
       padding: 13px 14px;
@@ -371,6 +495,7 @@
   </style>
 </head>
 <body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
 
   <!-- HEADER -->
   <header class="header">
@@ -387,6 +512,7 @@
     <button class="tab" data-tab="final">Finalizados</button>
     <button class="tab" data-tab="test">TEST</button>
     <a class="tab tab--link" href="setup.html">Setup</a>
+    <a class="tab tab--link" href="manual_stats.html">Stats Manuales</a>
   </nav>
 
   <!-- CONTENT -->
@@ -399,20 +525,35 @@
           <th>Partido</th>
           <th>Sede</th>
           <th>Status</th>
+          <th>Prueba</th>
           <th></th>
         </tr>
       </thead>
       <tbody id="table-body">
         <!-- Skeletons -->
-        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:120px"></div></td><td><div class="skel" style="width:180px"></div></td><td><div class="skel" style="width:100px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
-        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:140px"></div></td><td><div class="skel" style="width:160px"></div></td><td><div class="skel" style="width:80px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
-        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:130px"></div></td><td><div class="skel" style="width:200px"></div></td><td><div class="skel" style="width:110px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
+        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:120px"></div></td><td><div class="skel" style="width:180px"></div></td><td><div class="skel" style="width:100px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:34px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
+        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:140px"></div></td><td><div class="skel" style="width:160px"></div></td><td><div class="skel" style="width:80px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:34px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
+        <tr class="skeleton-row"><td><div class="skel" style="width:32px"></div></td><td><div class="skel" style="width:130px"></div></td><td><div class="skel" style="width:200px"></div></td><td><div class="skel" style="width:110px"></div></td><td><div class="skel" style="width:70px"></div></td><td><div class="skel" style="width:34px"></div></td><td><div class="skel" style="width:70px"></div></td></tr>
       </tbody>
     </table>
   </div>
 
+  <!-- TEST MODE: real-week prompt (only shown when turning a TEST game off with no known backup week) -->
+  <div class="modal-overlay" id="week-modal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">¿A qué semana pertenece este partido?</div>
+      <div class="modal-sub">Este partido se marcó como prueba sin tener una semana real registrada. Ingresa la semana correcta para poder quitarlo del modo prueba.</div>
+      <input type="text" id="week-modal-input" class="modal-input" placeholder="Ej. 3, QF, SF, F">
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn--cancel" id="week-modal-cancel">Cancelar</button>
+        <button class="modal-btn modal-btn--confirm" id="week-modal-confirm">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
 
     const DAYS   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
     const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -516,7 +657,7 @@
       const games = filteredGames()
 
       if (games.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6">
+        tbody.innerHTML = `<tr><td colspan="7">
           <div class="state-msg">No hay partidos en este filtro.<div class="state-msg__sub">Cambia la pestaña o agrega partidos al sistema.</div></div>
         </td></tr>`
         return
@@ -535,13 +676,115 @@
           </td>
           <td><span class="sede-cell" title="${g.sede || ''}">${g.sede || '—'}</span></td>
           <td>${statusBadge(g.status)}</td>
+          <td>${testToggle(g)}</td>
           <td>${actionBtn(g)}</td>
         </tr>
       `).join('')
     }
 
+    // ── Test-mode toggle ─────────────────────────────────────────────────────────
+    // semana='TEST' hides a game from the public listing (index.html). Turning it
+    // back off must restore the game's real week — never assume one. If the game
+    // never had a real week (semana_backup is null, either because it was created
+    // directly as TEST or the backup was already consumed), the operator is asked
+    // for it via the modal below instead of guessing.
+
+    function testToggle(g) {
+      const on = g.semana === 'TEST'
+      return `<button class="test-toggle${on ? ' test-toggle--on' : ''}"
+        data-id="${g.id}" title="Partido de prueba" aria-pressed="${on}"></button>`
+    }
+
+    async function sbPatchGame(id, fields) {
+      const headers = { ...(await getAuthHeaders()), 'Content-Type': 'application/json', Prefer: 'return=minimal' }
+      const res = await fetch(`${SB_URL}/rest/v1/games?id=eq.${encodeURIComponent(id)}`, {
+        method: 'PATCH', headers, body: JSON.stringify(fields),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    }
+
+    async function turnTestOn(game, btn) {
+      btn.disabled = true
+      try {
+        // Remembers whatever real week it had (possibly none) so turning it
+        // back off later can restore it instead of guessing.
+        await sbPatchGame(game.id, { semana: 'TEST', semana_backup: game.semana ?? null })
+        await load()
+      } catch (e) {
+        console.error(e)
+        alert('No se pudo activar el modo prueba. Intenta de nuevo.')
+        btn.disabled = false
+      }
+    }
+
+    async function turnTestOff(game, btn) {
+      if (game.semana_backup) {
+        btn.disabled = true
+        try {
+          await sbPatchGame(game.id, { semana: game.semana_backup, semana_backup: null })
+          await load()
+        } catch (e) {
+          console.error(e)
+          alert('No se pudo desactivar el modo prueba. Intenta de nuevo.')
+          btn.disabled = false
+        }
+        return
+      }
+      openWeekPrompt(game)
+    }
+
+    document.getElementById('table-body').addEventListener('click', e => {
+      const btn = e.target.closest('.test-toggle')
+      if (!btn) return
+      const game = allGames.find(g => g.id === btn.dataset.id)
+      if (!game) return
+      if (game.semana === 'TEST') turnTestOff(game, btn)
+      else turnTestOn(game, btn)
+    })
+
+    // ── Real-week prompt modal ───────────────────────────────────────────────────
+
+    let weekModalGame = null
+
+    function openWeekPrompt(game) {
+      weekModalGame = game
+      const input = document.getElementById('week-modal-input')
+      input.value = ''
+      document.getElementById('week-modal').style.display = 'flex'
+      input.focus()
+    }
+
+    function closeWeekPrompt() {
+      weekModalGame = null
+      document.getElementById('week-modal').style.display = 'none'
+    }
+
+    async function confirmWeekPrompt() {
+      const val = document.getElementById('week-modal-input').value.trim()
+      if (!val) { document.getElementById('week-modal-input').focus(); return }
+      const game = weekModalGame
+      closeWeekPrompt()
+      try {
+        await sbPatchGame(game.id, { semana: val, semana_backup: null })
+        await load()
+      } catch (e) {
+        console.error(e)
+        alert('No se pudo actualizar la semana. Intenta de nuevo.')
+      }
+    }
+
+    document.getElementById('week-modal-cancel').addEventListener('click', closeWeekPrompt)
+    document.getElementById('week-modal').addEventListener('click', e => {
+      if (e.target.id === 'week-modal') closeWeekPrompt()
+    })
+    document.getElementById('week-modal-confirm').addEventListener('click', confirmWeekPrompt)
+    document.getElementById('week-modal-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') confirmWeekPrompt()
+      if (e.key === 'Escape') closeWeekPrompt()
+    })
+
     function showError() {
-      document.getElementById('table-body').innerHTML = `<tr><td colspan="6">
+      document.getElementById('table-body').innerHTML = `<tr><td colspan="7">
         <div class="state-msg">
           Error al cargar los partidos.
           <div class="state-msg__sub">Verifica la conexión y vuelve a intentar.</div>
