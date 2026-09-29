@@ -6,7 +6,7 @@
     "semana": "TEST",
     "status": "final",
     "playCount": 24,
-    "functionSource": "stats-lib.js + viewer.html fallback for: _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows"
+    "functionSource": "stats-lib.js (fully migrated)"
   },
   "computeComparisonStats": {
     "CCM": {

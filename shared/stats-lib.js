@@ -2549,3 +2549,77 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr) {
   }
   return { passers: pa, rushers: ru, receivers: re }
 }
+
+// ── Manual-capture path (Fase 3 of the stats-lib.js/Edge Function refactor,
+// 2026-09-29) ──────────────────────────────────────────────────────────────
+// Moved verbatim from viewer.html. These back BasicBoxScore — the box score
+// shown for a game captured via manual_stats.html (team_game_stats_manual/
+// player_game_stats_manual rows, no plays[]) — which stays a React component
+// in viewer.html, same as SimpleStatTable/ManualOffenseTeamCard/
+// TeamLeadersCard/BoxScoreLeaderLine; only the pure row/lookup logic moved.
+
+// Classic NCAA/NFL passer rating (the "old" 0-158.3 formula), NOT ESPN's
+// Total QBR — QBR is a proprietary model (win probability, garbage-time
+// discounting, etc.) we don't have the inputs to reproduce, so this table
+// uses the public formula instead:
+//   a = clamp((Comp/Att - 0.3) * 5, 0, 2.375)
+//   b = clamp((Yds/Att - 3) * 0.25, 0, 2.375)
+//   c = clamp((TD/Att) * 20, 0, 2.375)
+//   d = clamp(2.375 - (Int/Att) * 25, 0, 2.375)
+//   rating = (a + b + c + d) / 6 * 100
+export function _passerRating(comp, att, yds, td, int) {
+  if (!att) return null
+  const clamp = v => Math.max(0, Math.min(2.375, v))
+  const a = clamp((comp / att - 0.3) * 5)
+  const b = clamp((yds / att - 3) * 0.25)
+  const c = clamp((td / att) * 20)
+  const d = clamp(2.375 - (int / att) * 25)
+  return ((a + b + c + d) / 6) * 100
+}
+
+// Highest non-zero value of `field` among a team's player_game_stats_manual
+// rows, or null if nobody on that side has any (e.g. a team with no defensive
+// leaders entered, or the whole category left blank).
+export function _topManualStat(playerManualStats, teamId, field) {
+  let best = null
+  for (const r of playerManualStats) {
+    if (r.player?.team_id !== teamId) continue
+    const val = r[field] || 0
+    if (val > 0 && (!best || val > best.val)) best = { player: r.player, val }
+  }
+  return best
+}
+
+// Manual-stats analogs of viewer.html's own _passingRows/_rushingRows/
+// _receivingRows — same row shape SimpleStatTable already expects, sourced
+// from player_game_stats_manual instead of a plays[]-derived map. Long/Sacked
+// have no equivalent in manual capture, so they render as '—' (columns kept,
+// not omitted, so the table looks identical between live and historical games).
+export function _manualPassingRows(playerManualStats, teamId) {
+  return playerManualStats
+    .filter(r => r.player?.team_id === teamId && ((r.pass_att || 0) > 0 || (r.pass_yds || 0) > 0))
+    .map(r => {
+      const att = r.pass_att || 0, comp = r.pass_comp || 0, yds = r.pass_yds || 0, td = r.pass_td || 0, int = r.pass_int || 0
+      const pct = att ? `${((comp / att) * 100).toFixed(1)}%` : '0.0%'
+      const rating = _passerRating(comp, att, yds, td, int)
+      return [playerShortLabel(r.player), comp, att, pct, yds, td, int, '—', '—', rating != null ? rating.toFixed(1) : '—']
+    })
+}
+
+export function _manualRushingRows(playerManualStats, teamId) {
+  return playerManualStats
+    .filter(r => r.player?.team_id === teamId && ((r.rush_att || 0) > 0 || (r.rush_yds || 0) > 0))
+    .map(r => {
+      const att = r.rush_att || 0, yds = r.rush_yds || 0
+      return [playerShortLabel(r.player), att, '—', yds, att ? (yds / att).toFixed(1) : '0.0', r.rush_td || 0, '—']
+    })
+}
+
+export function _manualReceivingRows(playerManualStats, teamId) {
+  return playerManualStats
+    .filter(r => r.player?.team_id === teamId && ((r.rec || 0) > 0 || (r.rec_yds || 0) > 0))
+    .map(r => {
+      const rec = r.rec || 0, yds = r.rec_yds || 0
+      return [playerShortLabel(r.player), rec, yds, rec ? (yds / rec).toFixed(1) : '0.0', r.rec_td || 0, '—']
+    })
+}

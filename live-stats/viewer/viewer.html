@@ -77,6 +77,8 @@ let secondsToMMSS;
 let computeDefenseStats, computeSpecialTeamsStats, computeFumbleStats, fumbleStatsToMap;
 let computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnoverStatsByPlayer;
 let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps;
+// Fase 3: manual-capture path row/lookup builders (BasicBoxScore's data).
+let _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows;
 const engineReady = import('../../shared/stats-lib.js').then(m => {
   formatPlay          = m.formatPlay;
   advanceGameState     = m.advanceGameState;
@@ -102,6 +104,11 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   computeQBProgression             = m.computeQBProgression;
   computeExplosivePlays            = m.computeExplosivePlays;
   buildOffenseMaps                 = m.buildOffenseMaps;
+  _passerRating                    = m._passerRating;
+  _topManualStat                   = m._topManualStat;
+  _manualPassingRows               = m._manualPassingRows;
+  _manualRushingRows               = m._manualRushingRows;
+  _manualReceivingRows             = m._manualReceivingRows;
 });
 
 // engine.js stores each play's score_home/score_away (and down/distance/
@@ -809,25 +816,8 @@ const COMPARACION_SUBTABS = [
   { key: 'defense', label: 'Defense' },
 ];
 
-// Classic NCAA/NFL passer rating (the "old" 0-158.3 formula), NOT ESPN's
-// Total QBR — QBR is a proprietary model (win probability, garbage-time
-// discounting, etc.) we don't have the inputs to reproduce, so this table
-// uses the public formula instead:
-//   a = clamp((Comp/Att - 0.3) * 5, 0, 2.375)
-//   b = clamp((Yds/Att - 3) * 0.25, 0, 2.375)
-//   c = clamp((TD/Att) * 20, 0, 2.375)
-//   d = clamp(2.375 - (Int/Att) * 25, 0, 2.375)
-//   rating = (a + b + c + d) / 6 * 100
-function _passerRating(comp, att, yds, td, int) {
-  if (!att) return null;
-  const clamp = v => Math.max(0, Math.min(2.375, v));
-  const a = clamp((comp / att - 0.3) * 5);
-  const b = clamp((yds / att - 3) * 0.25);
-  const c = clamp((td / att) * 20);
-  const d = clamp(2.375 - (int / att) * 25);
-  return ((a + b + c + d) / 6) * 100;
-}
-
+// _passerRating() moved to stats-lib.js (Fase 3 of the 2026-09-29 refactor —
+// also backs BasicBoxScore's manual-path rows now).
 // Int is read from computeQBProgression()'s already-correct per-QB count
 // (via qbIntMap, built by the caller) instead of a second accumulator on
 // the passers map — one source of truth for "how many times did this QB
@@ -978,19 +968,7 @@ function TeamSummaryPanel({ awayAbbr, homeAbbr, awayColor, homeColor, rows }) {
 // team_game_stats_manual/player_game_stats_manual rows but no plays[], so
 // none of the play-derived stuff (drives, per-play breakdowns) exists to show.
 
-// Highest non-zero value of `field` among a team's player_game_stats_manual
-// rows, or null if nobody on that side has any (e.g. a team with no defensive
-// leaders entered, or the whole category left blank).
-function _topManualStat(playerManualStats, teamId, field) {
-  let best = null;
-  for (const r of playerManualStats) {
-    if (r.player?.team_id !== teamId) continue;
-    const val = r[field] || 0;
-    if (val > 0 && (!best || val > best.val)) best = { player: r.player, val };
-  }
-  return best;
-}
-
+// _topManualStat() moved to stats-lib.js (Fase 3).
 function BoxScoreLeaderLine({ label, leader }) {
   const name = leader ? [leader.player.nombre, leader.player.apellido].filter(Boolean).join(' ') : '';
   return (
@@ -1043,40 +1021,8 @@ const MANUAL_TEAM_STAT_ROWS = [
   ['fourth_down_att',  '4th Down Att'],
 ];
 
-// Manual-stats analogs of _passingRows/_rushingRows/_receivingRows — same row
-// shape SimpleStatTable already expects, sourced from player_game_stats_manual
-// instead of a plays[]-derived map. Long/Sacked have no equivalent in manual
-// capture, so they render as '—' (columns kept, not omitted, so the table
-// looks identical between live and historical games).
-function _manualPassingRows(playerManualStats, teamId) {
-  return playerManualStats
-    .filter(r => r.player?.team_id === teamId && ((r.pass_att || 0) > 0 || (r.pass_yds || 0) > 0))
-    .map(r => {
-      const att = r.pass_att || 0, comp = r.pass_comp || 0, yds = r.pass_yds || 0, td = r.pass_td || 0, int = r.pass_int || 0;
-      const pct = att ? `${((comp / att) * 100).toFixed(1)}%` : '0.0%';
-      const rating = _passerRating(comp, att, yds, td, int);
-      return [playerShortLabel(r.player), comp, att, pct, yds, td, int, '—', '—', rating != null ? rating.toFixed(1) : '—'];
-    });
-}
-
-function _manualRushingRows(playerManualStats, teamId) {
-  return playerManualStats
-    .filter(r => r.player?.team_id === teamId && ((r.rush_att || 0) > 0 || (r.rush_yds || 0) > 0))
-    .map(r => {
-      const att = r.rush_att || 0, yds = r.rush_yds || 0;
-      return [playerShortLabel(r.player), att, '—', yds, att ? (yds / att).toFixed(1) : '0.0', r.rush_td || 0, '—'];
-    });
-}
-
-function _manualReceivingRows(playerManualStats, teamId) {
-  return playerManualStats
-    .filter(r => r.player?.team_id === teamId && ((r.rec || 0) > 0 || (r.rec_yds || 0) > 0))
-    .map(r => {
-      const rec = r.rec || 0, yds = r.rec_yds || 0;
-      return [playerShortLabel(r.player), rec, yds, rec ? (yds / rec).toFixed(1) : '0.0', r.rec_td || 0, '—'];
-    });
-}
-
+// _manualPassingRows/_manualRushingRows/_manualReceivingRows moved to
+// stats-lib.js (Fase 3) — same row shape SimpleStatTable already expects.
 // Sibling of OffenseTeamCard for the manual path — same layout/columns, fed
 // by the manual row-builders above instead of the plays[]-derived maps.
 // OffenseTeamCard itself is untouched.
