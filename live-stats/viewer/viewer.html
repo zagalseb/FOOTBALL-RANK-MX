@@ -2106,12 +2106,22 @@ function App() {
   // Same pre-engineReady guard as `drives` above.
   const penalties = useTabGatedMemo(() => (typeof computePenalties === 'function' ? computePenalties(plays, homeAbbr) : []), offenseTabsNeeded, [plays, homeAbbr], []);
 
+  // Same pre-engineReady guard as `drives`/`buildOffenseMaps`/`penalties`
+  // above — these hooks run unconditionally on App()'s very first render
+  // (rules of hooks: they must sit before the `if (loading)` gate below),
+  // which happens before the stats-lib.js dynamic import has resolved.
+  const SPECIAL_TEAMS_EMPTY = { punting: [], kickoffs: [], fgs: [], kickReturns: [], puntReturns: [] };
   const specialTeamsStats = useTabGatedMemo(() => {
+    if (typeof computeSpecialTeamsStats !== 'function') return SPECIAL_TEAMS_EMPTY;
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
     return computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams);
-  }, offenseTabsNeeded, [plays, homeAbbr, awayAbbr], {});
+  }, offenseTabsNeeded, [plays, homeAbbr, awayAbbr], SPECIAL_TEAMS_EMPTY);
 
   const { apRows, fumbleRows } = useMemo(() => {
+    if (typeof computeTurnoverReturnYards !== 'function' || typeof computeAllPurposeMap !== 'function' ||
+        typeof computeFumbleStats !== 'function' || typeof fumbleStatsToMap !== 'function') {
+      return { apRows: [], fumbleRows: [] };
+    }
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
     const turnoverReturns = computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams);
     const apMap = computeAllPurposeMap(
@@ -2125,9 +2135,10 @@ function App() {
     };
   }, [plays, homeAbbr, awayAbbr, rushers, receivers, specialTeamsStats]);
 
-  const defenseStats = useTabGatedMemo(() => computeDefenseStats(plays, homeAbbr, awayAbbr), offenseTabsNeeded, [plays, homeAbbr, awayAbbr], {});
-  const qbProgression = useTabGatedMemo(() => computeQBProgression(plays), offenseTabsNeeded, [plays], []);
+  const defenseStats = useTabGatedMemo(() => (typeof computeDefenseStats === 'function' ? computeDefenseStats(plays, homeAbbr, awayAbbr) : {}), offenseTabsNeeded, [plays, homeAbbr, awayAbbr], {});
+  const qbProgression = useTabGatedMemo(() => (typeof computeQBProgression === 'function' ? computeQBProgression(plays) : []), offenseTabsNeeded, [plays], []);
   const explosivePlays = useTabGatedMemo(() => {
+    if (typeof computeExplosivePlays !== 'function') return { passing: [], rushing: [] };
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
     return computeExplosivePlays(plays, teams);
   }, explosiveNeeded, [plays, homeAbbr, awayAbbr], []);
