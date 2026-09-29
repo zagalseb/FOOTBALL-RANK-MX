@@ -6,7 +6,7 @@
     "semana": "F",
     "status": "live",
     "playCount": 61,
-    "functionSource": "stats-lib.js + viewer.html fallback for: computeDefenseStats, computeSpecialTeamsStats, _fumbleOccurred, _fumbleCarrier, computeFumbleStats, fumbleStatsToMap, computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnoverStatsByPlayer, computeAllPurposeMap, computeQBProgression, computeExplosivePlays, _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows, buildOffenseMaps"
+    "functionSource": "stats-lib.js + viewer.html fallback for: _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows"
   },
   "computeComparisonStats": {
     "MTY": {

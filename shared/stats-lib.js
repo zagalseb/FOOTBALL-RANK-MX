@@ -1986,3 +1986,566 @@ function _advanceDownDistance(state, gained) {
     state.distance = newDistance
   }
 }
+
+// ── Extracted from viewer.html (Fase 1 of the stats-lib.js/Edge Function
+// refactor, 2026-09-29) ───────────────────────────────────────────────────────
+// Moved verbatim (same inputs, same outputs, same field names) — the only
+// change is calling playerShortLabel() directly instead of through viewer.html's
+// local `playerLabel` wrapper, which existed only to guard against that file's
+// own dynamic-import race (playerShortLabel might not be loaded yet); inside
+// this module playerShortLabel is always defined, so the guard has nothing to
+// do. See debug/snapshot_stats.mjs's baseline for the before/after diff this
+// was checked against.
+
+// A play's defense is simply whichever team does NOT have possession on it —
+// tackle_by/sack_by/etc. player refs don't carry their own team, but since
+// they only ever come from the opposing side of `possession`, this is enough
+// to attribute every defensive credit correctly without needing that.
+export function computeDefenseStats(plays, homeAbbr, awayAbbr) {
+  const teams = { [homeAbbr]: {}, [awayAbbr]: {} }
+
+  function credit(team, player, field, delta) {
+    if (!team || !teams[team] || !player) return
+    const label = playerShortLabel(player)
+    if (!label) return
+    if (!teams[team][label]) teams[team][label] = { label, solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0, sackYds: 0, qbh: 0, pbu: 0 }
+    teams[team][label][field] += delta
+  }
+
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue
+    const defTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
+    if (!defTeam) continue
+
+    const tackleArrays = [p.tackle_by, p.fumble_tackle_by, p.punt_block_ret_tackle_by, p.return_tackle_by]
+    for (const arr of tackleArrays) {
+      if (!Array.isArray(arr) || !arr.length) continue
+      const isSolo = arr.length === 1
+      for (const player of arr) {
+        credit(defTeam, player, isSolo ? 'solo' : 'ast', 1)
+        if (p.net_yards != null && p.net_yards < 0) credit(defTeam, player, 'tfl', 1)
+      }
+    }
+
+    if (p.play_type === 'PASS' && p.pass_result === 'sack' && p.sack_by) {
+      credit(defTeam, p.sack_by, 'sacks', 1)
+      credit(defTeam, p.sack_by, 'solo', 1) // a sack is also a solo tackle
+      credit(defTeam, p.sack_by, 'sackYds', Math.abs(p.net_yards || 0))
+    }
+
+    if (p.fumble_forced_by) credit(defTeam, p.fumble_forced_by, 'ff', 1)
+    if (p.fumble_2_forced_by) credit(defTeam, p.fumble_2_forced_by, 'ff', 1)
+
+    if (p.pass_result === 'intercepted' && p.intercepted_by) {
+      credit(defTeam, p.intercepted_by, 'int', 1)
+    }
+
+    // qb_hurried_by/broken_up_by are optional single-player fields captured
+    // on PASS incomplete/dropped/broken_up (same team:'opponent' shape as
+    // fumble_forced_by above) — Comparación's Defense sub-tab is the first
+    // consumer of either.
+    if (p.qb_hurried_by) credit(defTeam, p.qb_hurried_by, 'qbh', 1)
+    if (p.broken_up_by) credit(defTeam, p.broken_up_by, 'pbu', 1)
+  }
+
+  return teams
+}
+
+// ── Special teams stats ──────────────────────────────────────────────────────
+// Punt/kickoff plays never get a top-level net_yards (wizard.js only computes
+// it for RUSH and PASS-complete, see _confirmSubmit) — every distance here is
+// derived from field_pos plus whichever landing-spot field that play's result
+// branch actually recorded (punt_kicked_to/punt_oob_at/kicked_to/etc.),
+// verified against wizard.js's STEPS_BY_TYPE.PUNT/KICK and their *_BRANCHES.
+// A touchback has no recorded landing spot (the branch is empty in both
+// PUNT_RESULT_BRANCHES and KICKOFF_RESULT_BRANCHES) — distance is approximated
+// as the distance to the goal line, the standard box-score convention for
+// touchback punts/kickoffs. Blocked punts and oob/onside kickoffs likewise
+// have no measurable landing spot recorded — they still count as an attempt
+// (No.) but contribute 0 to Yds/Long/Avg.
+export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams) {
+  const punting     = {}
+  const kickoffs     = {}
+  const fgs          = []
+  const kickReturns  = {}
+  const puntReturns  = {}
+
+  const dist = (kicker, snap, land) =>
+    (typeof calcNetYards === 'function' && snap && land) ? calcNetYards(teams, kicker, snap, land) : null
+
+  for (const p of plays) {
+    const defTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
+    if (!defTeam) continue
+
+    if (p.play_type === 'PUNT') {
+      const label = p.punted_by ? playerShortLabel(p.punted_by) : null
+      if (label) {
+        const key = `${p.possession}::${label}`
+        if (!punting[key]) punting[key] = { team: p.possession, label, no: 0, yds: 0, long: 0, in20: 0, tb: 0 }
+        const row = punting[key]
+        row.no++
+        let landPos = null
+        if (p.punt_result === 'returned' || p.punt_result === 'fair_catch') landPos = p.punt_kicked_to
+        else if (p.punt_result === 'oob') landPos = p.punt_oob_at
+        else if (p.punt_result === 'touchback') { landPos = { team: defTeam, yard: 0 }; row.tb++ }
+        if (landPos) {
+          const d = dist(p.possession, p.field_pos, landPos)
+          if (d != null) {
+            row.yds += d
+            if (d > row.long) row.long = d
+          }
+          if (p.punt_result !== 'touchback' && landPos.team === defTeam && landPos.yard > 0 && landPos.yard <= 20) row.in20++
+        }
+      }
+
+      if (p.punt_result === 'returned' && p.punt_returned_by) {
+        const rLabel = playerShortLabel(p.punt_returned_by)
+        if (rLabel) {
+          let endPos = null
+          if (['tackle', 'oob', 'eop'].includes(p.punt_return_result)) endPos = p.punt_return_at
+          else if (p.punt_return_result === 'fumble') endPos = p.fumble_at
+          const d = endPos ? dist(defTeam, p.punt_kicked_to, endPos) : null
+          if (d != null) {
+            const key = `${defTeam}::${rLabel}`
+            if (!puntReturns[key]) puntReturns[key] = { team: defTeam, label: rLabel, no: 0, yds: 0, long: 0 }
+            puntReturns[key].no++
+            puntReturns[key].yds += d
+            if (d > puntReturns[key].long) puntReturns[key].long = d
+          }
+        }
+      }
+    }
+
+    if (p.play_type === 'KICK' && p.kick_type === 'kickoff') {
+      const label = p.kicked_by ? playerShortLabel(p.kicked_by) : null
+      if (label) {
+        const key = `${p.possession}::${label}`
+        if (!kickoffs[key]) kickoffs[key] = { team: p.possession, label, no: 0, yds: 0, tb: 0 }
+        const row = kickoffs[key]
+        row.no++
+        let landPos = null
+        if (p.kickoff_result === 'returned' || p.kickoff_result === 'fair_catch') landPos = p.kicked_to
+        else if (p.kickoff_result === 'touchback') { landPos = { team: defTeam, yard: 0 }; row.tb++ }
+        if (landPos) {
+          const d = dist(p.possession, p.field_pos, landPos)
+          if (d != null) row.yds += d
+        }
+      }
+
+      if (p.kickoff_result === 'returned' && p.kick_returned_by) {
+        const rLabel = playerShortLabel(p.kick_returned_by)
+        if (rLabel) {
+          let endPos = null
+          if (['tackle', 'oob', 'eop'].includes(p.kick_return_result)) endPos = p.kick_return_at
+          else if (p.kick_return_result === 'fumble') endPos = p.fumble_at
+          const d = endPos ? dist(defTeam, p.kicked_to, endPos) : null
+          if (d != null) {
+            const key = `${defTeam}::${rLabel}`
+            if (!kickReturns[key]) kickReturns[key] = { team: defTeam, label: rLabel, no: 0, yds: 0, long: 0 }
+            kickReturns[key].no++
+            kickReturns[key].yds += d
+            if (d > kickReturns[key].long) kickReturns[key].long = d
+          }
+        }
+      }
+    }
+
+    if (p.play_type === 'KICK' && p.kick_type === 'field_goal') {
+      const result = p.fg_result === 'good' ? 'GOOD' : p.fg_result === 'blocked' ? 'BLOCKED' : p.fg_result === 'missed' ? 'MISSED' : null
+      if (result) {
+        fgs.push({ team: p.possession, quarter: p.quarter, clock: p.clock, distance: p.kick_distance ?? null, result })
+      }
+    }
+  }
+
+  return {
+    punting:     Object.values(punting).sort((a, b) => b.yds - a.yds),
+    kickoffs:    Object.values(kickoffs).sort((a, b) => b.yds - a.yds),
+    fgs,
+    kickReturns: Object.values(kickReturns).sort((a, b) => b.yds - a.yds),
+    puntReturns: Object.values(puntReturns).sort((a, b) => b.yds - a.yds),
+  }
+}
+
+// ── Fumbles (Individuales) ───────────────────────────────────────────────────
+// Credited to whoever HAD the ball when it came loose (rush_by, the pass
+// catcher on a completed reception, or the returner on a kick/punt return) —
+// never the player who forced it (that's already tracked as FF in Defensiva).
+// The "fumble happened" flag and its recovery fields share the same
+// fumble_recovery_team/fumble_recovered_by names across every branch that can
+// produce one (RUSH/PASS result=fumble, PASS return_result=fumble on a pick,
+// KICK/PUNT return/block-return result=fumble) — only the flag that marks
+// "did it happen on this play" differs per branch, so that part is checked
+// per play_type/result field.
+export function _fumbleOccurred(p) {
+  return p.result === 'fumble' || p.return_result === 'fumble' || p.kick_return_result === 'fumble' ||
+    p.fg_ret_result === 'fumble' || p.punt_return_result === 'fumble' || p.punt_block_ret_result === 'fumble'
+}
+
+export function _fumbleCarrier(p) {
+  if (p.play_type === 'RUSH') return p.rush_by
+  if (p.play_type === 'PASS') {
+    if (p.pass_result === 'intercepted') return p.returned_by || p.intercepted_by
+    if (p.pass_result === 'complete') return p.received_by
+    return null
+  }
+  if (p.play_type === 'KICK' && p.kick_type === 'kickoff') return p.kick_returned_by
+  if (p.play_type === 'KICK' && p.kick_type === 'field_goal') return p.fg_returned_by
+  if (p.play_type === 'PUNT') return p.punt_result === 'blocked' ? p.punt_block_returned_by : p.punt_returned_by
+  return null
+}
+
+export function computeFumbleStats(plays) {
+  const out = {}
+  for (const p of plays) {
+    if (!_fumbleOccurred(p)) continue
+    const carrier = _fumbleCarrier(p)
+    const label = carrier ? playerShortLabel(carrier) : null
+    if (!label || !p.possession) continue
+    const key = `${p.possession}::${label}`
+    if (!out[key]) out[key] = { team: p.possession, label, no: 0, lost: 0 }
+    out[key].no++
+    if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) out[key].lost++
+  }
+  return Object.values(out)
+}
+
+// Same pre-sorted-map trick as computeAllPurposeMap, for the Fumbles table
+// (sorted Lost desc, then No. desc).
+export function fumbleStatsToMap(fumbleStats, homeAbbr, awayAbbr) {
+  const raw = { [homeAbbr]: {}, [awayAbbr]: {} }
+  fumbleStats.forEach(r => { if (raw[r.team]) raw[r.team][r.label] = { no: r.no, lost: r.lost } })
+  const out = {}
+  for (const team of [homeAbbr, awayAbbr]) {
+    const sorted = Object.entries(raw[team] || {}).sort((a, b) => b[1].lost - a[1].lost || b[1].no - a[1].no)
+    out[team] = Object.fromEntries(sorted)
+  }
+  return out
+}
+
+// ── Turnover return yards (interceptions + defensive fumble recoveries) ─────
+// Feeds the FR/IR column of All-Purpose Yards. An interception's return
+// distance runs from intercepted_at to whatever spot its return_result
+// branch recorded (return_at for tackle/oob/eop, fumble_at if the returner
+// himself fumbled); a defensive fumble recovery's return distance runs from
+// the recovery spot (fumble_recovered_at / fumble_2_recovered_at) to the
+// further-advance spot FUMBLE_RESULT_BRANCHES records for tackle/oob/eop
+// (fumble_at_result / fumble_2_at_result) — 0 when the recovery spot was the
+// final spot (no further advance captured).
+// See computeTurnoverReturnYardsByTeam() below for the team-total, split-by-
+// origin sibling used by Comparación's summary panel (INT vs FUM-YDS).
+export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams) {
+  const map = {}
+  function add(team, label, yds) {
+    if (!team || !label || !yds) return
+    const key = `${team}::${label}`
+    if (!map[key]) map[key] = { team, label, yds: 0 }
+    map[key].yds += yds
+  }
+  const dist = (team, from, to) =>
+    (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0
+
+  for (const p of plays) {
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
+      const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
+      if (intTeam) {
+        let endPos = null
+        if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
+        else if (p.return_result === 'fumble') endPos = p.fumble_at
+        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0
+        add(intTeam, playerShortLabel(p.intercepted_by), yds)
+      }
+    }
+
+    for (const prefix of ['fumble_', 'fumble_2_']) {
+      const recTeam = p[`${prefix}recovery_team`]
+      const recBy   = p[`${prefix}recovered_by`]
+      const recAt   = p[`${prefix}recovered_at`]
+      if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue
+      const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
+      const endPos = p[advField] || null
+      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0
+      add(recTeam, playerShortLabel(recBy), yds)
+    }
+  }
+
+  return Object.values(map)
+}
+
+// Sibling of computeTurnoverReturnYards() above — same two source loops
+// (interception returns, defensive fumble recoveries), but aggregated
+// straight to TEAM totals and kept SEPARATE by origin (INT vs FUM-YDS),
+// instead of merged into one per-player FR/IR figure. A new function
+// rather than a modification of the original so its existing consumer
+// (computeAllPurposeMap's combined FR/IR column, which wants the two
+// merged) is untouched. If the return-distance resolution logic ever
+// changes (e.g. a new return_result branch), update both copies.
+export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, teams) {
+  const out = { [homeAbbr]: { intYds: 0, fumYds: 0 }, [awayAbbr]: { intYds: 0, fumYds: 0 } }
+  const dist = (team, from, to) =>
+    (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0
+
+  for (const p of plays) {
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
+      const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
+      if (intTeam && out[intTeam]) {
+        let endPos = null
+        if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
+        else if (p.return_result === 'fumble') endPos = p.fumble_at
+        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0
+        out[intTeam].intYds += yds
+      }
+    }
+
+    for (const prefix of ['fumble_', 'fumble_2_']) {
+      const recTeam = p[`${prefix}recovery_team`]
+      const recAt   = p[`${prefix}recovered_at`]
+      if (!recTeam || !recAt || recTeam === p.possession || !out[recTeam]) continue
+      const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
+      const endPos = p[advField] || null
+      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0
+      out[recTeam].fumYds += yds
+    }
+  }
+  return out
+}
+
+// Second sibling of computeTurnoverReturnYards() — same two source loops and
+// the exact same distance-resolution logic (intercepted_at→return_at/
+// fumble_at; fumble_recovered_at→fumble_at_result), but grouped by
+// INDIVIDUAL PLAYER instead of team, kept separate by origin, and adding a
+// TD flag (via isTouchdown() against the resolved end spot — turnover plays
+// never populate the raw `touchdown` field, see _turnoverScore's comment)
+// and a Long (max single return). Feeds Comparación's Defense sub-tab
+// (Interceptions / Fumble Returns sections).
+export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams) {
+  const interceptions = { [homeAbbr]: {}, [awayAbbr]: {} }
+  const fumbleReturns = { [homeAbbr]: {}, [awayAbbr]: {} }
+
+  function credit(map, team, player, yds, isTD) {
+    if (!map[team] || !player) return
+    const label = playerShortLabel(player)
+    if (!label) return
+    if (!map[team][label]) map[team][label] = { label, no: 0, yds: 0, td: 0, long: -Infinity }
+    const row = map[team][label]
+    row.no++
+    row.yds += yds
+    if (isTD) row.td++
+    if (yds > row.long) row.long = yds
+  }
+
+  const dist = (team, from, to) =>
+    (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0
+
+  for (const p of plays) {
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
+      const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
+      if (intTeam) {
+        let endPos = null
+        if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
+        else if (p.return_result === 'fumble') endPos = p.fumble_at
+        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0
+        const isTD = !!(endPos && isTouchdown(teams, intTeam, endPos))
+        credit(interceptions, intTeam, p.intercepted_by, yds, isTD)
+      }
+    }
+
+    for (const prefix of ['fumble_', 'fumble_2_']) {
+      const recTeam = p[`${prefix}recovery_team`]
+      const recBy   = p[`${prefix}recovered_by`]
+      const recAt   = p[`${prefix}recovered_at`]
+      if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue
+      const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
+      const endPos = p[advField] || null
+      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0
+      const isTD = !!(endPos && isTouchdown(teams, recTeam, endPos))
+      credit(fumbleReturns, recTeam, recBy, yds, isTD)
+    }
+  }
+
+  return { interceptions, fumbleReturns }
+}
+
+// Combines rushing/receiving yards (already keyed by team+player from
+// buildOffenseMaps' own breakdown) with kick/punt-return and turnover-return
+// yards into one per-player map, pre-sorted by Total descending within each
+// team so callers that just walk object insertion order render it sorted
+// without needing their own sort logic.
+export function computeAllPurposeMap(rushers, receivers, kickReturns, puntReturns, turnoverReturns, homeAbbr, awayAbbr) {
+  const raw = { [homeAbbr]: {}, [awayAbbr]: {} }
+  function ensure(team, label) {
+    if (!raw[team]) return null
+    if (!raw[team][label]) raw[team][label] = { run: 0, rcv: 0, kr: 0, pr: 0, frir: 0 }
+    return raw[team][label]
+  }
+  for (const team of [homeAbbr, awayAbbr]) {
+    Object.entries(rushers[team] || {}).forEach(([label, d]) => { const r = ensure(team, label); if (r) r.run += d.yds })
+    Object.entries(receivers[team] || {}).forEach(([label, d]) => { const r = ensure(team, label); if (r) r.rcv += d.yds })
+  }
+  kickReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.kr += yds })
+  puntReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.pr += yds })
+  turnoverReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.frir += yds })
+
+  const out = {}
+  for (const team of [homeAbbr, awayAbbr]) {
+    const sorted = Object.entries(raw[team] || {})
+      .map(([label, d]) => [label, { ...d, total: d.run + d.rcv + d.kr + d.pr + d.frir }])
+      .filter(([, d]) => d.total !== 0)
+      .sort((a, b) => b[1].total - a[1].total)
+    out[team] = Object.fromEntries(sorted)
+  }
+  return out
+}
+
+// ── QB progression ───────────────────────────────────────────────────────────
+export function computeQBProgression(plays) {
+  const byQB = {}
+  const sorted = plays
+    .filter(p => p.play_type === 'PASS' && p.pass_by)
+    .slice()
+    .sort((a, b) => a.seq - b.seq)
+
+  for (const p of sorted) {
+    const label = playerShortLabel(p.pass_by)
+    if (!label) continue
+    const key = `${p.possession}::${label}`
+    if (!byQB[key]) byQB[key] = { team: p.possession, label, rows: [], comp: 0, att: 0, yds: 0, td: 0, int: 0 }
+    const qb = byQB[key]
+
+    // Standard box-score convention: sacks/scrambles are plays the QB was
+    // involved in, but not passing "attempts" — the QB never released the ball.
+    // A play voided by an accepted penalty (stats_count: false, set by
+    // wizard.js at save time) is excluded from the tally entirely — it's
+    // still shown below as a row for context, just not counted.
+    const isAttempt = p.stats_count !== false &&
+      ['complete', 'incomplete', 'dropped', 'broken_up', 'intercepted'].includes(p.pass_result)
+    if (isAttempt) {
+      qb.att++
+      if (p.pass_result === 'complete') { qb.comp++; qb.yds += (p.net_yards || 0) }
+      if (p.touchdown) qb.td++
+      if (p.pass_result === 'intercepted') qb.int++
+    }
+
+    let note = ''
+    if (p.touchdown) note = 'TD'
+    else if (p.pass_result === 'intercepted') note = 'INT'
+    else if (p.pass_result === 'sack') note = 'SACK'
+
+    qb.rows.push({
+      isComplete: p.pass_result === 'complete',
+      caTally: `${qb.comp}-${qb.att}`,
+      netYards: p.net_yards,
+      receiver: p.pass_result === 'complete' && p.received_by ? playerShortLabel(p.received_by) : null,
+      note,
+      context: typeof formatPlay === 'function' ? formatPlay(p) : p.play_type,
+    })
+  }
+
+  return Object.values(byQB)
+}
+
+// ── Explosive plays ──────────────────────────────────────────────────────────
+export function computeExplosivePlays(plays, teams) {
+  const passing = []
+  const rushing = []
+  for (const p of plays) {
+    const eff = _effectiveNetYards(p, teams)
+    if (eff == null) continue
+    // Carry the already-computed effective yardage along on a shallow copy
+    // (_effYards) instead of recomputing it for sort/display — same value
+    // the threshold check above just used, not the raw (pre-penalty) net_yards.
+    if (p.play_type === 'PASS' && p.pass_result === 'complete' && eff >= 15) passing.push({ ...p, _effYards: eff })
+    // A scramble is a rushing play (NCAA convention, see computeComparisonStats)
+    // so it's judged against the same 10-yard rushing threshold as a RUSH play.
+    else if ((p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'scramble')) && eff >= 10) rushing.push({ ...p, _effYards: eff })
+  }
+  return {
+    passing: passing.slice().sort((a, b) => b._effYards - a._effYards),
+    rushing: rushing.slice().sort((a, b) => b._effYards - a._effYards),
+  }
+}
+
+// ── Offense per-player maps (passing/rushing/receiving) ──────────────────────
+// Was an inline useMemo in viewer.html (~line 2612) building three keyed maps
+// at once from one pass over `plays` — extracted verbatim as its own function,
+// same field names, same NCAA scramble/sack-is-a-rush convention as
+// computeComparisonStats.
+export function buildOffenseMaps(plays, homeAbbr, awayAbbr) {
+  const pa = {}, ru = {}, re = {}
+
+  for (const p of plays) {
+    const t = p.possession
+    if (t !== homeAbbr && t !== awayAbbr) continue
+    // A play voided by an accepted penalty (stats_count: false, set by
+    // wizard.js at save time) isn't a real attempt for anyone involved —
+    // excluded from RUSHING/PASSING/RECEIVING entirely, not just judged
+    // by its (now-zero) net_yards.
+    if (p.stats_count === false) continue
+
+    if (p.play_type === 'RUSH') {
+      const yds = p.net_yards || 0
+      const key = p.rush_by ? playerShortLabel(p.rush_by) : 'Desconocido'
+      if (!ru[t]) ru[t] = {}
+      if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0, gained:0, long:-Infinity }
+      ru[t][key].att++
+      ru[t][key].yds += yds
+      if (yds > 0) ru[t][key].gained += yds
+      if (yds > ru[t][key].long) ru[t][key].long = yds
+      if (p.touchdown) ru[t][key].td++
+    }
+
+    // NCAA convention: a QB scramble or a sack is a rushing play credited
+    // to the QB (pass_by), not a passing attempt — the ball was never
+    // thrown either way, so both are folded into the RUSHING breakdown
+    // instead of PASSING (matches computeComparisonStats' Rush Yds and the
+    // isAttempt filter computeQBProgression already used for att/comp%).
+    if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack')) {
+      const yds = p.net_yards || 0
+      const key = p.pass_by ? playerShortLabel(p.pass_by) : 'Desconocido'
+      if (!ru[t]) ru[t] = {}
+      if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0, gained:0, long:-Infinity }
+      ru[t][key].att++
+      ru[t][key].yds += yds
+      if (yds > 0) ru[t][key].gained += yds
+      if (yds > ru[t][key].long) ru[t][key].long = yds
+      if (p.touchdown) ru[t][key].td++
+
+      // "Sacked" is tracked on the PASSER's own passing line (Comparación's
+      // Offense table) even though the sack itself is credited to RUSHING
+      // above for yardage purposes — same play, two different box-score
+      // conventions, not a contradiction. Lazily inits pa[t][key] here since
+      // a QB's first charted play of the game could be a sack, before the
+      // passing block below ever runs for him.
+      if (p.pass_result === 'sack') {
+        if (!pa[t]) pa[t] = {}
+        if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 }
+        pa[t][key].sacked++
+        pa[t][key].sackedYds += Math.abs(yds)
+      }
+    }
+
+    if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack') {
+      const key = p.pass_by ? playerShortLabel(p.pass_by) : 'Desconocido'
+      if (!pa[t]) pa[t] = {}
+      if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 }
+      pa[t][key].att++
+      if (p.pass_result === 'complete') {
+        const yds = p.net_yards || 0
+        pa[t][key].comp++
+        pa[t][key].yds += yds
+        if (yds > pa[t][key].long) pa[t][key].long = yds
+        if (p.touchdown) pa[t][key].td++
+        if (p.received_by) {
+          const rk = playerShortLabel(p.received_by)
+          if (!re[t]) re[t] = {}
+          if (!re[t][rk]) re[t][rk] = { rec:0, yds:0, td:0, long:-Infinity }
+          re[t][rk].rec++
+          re[t][rk].yds += yds
+          if (yds > re[t][rk].long) re[t][rk].long = yds
+          if (p.touchdown) re[t][rk].td++
+        }
+      }
+    }
+  }
+  return { passers: pa, rushers: ru, receivers: re }
+}
