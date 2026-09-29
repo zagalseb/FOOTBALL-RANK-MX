@@ -498,16 +498,17 @@
     // stats-lib.js is the pure calc/display module shared with capture/ (split
     // out of capture/engine.js on 2026-09-08 specifically so viewer/ never has
     // to download the whole capture app just for these) — advanceGameState/
-    // applyFlags/gameState live there, and this file has no build step to
-    // import them statically, so it's pulled in the same dynamic-import
-    // pattern viewer.html already uses. engineGameState is this page's own
-    // private instance (a fresh import() per page load), never shared with
-    // the capture app running elsewhere.
-    let advanceGameState, applyFlags, engineGameState
+    // applyFlags live there, and this file has no build step to import them
+    // statically, so it's pulled in the same dynamic-import pattern
+    // viewer.html already uses. Both take `teams` as an explicit argument
+    // (Fase 2 of the 2026-09-29 refactor: they used to read a shared
+    // gameState.teams singleton internally, unsafe to share across concurrent
+    // requests in a server context) — this page builds its own local `teams`
+    // object per call, same as viewer.html now does.
+    let advanceGameState, applyFlags
     const engineReady = import('../../shared/stats-lib.js').then(m => {
       advanceGameState = m.advanceGameState
       applyFlags        = m.applyFlags
-      engineGameState    = m.gameState
     })
 
     // Same replay pattern as viewer.html's computeDerivedState() — a play's own
@@ -519,7 +520,7 @@
     // GAME_CTRL corrections) after lastPlay — not fetched by this page.
     function computeDerivedState(lastPlay, homeAbbr, awayAbbr) {
       if (!lastPlay) return null
-      engineGameState.teams = {
+      const teams = {
         home: { name: homeAbbr, abreviatura: homeAbbr },
         away: { name: awayAbbr, abreviatura: awayAbbr },
       }
@@ -532,8 +533,8 @@
         distance:   lastPlay.distance,
         score:      { home: lastPlay.score_home ?? 0, away: lastPlay.score_away ?? 0 },
       }
-      advanceGameState(state, lastPlay)
-      applyFlags(state, lastPlay)
+      advanceGameState(state, lastPlay, teams)
+      applyFlags(state, lastPlay, teams)
       return state
     }
 
