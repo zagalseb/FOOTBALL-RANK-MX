@@ -56,21 +56,24 @@ const configReady = import('../../shared/supabase/supabase_config.js').then(m =>
 // out of capture/engine.js on 2026-09-08 specifically so viewer/ never has
 // to download the whole capture app just for these) — viewer.html has no
 // build step to import it statically, so we pull it in via dynamic import,
-// same pattern as supabase_config.js above. advanceGameState/applyFlags/
-// gameState are pulled in to compute the true current score (see
-// computeCurrentScore below) — engineGameState is this viewer's own private
-// instance of the module (a fresh import() per page), never shared with the
-// capture app running elsewhere. computeDrives/computeComparisonStats/
+// same pattern as supabase_config.js above. advanceGameState/applyFlags are
+// pulled in to compute the true current score (see computeCurrentScore
+// below) — both take `teams` as an explicit argument (Fase 2 of the
+// 2026-09-29 refactor: they used to read a shared gameState.teams singleton
+// internally, which was unsafe to share across concurrent requests in a
+// server context; every caller, including this one, now builds its own
+// `teams` object and passes it in). computeDrives/computeComparisonStats/
 // computePenalties/driveEndLabel/_effectiveNetYards/_isFirstDownPlay used to
 // be duplicated locally in this file (kept in sync by hand) — now imported
-// from the single shared copy instead.
-let formatPlay, advanceGameState, applyFlags, engineGameState, playerShortLabel, isTouchdown, calcNetYards;
+// from the single shared copy instead. computeDefenseStats/
+// computeSpecialTeamsStats/computeFumbleStats/fumbleStatsToMap/
+// computeTurnoverReturnYards*/computeAllPurposeMap/computeQBProgression/
+// computeExplosivePlays/buildOffenseMaps used to be defined locally too
+// (Fase 1 of the 2026-09-29 stats-lib.js/Edge Function refactor moved them —
+// same inputs/outputs, see stats-lib.js's own comment on that section).
+let formatPlay, advanceGameState, applyFlags, playerShortLabel, isTouchdown, calcNetYards;
 let computeDrives, computeComparisonStats, computePenalties, driveEndLabel, _effectiveNetYards, _isFirstDownPlay;
 let secondsToMMSS;
-// Fase 1 of the 2026-09-29 stats-lib.js/Edge Function refactor: these 7 used
-// to be defined locally in this file (kept in sync by hand with a comment
-// header each) — now imported from the single shared copy instead. Same
-// inputs/outputs, see stats-lib.js's own comment on that section.
 let computeDefenseStats, computeSpecialTeamsStats, computeFumbleStats, fumbleStatsToMap;
 let computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnoverStatsByPlayer;
 let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps;
@@ -78,7 +81,6 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   formatPlay          = m.formatPlay;
   advanceGameState     = m.advanceGameState;
   applyFlags           = m.applyFlags;
-  engineGameState       = m.gameState;
   playerShortLabel       = m.playerShortLabel;
   isTouchdown            = m.isTouchdown;
   calcNetYards           = m.calcNetYards;
@@ -119,7 +121,7 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
 // gameEvents at all today. Accepted limitation, not fixed here.
 function computeDerivedState(lastPlay, fallbackHome, fallbackAway, homeAbbr, awayAbbr) {
   if (!lastPlay) return null;
-  engineGameState.teams = {
+  const teams = {
     home: { name: homeAbbr, abreviatura: homeAbbr },
     away: { name: awayAbbr, abreviatura: awayAbbr },
   };
@@ -132,8 +134,8 @@ function computeDerivedState(lastPlay, fallbackHome, fallbackAway, homeAbbr, awa
     distance:   lastPlay.distance,
     score:      { home: lastPlay.score_home ?? fallbackHome, away: lastPlay.score_away ?? fallbackAway },
   };
-  advanceGameState(state, lastPlay);
-  applyFlags(state, lastPlay);
+  advanceGameState(state, lastPlay, teams);
+  applyFlags(state, lastPlay, teams);
   return state;
 }
 
@@ -180,7 +182,7 @@ function formatLiveTicker(state, homeAbbr, awayAbbr, homeApodo, awayApodo) {
 // from scratch here (which would inevitably drift from stats-lib.js over time).
 function computeScoringPlays(plays, homeAbbr, awayAbbr) {
   if (typeof advanceGameState !== 'function') return [];
-  engineGameState.teams = {
+  const teams = {
     home: { name: homeAbbr, abreviatura: homeAbbr },
     away: { name: awayAbbr, abreviatura: awayAbbr },
   };
@@ -197,8 +199,8 @@ function computeScoringPlays(plays, homeAbbr, awayAbbr) {
       distance:   p.distance,
       score:      { ...score },
     };
-    advanceGameState(state, p);
-    applyFlags(state, p);
+    advanceGameState(state, p, teams);
+    applyFlags(state, p, teams);
     if (state.score.home !== score.home || state.score.away !== score.away) {
       events.push({
         quarter: p.quarter,

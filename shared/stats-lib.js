@@ -1095,7 +1095,7 @@ function _formatPlayCore(play) {
 
 // ── Game state advancement ────────────────────────────────────────────────────
 
-export function advanceGameState(state, play) {
+export function advanceGameState(state, play, teams) {
   const { net_yards, touchdown, at, result } = play
 
   if (play.play_type === 'PENALTY') {
@@ -1123,7 +1123,7 @@ export function advanceGameState(state, play) {
         // repeat_down — mismo down, recalcular distance desde nuevo LOS
         if (play.penalty_new_los) {
           const net = calcNetYards(
-            gameState.teams,
+            teams,
             state.possession,
             play.field_pos,
             play.penalty_new_los
@@ -1142,15 +1142,15 @@ export function advanceGameState(state, play) {
       const res = play.fg_result
 
       if (res === 'good') {
-        _addPoints(state, play.possession, 3)
+        _addPoints(state, play.possession, 3, teams)
         state.down     = 0
         state.distance = 0
         return
       }
 
       if (res === 'missed') {
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name : gameState.teams.home.name
+        const defTeam = play.possession === teams.home.name
+          ? teams.away.name : teams.home.name
         state.possession = defTeam
         state.down       = 1
         state.distance   = 10
@@ -1159,15 +1159,15 @@ export function advanceGameState(state, play) {
 
       if (res === 'blocked') {
         const retRes  = play.fg_return_result
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name : gameState.teams.home.name
+        const defTeam = play.possession === teams.home.name
+          ? teams.away.name : teams.home.name
 
         if (retRes === 'returned') {
           const retAt = play.fg_ret_at
-          const isTD  = retAt ? isTouchdown(gameState.teams, defTeam, retAt) : false
+          const isTD  = retAt ? isTouchdown(teams, defTeam, retAt) : false
 
           if (isTD) {
-            _addPoints(state, defTeam, 6)
+            _addPoints(state, defTeam, 6, teams)
             state.possession = defTeam
             state.down       = 0
             state.distance   = 0
@@ -1177,7 +1177,7 @@ export function advanceGameState(state, play) {
 
           if (play.fg_ret_result === 'fumble') {
             state.possession = defTeam
-            _advanceFumble(state, play, '')
+            _advanceFumble(state, play, '', teams)
             return
           }
 
@@ -1208,7 +1208,7 @@ export function advanceGameState(state, play) {
         const atResult     = play.fg_bad_snap_at_result
 
         const recoveringTeam = recoveryTeam || defTeam
-        const isTD = atResult ? isTouchdown(gameState.teams, recoveringTeam, atResult) : false
+        const isTD = atResult ? isTouchdown(teams, recoveringTeam, atResult) : false
 
         state.possession = recoveringTeam
 
@@ -1216,7 +1216,7 @@ export function advanceGameState(state, play) {
           state.down     = 0
           state.distance = 0
           if (atResult) state.field_pos = { ...atResult }
-          _addPoints(state, recoveringTeam, 6)
+          _addPoints(state, recoveringTeam, 6, teams)
           return
         }
 
@@ -1227,10 +1227,10 @@ export function advanceGameState(state, play) {
         // on recoveringTeam, at their own 20. Not the bare "add 2 points and
         // leave state untouched" pattern RUSH's safety branch still has.
         if (snapResult === 'safety') {
-          const scoringTeam = recoveringTeam === gameState.teams.home.name
-            ? gameState.teams.away.name
-            : gameState.teams.home.name
-          _addPoints(state, scoringTeam, 2)
+          const scoringTeam = recoveringTeam === teams.home.name
+            ? teams.away.name
+            : teams.home.name
+          _addPoints(state, scoringTeam, 2, teams)
           state.possession = recoveringTeam
           state.field_pos  = { team: recoveringTeam, yard: 20 }
           state.down       = 0
@@ -1239,7 +1239,7 @@ export function advanceGameState(state, play) {
         }
 
         if (snapResult === 'fumble') {
-          _advanceFumble(state, play, 'fumble_2_')
+          _advanceFumble(state, play, 'fumble_2_', teams)
           return
         }
 
@@ -1255,8 +1255,8 @@ export function advanceGameState(state, play) {
 
     // Kickoff
     const kickRes = play.kickoff_result
-    const defTeam = play.possession === gameState.teams.home.name
-      ? gameState.teams.away.name : gameState.teams.home.name
+    const defTeam = play.possession === teams.home.name
+      ? teams.away.name : teams.home.name
 
     state.down     = 0
     state.distance = 0
@@ -1280,12 +1280,12 @@ export function advanceGameState(state, play) {
       if (choice === 'actual_spot' && play.kickoff_oob_at) {
         state.field_pos = { ...play.kickoff_oob_at }
       } else if (choice === 'twenty_five' && play.field_pos) {
-        const kickAbs = absYard(gameState.teams, play.field_pos.team, play.field_pos.yard)
-        const dir     = play.possession === gameState.teams.home.name ? 1 : -1
+        const kickAbs = absYard(teams, play.field_pos.team, play.field_pos.yard)
+        const dir     = play.possession === teams.home.name ? 1 : -1
         const spotAbs = Math.max(0, Math.min(100, kickAbs + dir * 25))
         state.field_pos = {
           team: defTeam,
-          yard: defTeam === gameState.teams.home.name ? spotAbs : 100 - spotAbs,
+          yard: defTeam === teams.home.name ? spotAbs : 100 - spotAbs,
         }
       } else {
         // Legacy plays captured before this field existed (branch used to be
@@ -1316,10 +1316,10 @@ export function advanceGameState(state, play) {
 
     if (kickRes === 'returned') {
       const retAt = play.kick_return_at
-      const isTD  = retAt ? isTouchdown(gameState.teams, defTeam, retAt) : false
+      const isTD  = retAt ? isTouchdown(teams, defTeam, retAt) : false
 
       if (isTD) {
-        _addPoints(state, defTeam, 6)
+        _addPoints(state, defTeam, 6, teams)
         state.possession = defTeam
         state.down       = 0
         state.distance   = 0
@@ -1328,12 +1328,12 @@ export function advanceGameState(state, play) {
       }
 
       if (play.kick_return_result === 'safety') {
-        _addPoints(state, play.possession, 2)
+        _addPoints(state, play.possession, 2, teams)
       }
 
       if (play.kick_return_result === 'fumble') {
         state.possession = defTeam
-        _advanceFumble(state, play, '')
+        _advanceFumble(state, play, '', teams)
         return
       }
 
@@ -1348,8 +1348,8 @@ export function advanceGameState(state, play) {
 
   if (play.play_type === 'PUNT') {
     const puntRes = play.punt_result
-    const defTeam = play.possession === gameState.teams.home.name
-      ? gameState.teams.away.name : gameState.teams.home.name
+    const defTeam = play.possession === teams.home.name
+      ? teams.away.name : teams.home.name
 
     if (puntRes === 'touchback') {
       state.possession = defTeam
@@ -1385,10 +1385,10 @@ export function advanceGameState(state, play) {
 
     if (puntRes === 'returned') {
       const retAt = play.punt_return_at
-      const isTD  = retAt ? isTouchdown(gameState.teams, defTeam, retAt) : false
+      const isTD  = retAt ? isTouchdown(teams, defTeam, retAt) : false
 
       if (isTD) {
-        _addPoints(state, defTeam, 6)
+        _addPoints(state, defTeam, 6, teams)
         state.possession = defTeam
         state.down       = 0
         state.distance   = 0
@@ -1397,12 +1397,12 @@ export function advanceGameState(state, play) {
       }
 
       if (play.punt_return_result === 'safety') {
-        _addPoints(state, play.possession, 2)
+        _addPoints(state, play.possession, 2, teams)
       }
 
       if (play.punt_return_result === 'fumble') {
         state.possession = defTeam
-        _advanceFumble(state, play, '')
+        _advanceFumble(state, play, '', teams)
         return
       }
 
@@ -1429,7 +1429,7 @@ export function advanceGameState(state, play) {
       const atResult     = play.punt_muff_at_result
 
       const recoveringTeam = recoveryTeam || defTeam
-      const isTD = atResult ? isTouchdown(gameState.teams, recoveringTeam, atResult) : false
+      const isTD = atResult ? isTouchdown(teams, recoveringTeam, atResult) : false
 
       state.possession = recoveringTeam
 
@@ -1437,20 +1437,20 @@ export function advanceGameState(state, play) {
         state.down     = 0
         state.distance = 0
         if (atResult) state.field_pos = { ...atResult }
-        _addPoints(state, recoveringTeam, 6)
+        _addPoints(state, recoveringTeam, 6, teams)
         return
       }
 
       if (muffResult === 'safety') {
-        const muffDefTeam = recoveringTeam === gameState.teams.home.name
-          ? gameState.teams.away.name
-          : gameState.teams.home.name
-        _addPoints(state, muffDefTeam, 2)
+        const muffDefTeam = recoveringTeam === teams.home.name
+          ? teams.away.name
+          : teams.home.name
+        _addPoints(state, muffDefTeam, 2, teams)
         return
       }
 
       if (muffResult === 'fumble') {
-        _advanceFumble(state, play, 'fumble_2_')
+        _advanceFumble(state, play, 'fumble_2_', teams)
         return
       }
 
@@ -1476,7 +1476,7 @@ export function advanceGameState(state, play) {
       const atResult     = play.punt_bad_snap_at_result
 
       const recoveringTeam = recoveryTeam || defTeam
-      const isTD = atResult ? isTouchdown(gameState.teams, recoveringTeam, atResult) : false
+      const isTD = atResult ? isTouchdown(teams, recoveringTeam, atResult) : false
 
       state.possession = recoveringTeam
 
@@ -1484,7 +1484,7 @@ export function advanceGameState(state, play) {
         state.down     = 0
         state.distance = 0
         if (atResult) state.field_pos = { ...atResult }
-        _addPoints(state, recoveringTeam, 6)
+        _addPoints(state, recoveringTeam, 6, teams)
         return
       }
 
@@ -1494,10 +1494,10 @@ export function advanceGameState(state, play) {
       // 20. See the matching fg_result === 'bad_snap' comment above for why
       // this differs from RUSH's minimal safety handling.
       if (snapResult === 'safety') {
-        const scoringTeam = recoveringTeam === gameState.teams.home.name
-          ? gameState.teams.away.name
-          : gameState.teams.home.name
-        _addPoints(state, scoringTeam, 2)
+        const scoringTeam = recoveringTeam === teams.home.name
+          ? teams.away.name
+          : teams.home.name
+        _addPoints(state, scoringTeam, 2, teams)
         state.possession = recoveringTeam
         state.field_pos  = { team: recoveringTeam, yard: 20 }
         state.down       = 0
@@ -1506,7 +1506,7 @@ export function advanceGameState(state, play) {
       }
 
       if (snapResult === 'fumble') {
-        _advanceFumble(state, play, 'fumble_2_')
+        _advanceFumble(state, play, 'fumble_2_', teams)
         return
       }
 
@@ -1524,10 +1524,10 @@ export function advanceGameState(state, play) {
       if (blkRetRes === 'returned') {
         const retAt   = play.punt_block_ret_at
         const retTeam = play.punt_recovery_team || defTeam
-        const isTD    = retAt ? isTouchdown(gameState.teams, retTeam, retAt) : false
+        const isTD    = retAt ? isTouchdown(teams, retTeam, retAt) : false
 
         if (isTD) {
-          _addPoints(state, retTeam, 6)
+          _addPoints(state, retTeam, 6, teams)
           state.possession = retTeam
           state.down       = 0
           state.distance   = 0
@@ -1537,7 +1537,7 @@ export function advanceGameState(state, play) {
 
         if (play.punt_block_ret_result === 'fumble') {
           state.possession = retTeam
-          _advanceFumble(state, play, '')
+          _advanceFumble(state, play, '', teams)
           return
         }
 
@@ -1570,7 +1570,7 @@ export function advanceGameState(state, play) {
     const atResult     = play.snap_fumble_at_result
 
     const recoveringTeam = recoveryTeam || play.possession
-    const isTD = atResult ? isTouchdown(gameState.teams, recoveringTeam, atResult) : false
+    const isTD = atResult ? isTouchdown(teams, recoveringTeam, atResult) : false
 
     state.possession = recoveringTeam
 
@@ -1578,20 +1578,20 @@ export function advanceGameState(state, play) {
       state.down     = 0
       state.distance = 0
       if (atResult) state.field_pos = { ...atResult }
-      _addPoints(state, recoveringTeam, 6)
+      _addPoints(state, recoveringTeam, 6, teams)
       return
     }
 
     if (snapResult === 'safety') {
-      const snapDefTeam = recoveringTeam === gameState.teams.home.name
-        ? gameState.teams.away.name
-        : gameState.teams.home.name
-      _addPoints(state, snapDefTeam, 2)
+      const snapDefTeam = recoveringTeam === teams.home.name
+        ? teams.away.name
+        : teams.home.name
+      _addPoints(state, snapDefTeam, 2, teams)
       return
     }
 
     if (snapResult === 'fumble') {
-      _advanceFumble(state, play, 'fumble_2_')
+      _advanceFumble(state, play, 'fumble_2_', teams)
       return
     }
 
@@ -1612,12 +1612,12 @@ export function advanceGameState(state, play) {
 
     if (patType === 'kick') {
       if (play.pat_kick_result === 'good') {
-        _addPoints(state, play.possession, 1)
+        _addPoints(state, play.possession, 1, teams)
       }
       if (play.pat_block_result === 'good') {
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name : gameState.teams.home.name
-        _addPoints(state, defTeam, 2)
+        const defTeam = play.possession === teams.home.name
+          ? teams.away.name : teams.home.name
+        _addPoints(state, defTeam, 2, teams)
       }
 
       // Bad snap to the holder. The offense's own side recovering and
@@ -1626,15 +1626,15 @@ export function advanceGameState(state, play) {
       // retargeting). This only runs for the 'opponent recovers' terminal
       // case, overriding the down=0/distance=0/own-35 defaults set above.
       if (play.pat_kick_result === 'bad_snap') {
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name : gameState.teams.home.name
+        const defTeam = play.possession === teams.home.name
+          ? teams.away.name : teams.home.name
         const recoveryTeam = play.pat_bad_snap_recovery_team
         const recoveredAt  = play.pat_bad_snap_recovered_at
         const snapResult   = play.pat_bad_snap_result
         const atResult     = play.pat_bad_snap_at_result
 
         const recoveringTeam = recoveryTeam || defTeam
-        const isTD = atResult ? isTouchdown(gameState.teams, recoveringTeam, atResult) : false
+        const isTD = atResult ? isTouchdown(teams, recoveringTeam, atResult) : false
 
         state.possession = recoveringTeam
 
@@ -1642,15 +1642,15 @@ export function advanceGameState(state, play) {
           state.down     = 0
           state.distance = 0
           if (atResult) state.field_pos = { ...atResult }
-          _addPoints(state, recoveringTeam, 2)
+          _addPoints(state, recoveringTeam, 2, teams)
           return
         }
 
         if (snapResult === 'safety') {
-          const scoringTeam = recoveringTeam === gameState.teams.home.name
-            ? gameState.teams.away.name
-            : gameState.teams.home.name
-          _addPoints(state, scoringTeam, 2)
+          const scoringTeam = recoveringTeam === teams.home.name
+            ? teams.away.name
+            : teams.home.name
+          _addPoints(state, scoringTeam, 2, teams)
           state.possession = recoveringTeam
           state.field_pos  = { team: recoveringTeam, yard: 20 }
           state.down       = 0
@@ -1659,7 +1659,7 @@ export function advanceGameState(state, play) {
         }
 
         if (snapResult === 'fumble') {
-          _advanceFumble(state, play, 'fumble_2_')
+          _advanceFumble(state, play, 'fumble_2_', teams)
           return
         }
 
@@ -1675,19 +1675,19 @@ export function advanceGameState(state, play) {
 
     if (patType === 'run') {
       if (play.touchdown) {
-        _addPoints(state, play.possession, 2)
+        _addPoints(state, play.possession, 2, teams)
         return
       }
       if (play.result === 'fumble') {
         const fumbleAtResult = play.fumble_at_result
         if (fumbleAtResult) {
-          const defTeam = play.possession === gameState.teams.home.name
-            ? gameState.teams.away.name : gameState.teams.home.name
+          const defTeam = play.possession === teams.home.name
+            ? teams.away.name : teams.home.name
           const possChanged = play.fumble_recovery_team &&
             play.fumble_recovery_team !== play.possession
           if (possChanged &&
-              isTouchdown(gameState.teams, play.fumble_recovery_team, fumbleAtResult)) {
-            _addPoints(state, play.fumble_recovery_team, 2)
+              isTouchdown(teams, play.fumble_recovery_team, fumbleAtResult)) {
+            _addPoints(state, play.fumble_recovery_team, 2, teams)
           }
         }
       }
@@ -1697,16 +1697,16 @@ export function advanceGameState(state, play) {
     if (patType === 'pass') {
       const passRes = play.pass_result
       if (passRes === 'complete' && play.touchdown) {
-        _addPoints(state, play.possession, 2)
+        _addPoints(state, play.possession, 2, teams)
         return
       }
       if (passRes === 'intercepted') {
         const returnPos = play.return_at || play.intercepted_at
         if (returnPos) {
-          const defTeam = play.possession === gameState.teams.home.name
-            ? gameState.teams.away.name : gameState.teams.home.name
-          if (isTouchdown(gameState.teams, defTeam, returnPos)) {
-            _addPoints(state, defTeam, 2)
+          const defTeam = play.possession === teams.home.name
+            ? teams.away.name : teams.home.name
+          if (isTouchdown(teams, defTeam, returnPos)) {
+            _addPoints(state, defTeam, 2, teams)
           }
         }
       }
@@ -1735,7 +1735,7 @@ export function advanceGameState(state, play) {
       // routed through _advanceFumble like RUSH/PASS-complete already are,
       // not treated as a normal down advance.
       if (result === 'fumble') {
-        _advanceFumble(state, play, '')
+        _advanceFumble(state, play, '', teams)
         return
       }
       if (play.at) state.field_pos = { ...play.at }
@@ -1748,11 +1748,11 @@ export function advanceGameState(state, play) {
         state.down     = 0
         state.distance = 0
         if (at) state.field_pos = { ...at }
-        _addPoints(state, play.possession, 6)
+        _addPoints(state, play.possession, 6, teams)
         return
       }
       if (result === 'fumble') {
-        _advanceFumble(state, play, '')
+        _advanceFumble(state, play, '', teams)
         return
       }
       if (at) state.field_pos = { ...at }
@@ -1761,15 +1761,15 @@ export function advanceGameState(state, play) {
     }
 
     if (passRes === 'intercepted') {
-      const intTeam = state.possession === gameState.teams.home.name
-        ? gameState.teams.away.name
-        : gameState.teams.home.name
+      const intTeam = state.possession === teams.home.name
+        ? teams.away.name
+        : teams.home.name
 
       const returnPos = play.return_at || play.intercepted_at
-      const isTD = returnPos ? isTouchdown(gameState.teams, intTeam, returnPos) : false
+      const isTD = returnPos ? isTouchdown(teams, intTeam, returnPos) : false
 
       if (isTD) {
-        _addPoints(state, intTeam, 6)
+        _addPoints(state, intTeam, 6, teams)
         state.possession = intTeam
         state.down       = 0
         state.distance   = 0
@@ -1778,12 +1778,12 @@ export function advanceGameState(state, play) {
       }
 
       if (play.return_result === 'safety') {
-        _addPoints(state, play.possession, 2)
+        _addPoints(state, play.possession, 2, teams)
       }
 
       if (play.return_result === 'fumble') {
         state.possession = intTeam
-        _advanceFumble(state, play, '')
+        _advanceFumble(state, play, '', teams)
         return
       }
 
@@ -1800,17 +1800,17 @@ export function advanceGameState(state, play) {
         state.down     = 0
         state.distance = 0
         if (at) state.field_pos = { ...at }
-        _addPoints(state, play.possession, 6)
+        _addPoints(state, play.possession, 6, teams)
         return
       }
       if (result === 'safety') {
-        const defTeam = play.possession === gameState.teams.home.name
-          ? gameState.teams.away.name
-          : gameState.teams.home.name
-        _addPoints(state, defTeam, 2)
+        const defTeam = play.possession === teams.home.name
+          ? teams.away.name
+          : teams.home.name
+        _addPoints(state, defTeam, 2, teams)
       }
       if (result === 'fumble') {
-        _advanceFumble(state, play, '')
+        _advanceFumble(state, play, '', teams)
         return
       }
       if (at) state.field_pos = { ...at }
@@ -1825,12 +1825,12 @@ export function advanceGameState(state, play) {
     state.down     = 0
     state.distance = 0
     if (at) state.field_pos = { ...at }
-    _addPoints(state, play.possession, 6)
+    _addPoints(state, play.possession, 6, teams)
     return
   }
 
   if (result === 'fumble') {
-    _advanceFumble(state, play, '')
+    _advanceFumble(state, play, '', teams)
     return
   }
 
@@ -1838,20 +1838,20 @@ export function advanceGameState(state, play) {
   _advanceDownDistance(state, net_yards ?? 0)
 
   if (result === 'safety') {
-    const defensiveTeam = play.possession === gameState.teams.home.name
-      ? gameState.teams.away.name
-      : gameState.teams.home.name
-    _addPoints(state, defensiveTeam, 2)
+    const defensiveTeam = play.possession === teams.home.name
+      ? teams.away.name
+      : teams.home.name
+    _addPoints(state, defensiveTeam, 2, teams)
   }
 
 }
 
-export function applyFlags(state, play) {
-  _applyFlag(state, play, 1)
-  _applyFlag(state, play, 2)
+export function applyFlags(state, play, teams) {
+  _applyFlag(state, play, 1, teams)
+  _applyFlag(state, play, 2, teams)
 }
 
-function _applyFlag(state, play, num) {
+function _applyFlag(state, play, num, teams) {
   const inf = play[`flag_${num}_infraction`]
   if (!inf) return
 
@@ -1879,7 +1879,7 @@ function _applyFlag(state, play, num) {
     } else {
       state.down = play.down + 1
       if (newLos) {
-        const net = calcNetYards(gameState.teams, state.possession, play.field_pos, newLos)
+        const net = calcNetYards(teams, state.possession, play.field_pos, newLos)
         const newDist = play.distance - net
         state.distance = newDist > 0 ? newDist : 10
       } else {
@@ -1892,7 +1892,7 @@ function _applyFlag(state, play, num) {
     // new line of scrimmage.
     state.down = play.down
     const net = calcNetYards(
-      gameState.teams,
+      teams,
       state.possession,
       play.field_pos,
       newLos
@@ -1902,15 +1902,15 @@ function _applyFlag(state, play, num) {
   }
 }
 
-function _addPoints(state, teamName, points) {
-  if (teamName === gameState.teams.home.name) {
+function _addPoints(state, teamName, points, teams) {
+  if (teamName === teams.home.name) {
     state.score.home += points
-  } else if (teamName === gameState.teams.away.name) {
+  } else if (teamName === teams.away.name) {
     state.score.away += points
   }
 }
 
-function _advanceFumble(state, play, prefix) {
+function _advanceFumble(state, play, prefix, teams) {
   const recoveryTeam   = play[`${prefix}fumble_recovery_team`]
   const recoveredAt    = play[`${prefix}fumble_recovered_at`]
   const fumbleResult   = play[`${prefix}fumble_result`]
@@ -1921,9 +1921,9 @@ function _advanceFumble(state, play, prefix) {
   let isTD = false
   if (fumbleAtResult) {
     if (!possessionChanged) {
-      isTD = isTouchdown(gameState.teams, state.possession, fumbleAtResult)
+      isTD = isTouchdown(teams, state.possession, fumbleAtResult)
     } else {
-      isTD = isTouchdown(gameState.teams, recoveryTeam, fumbleAtResult)
+      isTD = isTouchdown(teams, recoveryTeam, fumbleAtResult)
     }
   }
 
@@ -1935,20 +1935,20 @@ function _advanceFumble(state, play, prefix) {
     state.down     = 0
     state.distance = 0
     if (fumbleAtResult) state.field_pos = { ...fumbleAtResult }
-    if (possessionChanged) _addPoints(state, recoveryTeam, 6)
+    if (possessionChanged) _addPoints(state, recoveryTeam, 6, teams)
     return
   }
 
   if (fumbleResult === 'fumble') {
-    _advanceFumble(state, play, 'fumble_2_')
+    _advanceFumble(state, play, 'fumble_2_', teams)
     return
   }
 
   if (fumbleResult === 'safety') {
-    const fumbleDefTeam = recoveryTeam === gameState.teams.home.name
-      ? gameState.teams.away.name
-      : gameState.teams.home.name
-    _addPoints(state, fumbleDefTeam, 2)
+    const fumbleDefTeam = recoveryTeam === teams.home.name
+      ? teams.away.name
+      : teams.home.name
+    _addPoints(state, fumbleDefTeam, 2, teams)
     return
   }
 
@@ -1964,7 +1964,7 @@ function _advanceFumble(state, play, prefix) {
   } else {
     if (fumbleAtResult) {
       const net = calcNetYards(
-        gameState.teams, state.possession,
+        teams, state.possession,
         play.field_pos,
         fumbleAtResult
       )

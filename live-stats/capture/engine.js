@@ -1675,8 +1675,8 @@ export function deriveNextPlayContext() {
       distance:   lastPlay.distance,
       score:      { home: lastPlay.score_home, away: lastPlay.score_away },
     }
-    advanceGameState(state, lastPlay)
-    applyFlags(state, lastPlay)
+    advanceGameState(state, lastPlay, gameState.teams)
+    applyFlags(state, lastPlay, gameState.teams)
     baseline = lastPlay.submitted_at
   }
 
