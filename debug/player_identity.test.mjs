@@ -171,3 +171,37 @@ test('getGameTemporada: explicit season, else kickoff year', () => {
   assert.equal(getGameTemporada({ temporada: null, kickoff: '2025-09-01T00:00:00+00:00' }), '2025')
   assert.equal(getGameTemporada({ temporada: null, kickoff: null }), null)
 })
+
+// Import by season (T2): only rows of the chosen season are matched or updated.
+import { classifyRosterImport, TEMPORADAS_DISPONIBLES } from '../shared/stats-lib.js'
+const rosterMix = [
+  { id: 'r25', team_id: TEAM, number: 10, nombre: 'Ana', apellido: 'Ruiz', position: 'QB', temporada: '2025' },
+  { id: 'r26', team_id: TEAM, number: 11, nombre: 'Beto', apellido: 'Lara', position: 'RB', temporada: '2026' },
+]
+test('import in season 2026 never updates a 2025 row with the same number and names', () => {
+  const out = classifyRosterImport([{ numberRaw: '10', nombre: 'Ana', apellido: 'Ruiz', position: 'QB' }], rosterMix, '2026')
+  assert.equal(out[0].status, 'new')
+  assert.equal(out[0].id, undefined)
+})
+test('import in season 2025 updates by id only the 2025 row', () => {
+  const out = classifyRosterImport([{ numberRaw: '10', nombre: 'Ana', apellido: 'Ruiz', position: 'WR' }], rosterMix, '2025')
+  assert.equal(out[0].status, 'update')
+  assert.equal(out[0].id, 'r25')
+})
+test('same number in two seasons is not a duplicate across seasons', () => {
+  const out = classifyRosterImport([{ numberRaw: '11', nombre: 'Otro', apellido: 'Nombre', position: '' }], rosterMix, '2025')
+  assert.equal(out[0].status, 'new')
+})
+test('a repeated number inside the season with other names is allowed; exact duplicate is an error', () => {
+  const rows = [
+    { numberRaw: '5', nombre: 'Luis', apellido: 'Pérez', position: '' },
+    { numberRaw: '5', nombre: 'Jorge', apellido: 'Gómez', position: '' },
+    { numberRaw: '6', nombre: 'Ana', apellido: 'X', position: '' },
+    { numberRaw: '6', nombre: 'ana', apellido: 'x', position: '' },
+  ]
+  const out = classifyRosterImport(rows, [], '2026')
+  assert.deepEqual(out.map(r => r.status), ['new', 'new', 'error', 'error'])
+})
+test('season list offers the active and previous season', () => {
+  assert.ok(TEMPORADAS_DISPONIBLES.includes('2025') && TEMPORADAS_DISPONIBLES.includes('2026'))
+})

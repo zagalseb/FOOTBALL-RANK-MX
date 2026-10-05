@@ -2810,6 +2810,51 @@ export function filterRosterBySeason(rows, temporada) {
   return (rows || []).filter(p => temporada == null || p.temporada == null || String(p.temporada) === String(temporada))
 }
 
+// Seasons the roster screens offer (add more when a season is opened).
+export const TEMPORADAS_DISPONIBLES = ['2025', '2026']
+
+// Classifies CSV import rows against the roster of ONE season only (T2).
+// rows: { numberRaw, nombre, apellido, position }. rosterAll: every player row of
+// the team (any season). Returns the rows with status 'new' | 'update' | 'error'.
+//   - same number + same names (named players) in that season → update, by id
+//   - otherwise, a duplicate by identity in that season → error (rosterDuplicate)
+//   - otherwise → new, to be inserted in that season
+// Rows of other seasons are never matched, so they are never updated.
+export function classifyRosterImport(rows, rosterAll, season) {
+  const roster = (rosterAll || []).filter(p => String(p.temporada) === String(season))
+  const csv = { identity: {}, nameless: {} }
+  rows.forEach(r => {
+    if (!/^\d{1,2}$/.test(r.numberRaw)) return
+    const n = parseInt(r.numberRaw, 10)
+    const k = `${n}|${normName(r.nombre)}|${normName(r.apellido)}`
+    csv.identity[k] = (csv.identity[k] || 0) + 1
+    if (!normName(r.nombre) && !normName(r.apellido)) csv.nameless[n] = true
+  })
+  return rows.map(r => {
+    if (!/^\d{1,2}$/.test(r.numberRaw)) {
+      return { ...r, status: 'error', reason: 'Número vacío o inválido (debe ser 0-99)', number: null }
+    }
+    const number = parseInt(r.numberRaw, 10)
+    const nn = normName(r.nombre), na = normName(r.apellido)
+    if (csv.identity[`${number}|${nn}|${na}`] > 1) {
+      return { ...r, status: 'error', reason: 'Jugador duplicado dentro del CSV', number }
+    }
+    if (csv.nameless[number] && !nn && !na) {
+      return { ...r, status: 'error', reason: 'Número repetido en el CSV con un jugador sin nombre', number }
+    }
+    const same = (nn || na) && roster.find(p => p.number === number && normName(p.nombre) === nn && normName(p.apellido) === na)
+    if (same) {
+      return {
+        ...r, status: 'update', number, id: same.id,
+        old: { nombre: same.nombre, apellido: same.apellido, position: same.position },
+      }
+    }
+    const dup = rosterDuplicate({ number, nombre: r.nombre, apellido: r.apellido, temporada: season }, roster)
+    if (dup) return { ...r, status: 'error', reason: dup.message, number }
+    return { ...r, status: 'new', number }
+  })
+}
+
 // Counts orphan keys in a list of resolved keys, for the debug report.
 export function countOrphans(keys) {
   let n = 0
