@@ -3,6 +3,7 @@
 // reference in its plays against the roster of the team it belongs to and
 // reports how many resolved to a canonical players.id vs. orphans.
 // Usage: node debug/orphan_report.mjs <game_id> [...]
+import { playRefs } from './play_refs.mjs'
 import {
   buildRosterIndex, resolvePlayerKey, isOrphanKey, normName,
 } from '../shared/stats-lib.js'
@@ -19,21 +20,15 @@ const DEF_ARRAYS = ['tackle_by', 'fumble_tackle_by', 'punt_block_ret_tackle_by',
 
 for (const gameId of process.argv.slice(2)) {
   const [game] = await get(`games?select=id,home_team_id,away_team_id,home:home_team_id(abreviatura),away:away_team_id(abreviatura)&id=eq.${gameId}`)
-  const plays = await get(`plays?select=possession,play_data&game_id=eq.${gameId}`)
+  const plays = await get(`plays?select=*&game_id=eq.${gameId}`)
   const teamIds = [game.home_team_id, game.away_team_id]
   const players = await get(`players?select=id,team_id,number,nombre,apellido&team_id=in.(${teamIds.join(',')})`)
   const abbrToTeam = { [game.home.abreviatura]: game.home_team_id, [game.away.abreviatura]: game.away_team_id }
   const idx = Object.fromEntries(teamIds.map(t => [t, buildRosterIndex(t, players.filter(p => p.team_id === t))]))
   const other = t => (t === game.home.abreviatura ? game.away.abreviatura : game.home.abreviatura)
 
-  const refs = []   // { team, ref }
-  for (const row of plays) {
-    const pd = row.play_data || {}
-    const off = row.possession, def = other(off)
-    for (const f of OFF_FIELDS) if (pd[f]) refs.push({ team: off, f, ref: pd[f] })
-    for (const f of DEF_SINGLE) if (pd[f]) refs.push({ team: def, f, ref: pd[f] })
-    for (const f of DEF_ARRAYS) for (const r of (Array.isArray(pd[f]) ? pd[f] : [])) refs.push({ team: def, f, ref: r })
-  }
+  const refs = []   // { team, field, ref }
+  for (const row of plays) refs.push(...playRefs({ ...row, ...(row.play_data || {}) }, game.home.abreviatura, game.away.abreviatura))
   let ok = 0, orphan = 0; const orphanList = new Map()
   for (const { team, f, ref } of refs) {
     const tid = abbrToTeam[team]
