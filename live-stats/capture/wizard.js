@@ -619,8 +619,10 @@ export function renderByMenu(config) {
     // Only number/nombre/apellido/position get persisted onto the play — not
     // the players-table id/team_id/created_at, which have no meaning once
     // baked into a play's play_data.
+    // player_id (B2) pins the reference to its roster row; refs without it
+    // (older plays, or a number not on the roster) still resolve by number.
     const player = rosterPlayer
-      ? { number: rosterPlayer.number, nombre: rosterPlayer.nombre || '', apellido: rosterPlayer.apellido || '', position: rosterPlayer.position || '' }
+      ? { ...(rosterPlayer.id ? { player_id: rosterPlayer.id } : {}), number: rosterPlayer.number, nombre: rosterPlayer.nombre || '', apellido: rosterPlayer.apellido || '', position: rosterPlayer.position || '' }
       : { number: num, nombre: '', apellido: '', position: '' }
     if (!multiple) { onComplete(player); return }
     if (selections.length >= 2 || selections.some(s => (rosterPlayer ? _sameAsRoster(s, rosterPlayer) : s.number === num))) return
