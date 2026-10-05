@@ -22,8 +22,13 @@ test('old ref with empty name resolves by team+number', () => {
   assert.equal(resolvePlayerKey({ name: '', number: 12, position: 'QB' }, idx), 'p1')
 })
 
-test('new ref with nombre/apellido resolves by number', () => {
-  assert.equal(resolvePlayerKey({ nombre: 'Edson', apellido: 'Rincón', number: 3 }, idx), 'p2')
+test('new ref with matching surname resolves by number', () => {
+  assert.equal(resolvePlayerKey({ nombre: 'Emilio', apellido: 'Lozada', number: 3 }, idx), 'p2')
+})
+
+test('lone roster player with same number but another surname is an orphan', () => {
+  // #3 on this roster is Lozada; an #3 Rincón (other season) must not become Lozada.
+  assert.ok(isOrphanKey(resolvePlayerKey({ nombre: 'Edson', apellido: 'Rincón', number: 3 }, idx)))
 })
 
 test('number not on roster becomes an orphan key', () => {
@@ -87,4 +92,27 @@ test('computePlayerStats with roster index separates duplicate numbers (C3)', ()
   assert.equal(b.rushing.yds, 9)
   // legacy call (no index) keeps number-only behaviour
   assert.equal(computePlayerStats(plays, { number: 12 }, 'T').rushing.yds, 16)
+})
+
+// Surname contradiction (approved 2026-10-05): a lone roster player with the
+// same number is NOT the same player when both surnames are present and differ.
+const solo = buildRosterIndex(TEAM, [{ id: 'm', number: 35, nombre: 'Juan Pablo', apellido: 'Mandujano' }])
+
+test('lone number with contradicting surname is an orphan', () => {
+  assert.ok(isOrphanKey(resolvePlayerKey({ nombre: 'Lucio', apellido: 'Ascolani', number: 35 }, solo)))
+})
+
+test('same letters with different case, spaces or accents do NOT make an orphan', () => {
+  assert.equal(resolvePlayerKey({ nombre: 'x', apellido: '  MANDÚJANO ', number: 35 }, solo), 'm')
+  assert.equal(resolvePlayerKey({ nombre: 'x', apellido: 'Mandujano', number: 35 }, solo), 'm')
+})
+
+test('ref without surname with lone number resolves as before', () => {
+  assert.equal(resolvePlayerKey({ name: '', number: 35 }, solo), 'm')
+  assert.equal(resolvePlayerKey({ nombre: 'Juan', apellido: '', number: 35 }, solo), 'm')
+})
+
+test('ref with surname against roster row with empty surname resolves as before', () => {
+  const blank = buildRosterIndex(TEAM, [{ id: 'z', number: 9, nombre: 'Sin', apellido: '' }])
+  assert.equal(resolvePlayerKey({ nombre: 'Ana', apellido: 'Lopez', number: 9 }, blank), 'z')
 })

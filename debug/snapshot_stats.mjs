@@ -222,6 +222,26 @@ function collectRoster(plays, homeAbbr, awayAbbr, indexes) {
   return [...seen.values()].sort((x, y) => x.team.localeCompare(y.team) || x.number - y.number || x.key.localeCompare(y.key))
 }
 
+// ── C4 view: the stats functions key maps by canonical player key and carry
+// `key` (array rows) and `label` (map values). The snapshot checks the display
+// level, so maps are re-keyed by label and `key` is dropped. `keepLabel` says
+// whether the pre-C4 baseline stored `label` inside the map value.
+function viewMap(m, keepLabel) {
+  return Object.fromEntries(Object.entries(m).map(([k, v]) => {
+    const { label, key: _k, ...rest } = v
+    return [label ?? k, keepLabel ? { label, ...rest } : rest]
+  }))
+}
+function viewPerTeam(obj, keepLabel) {
+  return Object.fromEntries(Object.entries(obj).map(([t, m]) => [t, viewMap(m, keepLabel)]))
+}
+function viewRows(arr) {
+  return arr.map(({ key: _k, ...rest }) => rest)
+}
+function viewSpecialTeams(st) {
+  return { punting: viewRows(st.punting), kickoffs: viewRows(st.kickoffs), fgs: st.fgs, kickReturns: viewRows(st.kickReturns), puntReturns: viewRows(st.puntReturns) }
+}
+
 async function snapshotGame(gameId) {
   const teamFields = 'nombre_corto,abreviatura,Apodo,Escuela,color_principal,color_texto,logo_url'
   const [gArr, pArr, tmArr, pmArr] = await Promise.all([
@@ -253,15 +273,18 @@ async function snapshotGame(gameId) {
     team, number, stats: fn.computePlayerStats(plays, { id: key, number }, team, indexes[team]),
   }))
 
-  const defenseStats = fn.computeDefenseStats(plays, homeAbbr, awayAbbr)
-  const specialTeamsStats = fn.computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teamsFull)
-  const fumbleStats = fn.computeFumbleStats(plays)
-  const turnoverReturnYards = fn.computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teamsFull)
+  // C4: functions get the per-team roster indexes, so their maps are keyed by
+  // canonical player key. The view* helpers below re-key them by display label
+  // so the written snapshot keeps the same shape as the pre-C4 baseline.
+  const defenseStats = fn.computeDefenseStats(plays, homeAbbr, awayAbbr, indexes)
+  const specialTeamsStats = fn.computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teamsFull, indexes)
+  const fumbleStats = fn.computeFumbleStats(plays, indexes)
+  const turnoverReturnYards = fn.computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teamsFull, indexes)
   const turnoverReturnYardsByTeam = fn.computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, teamsFull)
-  const turnoverStatsByPlayer = fn.computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teamsFull)
-  const qbProgression = fn.computeQBProgression(plays)
+  const turnoverStatsByPlayer = fn.computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teamsFull, indexes)
+  const qbProgression = fn.computeQBProgression(plays, indexes)
   const explosivePlays = fn.computeExplosivePlays(plays, teamsFull)
-  const { passers, rushers, receivers } = fn.buildOffenseMaps(plays, homeAbbr, awayAbbr)
+  const { passers, rushers, receivers } = fn.buildOffenseMaps(plays, homeAbbr, awayAbbr, indexes)
   const allPurposeMap = fn.computeAllPurposeMap(
     rushers, receivers, specialTeamsStats.kickReturns, specialTeamsStats.puntReturns,
     turnoverReturnYards, homeAbbr, awayAbbr
@@ -287,19 +310,19 @@ async function snapshotGame(gameId) {
     computeDrives: drives.map(d => ({ possession: d.possession, playCount: d.plays.length, seqs: d.plays.map(p => p.seq) })),
     computePenalties: penalties,
     computePlayerStats: playerStats,
-    computeDefenseStats: defenseStats,
-    computeSpecialTeamsStats: specialTeamsStats,
-    computeFumbleStats: fumbleStats,
-    computeTurnoverReturnYards: turnoverReturnYards,
+    computeDefenseStats: viewPerTeam(defenseStats, true),
+    computeSpecialTeamsStats: viewSpecialTeams(specialTeamsStats),
+    computeFumbleStats: viewRows(fumbleStats),
+    computeTurnoverReturnYards: viewRows(turnoverReturnYards),
     computeTurnoverReturnYardsByTeam: turnoverReturnYardsByTeam,
-    computeTurnoverStatsByPlayer: turnoverStatsByPlayer,
-    computeQBProgression: qbProgression,
+    computeTurnoverStatsByPlayer: { interceptions: viewPerTeam(turnoverStatsByPlayer.interceptions, true), fumbleReturns: viewPerTeam(turnoverStatsByPlayer.fumbleReturns, true) },
+    computeQBProgression: viewRows(qbProgression),
     computeExplosivePlays: {
       passing: explosivePlays.passing.map(p => ({ seq: p.seq, effYards: p._effYards })),
       rushing: explosivePlays.rushing.map(p => ({ seq: p.seq, effYards: p._effYards })),
     },
-    buildOffenseMaps: { passers, rushers, receivers },
-    computeAllPurposeMap: allPurposeMap,
+    buildOffenseMaps: { passers: viewPerTeam(passers, false), rushers: viewPerTeam(rushers, false), receivers: viewPerTeam(receivers, false) },
+    computeAllPurposeMap: viewPerTeam(allPurposeMap, false),
     manualPathFunctions: manualLeaders,
     teamGameStatsManualRowCount: (tmArr || []).length,
     playerGameStatsManualRowCount: (pmArr || []).length,

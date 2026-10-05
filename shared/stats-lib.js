@@ -2010,15 +2010,15 @@ function _advanceDownDistance(state, gained) {
 // tackle_by/sack_by/etc. player refs don't carry their own team, but since
 // they only ever come from the opposing side of `possession`, this is enough
 // to attribute every defensive credit correctly without needing that.
-export function computeDefenseStats(plays, homeAbbr, awayAbbr) {
+export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
   const teams = { [homeAbbr]: {}, [awayAbbr]: {} }
 
   function credit(team, player, field, delta) {
     if (!team || !teams[team] || !player) return
-    const label = playerShortLabel(player)
-    if (!label) return
-    if (!teams[team][label]) teams[team][label] = { label, solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0, sackYds: 0, qbh: 0, pbu: 0 }
-    teams[team][label][field] += delta
+    const kl = _playerKeyLabel(player, rosters?.[team] || null)
+    if (!kl) return
+    if (!teams[team][kl.key]) teams[team][kl.key] = { label: kl.label, solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0, sackYds: 0, qbh: 0, pbu: 0 }
+    teams[team][kl.key][field] += delta
   }
 
   for (const p of plays) {
@@ -2072,7 +2072,7 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr) {
 // touchback punts/kickoffs. Blocked punts and oob/onside kickoffs likewise
 // have no measurable landing spot recorded — they still count as an attempt
 // (No.) but contribute 0 to Yds/Long/Avg.
-export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams) {
+export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams, rosters = null) {
   const punting     = {}
   const kickoffs     = {}
   const fgs          = []
@@ -2087,10 +2087,10 @@ export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams) {
     if (!defTeam) continue
 
     if (p.play_type === 'PUNT') {
-      const label = p.punted_by ? playerShortLabel(p.punted_by) : null
-      if (label) {
-        const key = `${p.possession}::${label}`
-        if (!punting[key]) punting[key] = { team: p.possession, label, no: 0, yds: 0, long: 0, in20: 0, tb: 0 }
+      const kl = p.punted_by ? _playerKeyLabel(p.punted_by, rosters?.[p.possession] || null) : null
+      if (kl) {
+        const key = `${p.possession}::${kl.key}`
+        if (!punting[key]) punting[key] = { team: p.possession, key: kl.key, label: kl.label, no: 0, yds: 0, long: 0, in20: 0, tb: 0 }
         const row = punting[key]
         row.no++
         let landPos = null
@@ -2108,15 +2108,15 @@ export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams) {
       }
 
       if (p.punt_result === 'returned' && p.punt_returned_by) {
-        const rLabel = playerShortLabel(p.punt_returned_by)
-        if (rLabel) {
+        const rk = _playerKeyLabel(p.punt_returned_by, rosters?.[defTeam] || null)
+        if (rk) {
           let endPos = null
           if (['tackle', 'oob', 'eop'].includes(p.punt_return_result)) endPos = p.punt_return_at
           else if (p.punt_return_result === 'fumble') endPos = p.fumble_at
           const d = endPos ? dist(defTeam, p.punt_kicked_to, endPos) : null
           if (d != null) {
-            const key = `${defTeam}::${rLabel}`
-            if (!puntReturns[key]) puntReturns[key] = { team: defTeam, label: rLabel, no: 0, yds: 0, long: 0 }
+            const key = `${defTeam}::${rk.key}`
+            if (!puntReturns[key]) puntReturns[key] = { team: defTeam, key: rk.key, label: rk.label, no: 0, yds: 0, long: 0 }
             puntReturns[key].no++
             puntReturns[key].yds += d
             if (d > puntReturns[key].long) puntReturns[key].long = d
@@ -2126,10 +2126,10 @@ export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams) {
     }
 
     if (p.play_type === 'KICK' && p.kick_type === 'kickoff') {
-      const label = p.kicked_by ? playerShortLabel(p.kicked_by) : null
-      if (label) {
-        const key = `${p.possession}::${label}`
-        if (!kickoffs[key]) kickoffs[key] = { team: p.possession, label, no: 0, yds: 0, tb: 0 }
+      const kl = p.kicked_by ? _playerKeyLabel(p.kicked_by, rosters?.[p.possession] || null) : null
+      if (kl) {
+        const key = `${p.possession}::${kl.key}`
+        if (!kickoffs[key]) kickoffs[key] = { team: p.possession, key: kl.key, label: kl.label, no: 0, yds: 0, tb: 0 }
         const row = kickoffs[key]
         row.no++
         let landPos = null
@@ -2142,15 +2142,15 @@ export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams) {
       }
 
       if (p.kickoff_result === 'returned' && p.kick_returned_by) {
-        const rLabel = playerShortLabel(p.kick_returned_by)
-        if (rLabel) {
+        const rk = _playerKeyLabel(p.kick_returned_by, rosters?.[defTeam] || null)
+        if (rk) {
           let endPos = null
           if (['tackle', 'oob', 'eop'].includes(p.kick_return_result)) endPos = p.kick_return_at
           else if (p.kick_return_result === 'fumble') endPos = p.fumble_at
           const d = endPos ? dist(defTeam, p.kicked_to, endPos) : null
           if (d != null) {
-            const key = `${defTeam}::${rLabel}`
-            if (!kickReturns[key]) kickReturns[key] = { team: defTeam, label: rLabel, no: 0, yds: 0, long: 0 }
+            const key = `${defTeam}::${rk.key}`
+            if (!kickReturns[key]) kickReturns[key] = { team: defTeam, key: rk.key, label: rk.label, no: 0, yds: 0, long: 0 }
             kickReturns[key].no++
             kickReturns[key].yds += d
             if (d > kickReturns[key].long) kickReturns[key].long = d
@@ -2204,15 +2204,15 @@ export function _fumbleCarrier(p) {
   return null
 }
 
-export function computeFumbleStats(plays) {
+export function computeFumbleStats(plays, rosters = null) {
   const out = {}
   for (const p of plays) {
     if (!_fumbleOccurred(p)) continue
     const carrier = _fumbleCarrier(p)
-    const label = carrier ? playerShortLabel(carrier) : null
-    if (!label || !p.possession) continue
-    const key = `${p.possession}::${label}`
-    if (!out[key]) out[key] = { team: p.possession, label, no: 0, lost: 0 }
+    const kl = carrier ? _playerKeyLabel(carrier, rosters?.[p.possession] || null) : null
+    if (!kl || !p.possession) continue
+    const key = `${p.possession}::${kl.key}`
+    if (!out[key]) out[key] = { team: p.possession, key: kl.key, label: kl.label, no: 0, lost: 0 }
     out[key].no++
     if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) out[key].lost++
   }
@@ -2223,7 +2223,7 @@ export function computeFumbleStats(plays) {
 // (sorted Lost desc, then No. desc).
 export function fumbleStatsToMap(fumbleStats, homeAbbr, awayAbbr) {
   const raw = { [homeAbbr]: {}, [awayAbbr]: {} }
-  fumbleStats.forEach(r => { if (raw[r.team]) raw[r.team][r.label] = { no: r.no, lost: r.lost } })
+  fumbleStats.forEach(r => { if (raw[r.team]) raw[r.team][r.key] = { label: r.label, no: r.no, lost: r.lost } })
   const out = {}
   for (const team of [homeAbbr, awayAbbr]) {
     const sorted = Object.entries(raw[team] || {}).sort((a, b) => b[1].lost - a[1].lost || b[1].no - a[1].no)
@@ -2243,12 +2243,12 @@ export function fumbleStatsToMap(fumbleStats, homeAbbr, awayAbbr) {
 // final spot (no further advance captured).
 // See computeTurnoverReturnYardsByTeam() below for the team-total, split-by-
 // origin sibling used by Comparación's summary panel (INT vs FUM-YDS).
-export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams) {
+export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, rosters = null) {
   const map = {}
-  function add(team, label, yds) {
-    if (!team || !label || !yds) return
-    const key = `${team}::${label}`
-    if (!map[key]) map[key] = { team, label, yds: 0 }
+  function add(team, kl, yds) {
+    if (!team || !kl || !yds) return
+    const key = `${team}::${kl.key}`
+    if (!map[key]) map[key] = { team, key: kl.key, label: kl.label, yds: 0 }
     map[key].yds += yds
   }
   const dist = (team, from, to) =>
@@ -2262,7 +2262,7 @@ export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams) {
         if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
         else if (p.return_result === 'fumble') endPos = p.fumble_at
         const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0
-        add(intTeam, playerShortLabel(p.intercepted_by), yds)
+        add(intTeam, _playerKeyLabel(p.intercepted_by, rosters?.[intTeam] || null), yds)
       }
     }
 
@@ -2274,7 +2274,7 @@ export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams) {
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
       const endPos = p[advField] || null
       const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0
-      add(recTeam, playerShortLabel(recBy), yds)
+      add(recTeam, _playerKeyLabel(recBy, rosters?.[recTeam] || null), yds)
     }
   }
 
@@ -2327,16 +2327,16 @@ export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, team
 // never populate the raw `touchdown` field, see _turnoverScore's comment)
 // and a Long (max single return). Feeds Comparación's Defense sub-tab
 // (Interceptions / Fumble Returns sections).
-export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams) {
+export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, rosters = null) {
   const interceptions = { [homeAbbr]: {}, [awayAbbr]: {} }
   const fumbleReturns = { [homeAbbr]: {}, [awayAbbr]: {} }
 
   function credit(map, team, player, yds, isTD) {
     if (!map[team] || !player) return
-    const label = playerShortLabel(player)
-    if (!label) return
-    if (!map[team][label]) map[team][label] = { label, no: 0, yds: 0, td: 0, long: -Infinity }
-    const row = map[team][label]
+    const kl = _playerKeyLabel(player, rosters?.[team] || null)
+    if (!kl) return
+    if (!map[team][kl.key]) map[team][kl.key] = { label: kl.label, no: 0, yds: 0, td: 0, long: -Infinity }
+    const row = map[team][kl.key]
     row.no++
     row.yds += yds
     if (isTD) row.td++
@@ -2382,18 +2382,18 @@ export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams) {
 // without needing their own sort logic.
 export function computeAllPurposeMap(rushers, receivers, kickReturns, puntReturns, turnoverReturns, homeAbbr, awayAbbr) {
   const raw = { [homeAbbr]: {}, [awayAbbr]: {} }
-  function ensure(team, label) {
+  function ensure(team, key, label) {
     if (!raw[team]) return null
-    if (!raw[team][label]) raw[team][label] = { run: 0, rcv: 0, kr: 0, pr: 0, frir: 0 }
-    return raw[team][label]
+    if (!raw[team][key]) raw[team][key] = { label, run: 0, rcv: 0, kr: 0, pr: 0, frir: 0 }
+    return raw[team][key]
   }
   for (const team of [homeAbbr, awayAbbr]) {
-    Object.entries(rushers[team] || {}).forEach(([label, d]) => { const r = ensure(team, label); if (r) r.run += d.yds })
-    Object.entries(receivers[team] || {}).forEach(([label, d]) => { const r = ensure(team, label); if (r) r.rcv += d.yds })
+    Object.entries(rushers[team] || {}).forEach(([key, d]) => { const r = ensure(team, key, d.label); if (r) r.run += d.yds })
+    Object.entries(receivers[team] || {}).forEach(([key, d]) => { const r = ensure(team, key, d.label); if (r) r.rcv += d.yds })
   }
-  kickReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.kr += yds })
-  puntReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.pr += yds })
-  turnoverReturns.forEach(({ team, label, yds }) => { const r = ensure(team, label); if (r) r.frir += yds })
+  kickReturns.forEach(({ team, key, label, yds }) => { const r = ensure(team, key, label); if (r) r.kr += yds })
+  puntReturns.forEach(({ team, key, label, yds }) => { const r = ensure(team, key, label); if (r) r.pr += yds })
+  turnoverReturns.forEach(({ team, key, label, yds }) => { const r = ensure(team, key, label); if (r) r.frir += yds })
 
   const out = {}
   for (const team of [homeAbbr, awayAbbr]) {
@@ -2407,7 +2407,7 @@ export function computeAllPurposeMap(rushers, receivers, kickReturns, puntReturn
 }
 
 // ── QB progression ───────────────────────────────────────────────────────────
-export function computeQBProgression(plays) {
+export function computeQBProgression(plays, rosters = null) {
   const byQB = {}
   const sorted = plays
     .filter(p => p.play_type === 'PASS' && p.pass_by)
@@ -2415,10 +2415,10 @@ export function computeQBProgression(plays) {
     .sort((a, b) => a.seq - b.seq)
 
   for (const p of sorted) {
-    const label = playerShortLabel(p.pass_by)
-    if (!label) continue
-    const key = `${p.possession}::${label}`
-    if (!byQB[key]) byQB[key] = { team: p.possession, label, rows: [], comp: 0, att: 0, yds: 0, td: 0, int: 0 }
+    const kl = _playerKeyLabel(p.pass_by, rosters?.[p.possession] || null)
+    if (!kl) continue
+    const key = `${p.possession}::${kl.key}`
+    if (!byQB[key]) byQB[key] = { team: p.possession, key: kl.key, label: kl.label, rows: [], comp: 0, att: 0, yds: 0, td: 0, int: 0 }
     const qb = byQB[key]
 
     // Standard box-score convention: sacks/scrambles are plays the QB was
@@ -2444,7 +2444,7 @@ export function computeQBProgression(plays) {
       isComplete: p.pass_result === 'complete',
       caTally: `${qb.comp}-${qb.att}`,
       netYards: p.net_yards,
-      receiver: p.pass_result === 'complete' && p.received_by ? playerShortLabel(p.received_by) : null,
+      receiver: p.pass_result === 'complete' && p.received_by ? (_playerKeyLabel(p.received_by, rosters?.[p.possession] || null)?.label ?? playerShortLabel(p.received_by)) : null,
       note,
       context: typeof formatPlay === 'function' ? formatPlay(p) : p.play_type,
     })
@@ -2479,8 +2479,13 @@ export function computeExplosivePlays(plays, teams) {
 // at once from one pass over `plays` — extracted verbatim as its own function,
 // same field names, same NCAA scramble/sack-is-a-rush convention as
 // computeComparisonStats.
-export function buildOffenseMaps(plays, homeAbbr, awayAbbr) {
+// C4: `rosters` ({ [teamAbbr]: index }, see buildRosterIndex) makes the map keys
+// canonical player keys (players.id / orphan key) instead of display labels, so
+// two players who share a number or label stay separate. Every value carries
+// `label` (the display name). Without rosters the key is the label, as before.
+export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
   const pa = {}, ru = {}, re = {}
+  const UNKNOWN = { key: 'Desconocido', label: 'Desconocido' }
 
   for (const p of plays) {
     const t = p.possession
@@ -2490,12 +2495,14 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr) {
     // excluded from RUSHING/PASSING/RECEIVING entirely, not just judged
     // by its (now-zero) net_yards.
     if (p.stats_count === false) continue
+    const idx = rosters?.[t] || null
 
     if (p.play_type === 'RUSH') {
       const yds = p.net_yards || 0
-      const key = p.rush_by ? playerShortLabel(p.rush_by) : 'Desconocido'
+      const kf = _keyLabelOr(p.rush_by, idx, UNKNOWN)
+      const key = kf.key
       if (!ru[t]) ru[t] = {}
-      if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0, gained:0, long:-Infinity }
+      if (!ru[t][key]) ru[t][key] = { label: kf.label, att:0, yds:0, td:0, gained:0, long:-Infinity }
       ru[t][key].att++
       ru[t][key].yds += yds
       if (yds > 0) ru[t][key].gained += yds
@@ -2510,9 +2517,10 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr) {
     // isAttempt filter computeQBProgression already used for att/comp%).
     if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack')) {
       const yds = p.net_yards || 0
-      const key = p.pass_by ? playerShortLabel(p.pass_by) : 'Desconocido'
+      const kf = _keyLabelOr(p.pass_by, idx, UNKNOWN)
+      const key = kf.key
       if (!ru[t]) ru[t] = {}
-      if (!ru[t][key]) ru[t][key] = { att:0, yds:0, td:0, gained:0, long:-Infinity }
+      if (!ru[t][key]) ru[t][key] = { label: kf.label, att:0, yds:0, td:0, gained:0, long:-Infinity }
       ru[t][key].att++
       ru[t][key].yds += yds
       if (yds > 0) ru[t][key].gained += yds
@@ -2527,16 +2535,17 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr) {
       // passing block below ever runs for him.
       if (p.pass_result === 'sack') {
         if (!pa[t]) pa[t] = {}
-        if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 }
+        if (!pa[t][key]) pa[t][key] = { label: kf.label, att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 }
         pa[t][key].sacked++
         pa[t][key].sackedYds += Math.abs(yds)
       }
     }
 
     if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack') {
-      const key = p.pass_by ? playerShortLabel(p.pass_by) : 'Desconocido'
+      const kf = _keyLabelOr(p.pass_by, idx, UNKNOWN)
+      const key = kf.key
       if (!pa[t]) pa[t] = {}
-      if (!pa[t][key]) pa[t][key] = { att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 }
+      if (!pa[t][key]) pa[t][key] = { label: kf.label, att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 }
       pa[t][key].att++
       if (p.pass_result === 'complete') {
         const yds = p.net_yards || 0
@@ -2545,13 +2554,13 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr) {
         if (yds > pa[t][key].long) pa[t][key].long = yds
         if (p.touchdown) pa[t][key].td++
         if (p.received_by) {
-          const rk = playerShortLabel(p.received_by)
+          const rf = _keyLabelOr(p.received_by, idx, UNKNOWN)
           if (!re[t]) re[t] = {}
-          if (!re[t][rk]) re[t][rk] = { rec:0, yds:0, td:0, long:-Infinity }
-          re[t][rk].rec++
-          re[t][rk].yds += yds
-          if (yds > re[t][rk].long) re[t][rk].long = yds
-          if (p.touchdown) re[t][rk].td++
+          if (!re[t][rf.key]) re[t][rf.key] = { label: rf.label, rec:0, yds:0, td:0, long:-Infinity }
+          re[t][rf.key].rec++
+          re[t][rf.key].yds += yds
+          if (yds > re[t][rf.key].long) re[t][rf.key].long = yds
+          if (p.touchdown) re[t][rf.key].td++
         }
       }
     }
@@ -2679,7 +2688,8 @@ function _refNames(ref) {
 // Returns the canonical key (players.id) for a play reference, or an
 // `orphan:` key when it cannot be matched. Resolution order:
 //   1. ref.player_id (newer captures) — used as-is.
-//   2. roster players with the same number. Exactly one → it.
+//   2. roster players with the same number. Exactly one → it, unless the
+//      surnames are both present and differ (then it is another player).
 //   3. several (only possible if UNIQUE(team_id, number) is relaxed) → the one
 //      whose normalized nombre+apellido matches, if exactly one does.
 //   4. otherwise → orphan:<team>:<number>:<nombre>:<apellido>.
@@ -2688,8 +2698,11 @@ export function resolvePlayerKey(ref, index) {
   if (ref.player_id) return ref.player_id
   const num = Number(ref.number)
   const cands = index.byNumber.get(num) || []
-  if (cands.length === 1) return cands[0].id
   const n = _refNames(ref)
+  // A lone roster player with that number is the same player only if the
+  // surname does not contradict it: the 2026 roster has only #35 Mandujano, so
+  // a #35 Ascolani from another season must stay an orphan, not become Mandujano.
+  if (cands.length === 1 && (!n.apellido || !normName(cands[0].apellido) || n.apellido === normName(cands[0].apellido))) return cands[0].id
   if (cands.length > 1) {
     const matches = cands.filter(p => normName(p.nombre) === n.nombre && normName(p.apellido) === n.apellido)
     if (matches.length === 1) return matches[0].id
@@ -2725,6 +2738,28 @@ export function buildDisplayLabels(index) {
 export function labelForKey(key, index, labels, ref) {
   if (labels && labels.has(key)) return labels.get(key)
   return playerShortLabel(ref || {})
+}
+
+// C4 helpers. _playerKeyLabel: { key, label } for a player reference, or null when
+// the reference has no printable name (same skip rule as before). Without an index
+// the key is the label itself (legacy behaviour).
+const _labelsCache = new WeakMap()
+function _labelsOf(index) {
+  if (!_labelsCache.has(index)) _labelsCache.set(index, buildDisplayLabels(index))
+  return _labelsCache.get(index)
+}
+export function _playerKeyLabel(ref, index = null) {
+  const base = playerShortLabel(ref)
+  if (!base) return null
+  if (!index) return { key: base, label: base }
+  const key = resolvePlayerKey(ref, index)
+  return { key, label: labelForKey(key, index, _labelsOf(index), ref) }
+}
+// Same, but a falsy ref maps to `fallback` and a ref without a printable name
+// keeps its (empty) label instead of being skipped — for the offense maps.
+function _keyLabelOr(ref, index, fallback) {
+  if (!ref) return fallback
+  return _playerKeyLabel(ref, index) ?? { key: playerShortLabel(ref), label: playerShortLabel(ref) }
 }
 
 // Counts orphan keys in a list of resolved keys, for the debug report.
