@@ -546,20 +546,6 @@
       return Array.isArray(rows) ? rows[0] : rows
     }
 
-    async function sbUpsert(path, body, onConflict) {
-      const res = await fetch(`${SB_URL}/rest/v1/${path}?on_conflict=${encodeURIComponent(onConflict)}`, {
-        method: 'POST',
-        headers: {
-          ...(await getAuthHeaders()),
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates,return=representation',
-        },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw new Error(await extractError(res))
-      return res.json()
-    }
-
     async function extractError(res) {
       try {
         const j = await res.json()
@@ -862,7 +848,7 @@
       const existing = roster.find(p => p.number === number)
       if (existing) {
         return {
-          ...r, status: 'update', number,
+          ...r, status: 'update', number, id: existing.id,
           old: { nombre: existing.nombre, apellido: existing.apellido, position: existing.position },
         }
       }
@@ -965,13 +951,14 @@
       const validRows = importRows.filter(r => r.status === 'new' || r.status === 'update')
       if (!validRows.length) return
 
-      const payload = validRows.map(r => ({
+      const toInsert = validRows.filter(r => r.status === 'new').map(r => ({
         team_id: rosterTeamId,
         number: r.number,
         nombre: r.nombre || null,
         apellido: r.apellido || null,
         position: r.position || null,
       }))
+      const toUpdate = validRows.filter(r => r.status === 'update')
       const insertedCount = validRows.filter(r => r.status === 'new').length
       const updatedCount  = validRows.filter(r => r.status === 'update').length
       const errorCount    = importRows.length - validRows.length
@@ -979,7 +966,14 @@
       btn.disabled = true
       btn.textContent = 'Importando…'
       try {
-        await sbUpsert('players', payload, 'team_id,number')
+        // Explicit writes, no on_conflict: new rows are inserted, existing rows are
+        // updated by their players.id (the team_id,number unique key is not relied on).
+        if (toInsert.length) await sbWrite('POST', 'players', toInsert)
+        for (const r of toUpdate) {
+          await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(r.id)}`, {
+            nombre: r.nombre || null, apellido: r.apellido || null, position: r.position || null,
+          })
+        }
         showToast(`${insertedCount} insertados, ${updatedCount} actualizados, ${errorCount} con error (no importados)`)
         resetImportState()
         await loadRoster()
