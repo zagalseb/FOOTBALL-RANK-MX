@@ -342,7 +342,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
-    import { rosterDuplicate, seasonField, filterRosterBySeason, TEMPORADA_ACTIVA } from '../../shared/stats-lib.js'
+    import { rosterDuplicate, getGameTemporada } from '../../shared/stats-lib.js'
     import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
     import { secondsToMMSS } from '../../shared/stats-lib.js'
 
@@ -601,10 +601,18 @@
       document.getElementById('player-preview').innerHTML = ''
     }
 
+    // Season of the selected game (games.temporada, or the kickoff year): the roster
+    // and any new player belong to it, never to the active season.
+    function selectedGameSeason() {
+      return getGameTemporada(games.find(g => g.id === selectedGameId))
+    }
+
     async function loadPlayerStatsSection() {
       document.getElementById('player-preview').innerHTML = ''
       try {
-        roster = filterRosterBySeason(await sbGet(`players?team_id=eq.${encodeURIComponent(selectedTeamId)}&order=number.asc`), TEMPORADA_ACTIVA)
+        const season = selectedGameSeason()
+        const rows = await sbGet(`players?team_id=eq.${encodeURIComponent(selectedTeamId)}&order=number.asc`)
+        roster = rows.filter(p => season == null || String(p.temporada) === String(season))
         const existing = await sbGet(
           `player_game_stats_manual?game_id=eq.${encodeURIComponent(selectedGameId)}&select=*`
         )
@@ -744,7 +752,7 @@
           return
         }
         // Duplicate rule by identity (B4): numbers may repeat with different names.
-        const dup = rosterDuplicate({ number, nombre, apellido }, roster)
+        const dup = rosterDuplicate({ number, nombre, apellido, temporada: selectedGameSeason() }, roster)
         if (dup) {
           showToast(dup.message, 'error')
           return
@@ -752,7 +760,7 @@
 
         try {
           const created = await sbWrite('POST', 'players', {
-            team_id: selectedTeamId, ...seasonField(), number, nombre: nombre || null, apellido: apellido || null, position: position || null,
+            team_id: selectedTeamId, temporada: selectedGameSeason(), number, nombre: nombre || null, apellido: apellido || null, position: position || null,
           })
           roster.push(created)
           roster.sort((a, b) => a.number - b.number)
