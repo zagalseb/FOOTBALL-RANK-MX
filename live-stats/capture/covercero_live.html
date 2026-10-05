@@ -1612,7 +1612,7 @@
     // stats-lib.js: pure calc/display functions shared with viewer/ (split out
     // of engine.js on 2026-09-08) — gameState/playerShortLabel/computePlayerStats/
     // computeDrives/computeComparisonStats/computePenalties all live here now.
-    import { gameState, playerShortLabel, computePlayerStats,
+    import { gameState, playerShortLabel, computePlayerStats, buildRosterIndex,
              computeDrives, computeComparisonStats, computePenalties } from '../../shared/stats-lib.js'
     import { drawPlayerCard, drawBoxScore, drawStatCard } from './player_card.js'
     import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
@@ -2111,7 +2111,11 @@
       }
 
       const teamAbbr = side === 'home' ? _reportsHomeAbbr : _reportsAwayAbbr
-      _reportsLastStats = computePlayerStats(plays, _reportsSelectedPlayer, teamAbbr)
+      // C4: the team's roster index makes the player stats match by canonical
+      // player (same number + contradicting surname is another player).
+      const teamId = side === 'home' ? _reportsGame.home_team_id : _reportsGame.away_team_id
+      const index = buildRosterIndex(teamId, roster)
+      _reportsLastStats = computePlayerStats(plays, _reportsSelectedPlayer, teamAbbr, index)
       _renderStatsChecklist(_reportsLastStats)
       _redrawReportsCanvas()
     }
