@@ -2794,7 +2794,7 @@ export function rosterDuplicate(candidate, roster) {
 // PLAYERS_HAS_TEMPORADA: writes send players.temporada only once that column
 // exists (migration A0). Until then a write must not name the column.
 export const TEMPORADA_ACTIVA = '2026'
-export const PLAYERS_HAS_TEMPORADA = false
+export const PLAYERS_HAS_TEMPORADA = true
 export function seasonField() {
   return PLAYERS_HAS_TEMPORADA ? { temporada: TEMPORADA_ACTIVA } : {}
 }
