@@ -224,6 +224,59 @@
   "computePlayerStats": [
     {
       "team": "AT",
+      "number": 2,
+      "stats": {
+        "defense": {
+          "solo": 3,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 1,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 4,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 1
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 7,
+      "stats": {
+        "defense": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 8,
+      "stats": {
+        "receiving": {
+          "rec": 1,
+          "yds": 25,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
       "number": 10,
       "stats": {
         "passing": {
@@ -251,20 +304,6 @@
           "ast": 0,
           "sacks": 0,
           "tfl": 0,
-          "ff": 0,
-          "int": 0
-        }
-      }
-    },
-    {
-      "team": "AT",
-      "number": 2,
-      "stats": {
-        "defense": {
-          "solo": 3,
-          "ast": 0,
-          "sacks": 0,
-          "tfl": 1,
           "ff": 0,
           "int": 0
         }
@@ -344,7 +383,7 @@
       "number": 35,
       "stats": {
         "defense": {
-          "solo": 2,
+          "solo": 1,
           "ast": 0,
           "sacks": 0,
           "tfl": 0,
@@ -355,15 +394,15 @@
     },
     {
       "team": "AT",
-      "number": 4,
+      "number": 35,
       "stats": {
         "defense": {
-          "solo": 2,
+          "solo": 1,
           "ast": 0,
           "sacks": 0,
           "tfl": 0,
           "ff": 0,
-          "int": 1
+          "int": 0
         }
       }
     },
@@ -392,31 +431,6 @@
           "tfl": 0,
           "ff": 0,
           "int": 0
-        }
-      }
-    },
-    {
-      "team": "AT",
-      "number": 7,
-      "stats": {
-        "defense": {
-          "solo": 0,
-          "ast": 1,
-          "sacks": 0,
-          "tfl": 0,
-          "ff": 0,
-          "int": 0
-        }
-      }
-    },
-    {
-      "team": "AT",
-      "number": 8,
-      "stats": {
-        "receiving": {
-          "rec": 1,
-          "yds": 25,
-          "td": 0
         }
       }
     },
@@ -492,6 +506,45 @@
     },
     {
       "team": "MTY",
+      "number": 2,
+      "stats": {
+        "defense": {
+          "solo": 8,
+          "ast": 4,
+          "sacks": 1,
+          "tfl": 2,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 3,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 4,
+      "stats": {
+        "receiving": {
+          "rec": 2,
+          "yds": 26,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
       "number": 10,
       "stats": {
         "defense": {
@@ -548,20 +601,6 @@
     },
     {
       "team": "MTY",
-      "number": 2,
-      "stats": {
-        "defense": {
-          "solo": 8,
-          "ast": 4,
-          "sacks": 1,
-          "tfl": 2,
-          "ff": 0,
-          "int": 0
-        }
-      }
-    },
-    {
-      "team": "MTY",
       "number": 23,
       "stats": {
         "rushing": {
@@ -588,31 +627,6 @@
           "tfl": 0,
           "ff": 0,
           "int": 0
-        }
-      }
-    },
-    {
-      "team": "MTY",
-      "number": 3,
-      "stats": {
-        "defense": {
-          "solo": 1,
-          "ast": 0,
-          "sacks": 0,
-          "tfl": 0,
-          "ff": 0,
-          "int": 0
-        }
-      }
-    },
-    {
-      "team": "MTY",
-      "number": 4,
-      "stats": {
-        "receiving": {
-          "rec": 2,
-          "yds": 26,
-          "td": 0
         }
       }
     },
@@ -834,8 +848,8 @@
         "qbh": 0,
         "pbu": 0
       },
-      "#47": {
-        "label": "#47",
+      "#47 R. Cepeda": {
+        "label": "#47 R. Cepeda",
         "solo": 1,
         "ast": 0,
         "sacks": 0,

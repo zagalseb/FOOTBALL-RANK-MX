@@ -1,0 +1,823 @@
+{
+  "meta": {
+    "gameId": "2dd8daf7-5053-4f5c-8c32-acabbbacda83",
+    "homeAbbr": "CCM",
+    "awayAbbr": "CU",
+    "semana": "TEST",
+    "status": "final",
+    "playCount": 24,
+    "functionSource": "stats-lib.js (fully migrated)"
+  },
+  "computeComparisonStats": {
+    "CCM": {
+      "passYds": 49,
+      "rushYds": 12,
+      "totalPlays": 9,
+      "passCompletions": 2,
+      "passAttempts": 4,
+      "rushPlays": 5,
+      "sackAdjRushYds": 20,
+      "sackAdjRushPlays": 4,
+      "firstDowns": 3,
+      "thirdAtt": 2,
+      "thirdConv": 0,
+      "fourthAtt": 0,
+      "fourthConv": 0,
+      "redZoneTrips": 1,
+      "redZoneTDs": 1,
+      "turnovers": 0,
+      "fumbles": 0,
+      "fumblesLost": 0,
+      "intsThrown": 0,
+      "sacksMade": 0,
+      "sacksYds": 0,
+      "tflMade": 0,
+      "tflYds": 0
+    },
+    "CU": {
+      "passYds": 103,
+      "rushYds": 2,
+      "totalPlays": 6,
+      "passCompletions": 2,
+      "passAttempts": 4,
+      "rushPlays": 2,
+      "sackAdjRushYds": 2,
+      "sackAdjRushPlays": 2,
+      "firstDowns": 3,
+      "thirdAtt": 0,
+      "thirdConv": 0,
+      "fourthAtt": 0,
+      "fourthConv": 0,
+      "redZoneTrips": 0,
+      "redZoneTDs": 0,
+      "turnovers": 1,
+      "fumbles": 1,
+      "fumblesLost": 1,
+      "intsThrown": 0,
+      "sacksMade": 1,
+      "sacksYds": 8,
+      "tflMade": 0,
+      "tflYds": 0
+    }
+  },
+  "computeDrives": [
+    {
+      "possession": "CCM",
+      "playCount": 6,
+      "seqs": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "possession": "CCM",
+      "playCount": 6,
+      "seqs": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "possession": "CU",
+      "playCount": 7,
+      "seqs": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "possession": "CCM",
+      "playCount": 3,
+      "seqs": [
+        20,
+        21,
+        22
+      ]
+    },
+    {
+      "possession": "CU",
+      "playCount": 2,
+      "seqs": [
+        23,
+        24
+      ]
+    }
+  ],
+  "computePenalties": [
+    {
+      "seq": 16,
+      "team": "CU",
+      "quarter": 1,
+      "clock": "7:00",
+      "code": "HO",
+      "label": "Holding",
+      "player": "#72",
+      "result": "accepted",
+      "yards": 10,
+      "context": "2nd & 8 at CU 27: #3 pass complete to #18 for 0 yards to CCM 50 (tackle: #0) | FLAG: HO CU on #72 (accepted) → CU 17"
+    },
+    {
+      "seq": 17,
+      "team": "CCM",
+      "quarter": 1,
+      "clock": "7:00",
+      "code": "FS",
+      "label": "False start",
+      "player": "#99",
+      "result": "accepted",
+      "yards": 5,
+      "context": "2nd & 20 at CU 17: PENALTY FS (False start) on CCM on #99 — accepted → New LOS: CU 22 (repeat down)"
+    },
+    {
+      "seq": 18,
+      "team": "CCM",
+      "quarter": 1,
+      "clock": "7:00",
+      "code": "PI",
+      "label": "Pass interference",
+      "player": "#0",
+      "result": "accepted",
+      "yards": 15,
+      "context": "2nd & 15 at CU 22: #3 pass INCOMPLETE intended for #18 | FLAG: PI CCM on #0 (accepted) → CU 37"
+    }
+  ],
+  "computePlayerStats": [
+    {
+      "team": "CCM",
+      "number": 0,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 21,
+      "stats": {
+        "rushing": {
+          "att": 2,
+          "yds": 16,
+          "td": 0,
+          "avg": 8
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 23,
+      "stats": {
+        "rushing": {
+          "att": 1,
+          "yds": 2,
+          "td": 1,
+          "avg": 2
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 4,
+      "stats": {
+        "receiving": {
+          "rec": 2,
+          "yds": 49,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 52,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 9,
+      "stats": {
+        "passing": {
+          "att": 4,
+          "comp": 2,
+          "yds": 49,
+          "td": 0,
+          "int": 0,
+          "compAtt": "2-4"
+        },
+        "rushing": {
+          "att": 2,
+          "yds": -6,
+          "td": 0,
+          "avg": -3
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 99,
+      "stats": {
+        "defense": {
+          "solo": 0,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 1,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 11,
+      "stats": {
+        "rushing": {
+          "att": 2,
+          "yds": 2,
+          "td": 0,
+          "avg": 1
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 12,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 16,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 18,
+      "stats": {
+        "receiving": {
+          "rec": 2,
+          "yds": 88,
+          "td": 1
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 3,
+      "stats": {
+        "passing": {
+          "att": 4,
+          "comp": 2,
+          "yds": 88,
+          "td": 1,
+          "int": 0,
+          "compAtt": "2-4"
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 54,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 94,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 1,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    }
+  ],
+  "computeDefenseStats": {
+    "CCM": {
+      "#0": {
+        "label": "#0",
+        "solo": 2,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 1
+      },
+      "#52": {
+        "label": "#52",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#99": {
+        "label": "#99",
+        "solo": 0,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 1,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      }
+    },
+    "CU": {
+      "#54": {
+        "label": "#54",
+        "solo": 2,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#94": {
+        "label": "#94",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 1,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 8,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#99": {
+        "label": "#99",
+        "solo": 0,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 1,
+        "pbu": 0
+      },
+      "#12": {
+        "label": "#12",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#16": {
+        "label": "#16",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      }
+    }
+  },
+  "computeSpecialTeamsStats": {
+    "punting": [
+      {
+        "team": "CCM",
+        "label": "#95",
+        "no": 1,
+        "yds": 34,
+        "long": 34,
+        "in20": 1,
+        "tb": 0
+      },
+      {
+        "team": "CCM",
+        "label": "#94",
+        "no": 1,
+        "yds": 0,
+        "long": 0,
+        "in20": 0,
+        "tb": 0
+      }
+    ],
+    "kickoffs": [
+      {
+        "team": "CU",
+        "label": "#24",
+        "no": 2,
+        "yds": 130,
+        "tb": 1
+      },
+      {
+        "team": "CCM",
+        "label": "#92",
+        "no": 1,
+        "yds": 65,
+        "tb": 1
+      }
+    ],
+    "fgs": [],
+    "kickReturns": [
+      {
+        "team": "CCM",
+        "label": "#4",
+        "no": 1,
+        "yds": 32,
+        "long": 32
+      }
+    ],
+    "puntReturns": []
+  },
+  "computeFumbleStats": [
+    {
+      "team": "CU",
+      "label": "#11",
+      "no": 1,
+      "lost": 1
+    }
+  ],
+  "computeTurnoverReturnYards": [],
+  "computeTurnoverReturnYardsByTeam": {
+    "CCM": {
+      "intYds": 0,
+      "fumYds": 0
+    },
+    "CU": {
+      "intYds": 0,
+      "fumYds": 0
+    }
+  },
+  "computeTurnoverStatsByPlayer": {
+    "interceptions": {
+      "CCM": {},
+      "CU": {}
+    },
+    "fumbleReturns": {
+      "CCM": {
+        "#94": {
+          "label": "#94",
+          "no": 1,
+          "yds": 0,
+          "td": 0,
+          "long": 0
+        }
+      },
+      "CU": {}
+    }
+  },
+  "computeQBProgression": [
+    {
+      "team": "CCM",
+      "label": "#9",
+      "rows": [
+        {
+          "isComplete": false,
+          "caTally": "0-1",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "2nd & 8 at CCM 27: #9 pass INCOMPLETE intended for #4"
+        },
+        {
+          "isComplete": false,
+          "caTally": "0-1",
+          "netYards": 2,
+          "receiver": null,
+          "note": "",
+          "context": "3rd & 8 at CCM 27: #9 scramble for 2 yards to CCM 29"
+        },
+        {
+          "isComplete": true,
+          "caTally": "1-2",
+          "netYards": 16,
+          "receiver": "#4",
+          "note": "",
+          "context": "1st & 10 at CCM 32: #9 pass complete to #4 for 16 yards to CCM 48 (tackle: #54)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "1-2",
+          "netYards": -8,
+          "receiver": null,
+          "note": "SACK",
+          "context": "1st & 10 at CCM 48: #9 SACK by #94 for loss of 8 yards to CCM 40"
+        },
+        {
+          "isComplete": false,
+          "caTally": "1-3",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "2nd & 18 at CCM 40: #9 pass INCOMPLETE intended for #4 (hurried by #99)"
+        },
+        {
+          "isComplete": true,
+          "caTally": "2-4",
+          "netYards": 33,
+          "receiver": "#4",
+          "note": "",
+          "context": "1st & 10 at CU 35: #9 pass complete to #4 for 33 yards to CU 2 (tackle: #16)"
+        }
+      ],
+      "comp": 2,
+      "att": 4,
+      "yds": 49,
+      "td": 0,
+      "int": 0
+    },
+    {
+      "team": "CU",
+      "label": "#3",
+      "rows": [
+        {
+          "isComplete": false,
+          "caTally": "0-1",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "1st & 10 at CU 12: #3 pass BROKEN UP intended for #18 broken up by #0"
+        },
+        {
+          "isComplete": true,
+          "caTally": "1-2",
+          "netYards": 13,
+          "receiver": "#18",
+          "note": "",
+          "context": "2nd & 10 at CU 12: #3 pass complete to #18 for 13 yards to CU 25 (tackle: #0)"
+        },
+        {
+          "isComplete": true,
+          "caTally": "1-2",
+          "netYards": 0,
+          "receiver": "#18",
+          "note": "",
+          "context": "2nd & 8 at CU 27: #3 pass complete to #18 for 0 yards to CCM 50 (tackle: #0) | FLAG: HO CU on #72 (accepted) → CU 17"
+        },
+        {
+          "isComplete": false,
+          "caTally": "1-3",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "2nd & 15 at CU 22: #3 pass INCOMPLETE intended for #18 | FLAG: PI CCM on #0 (accepted) → CU 37"
+        },
+        {
+          "isComplete": true,
+          "caTally": "2-4",
+          "netYards": 75,
+          "receiver": "#18",
+          "note": "TD",
+          "context": "1st & 10 at CU 25: #3 pass complete to #18 for 75 yards TOUCHDOWN"
+        }
+      ],
+      "comp": 2,
+      "att": 4,
+      "yds": 88,
+      "td": 1,
+      "int": 0
+    }
+  ],
+  "computeExplosivePlays": {
+    "passing": [
+      {
+        "seq": 24,
+        "effYards": 75
+      },
+      {
+        "seq": 20,
+        "effYards": 33
+      },
+      {
+        "seq": 8,
+        "effYards": 16
+      }
+    ],
+    "rushing": [
+      {
+        "seq": 11,
+        "effYards": 14
+      }
+    ]
+  },
+  "buildOffenseMaps": {
+    "passers": {
+      "CCM": {
+        "#9": {
+          "att": 4,
+          "comp": 2,
+          "yds": 49,
+          "td": 0,
+          "long": 33,
+          "sacked": 1,
+          "sackedYds": 8
+        }
+      },
+      "CU": {
+        "#3": {
+          "att": 4,
+          "comp": 2,
+          "yds": 88,
+          "td": 1,
+          "long": 75,
+          "sacked": 0,
+          "sackedYds": 0
+        }
+      }
+    },
+    "rushers": {
+      "CCM": {
+        "#21": {
+          "att": 2,
+          "yds": 16,
+          "td": 0,
+          "gained": 16,
+          "long": 14
+        },
+        "#9": {
+          "att": 2,
+          "yds": -6,
+          "td": 0,
+          "gained": 2,
+          "long": 2
+        },
+        "#23": {
+          "att": 1,
+          "yds": 2,
+          "td": 1,
+          "gained": 2,
+          "long": 2
+        }
+      },
+      "CU": {
+        "#11": {
+          "att": 2,
+          "yds": 2,
+          "td": 0,
+          "gained": 2,
+          "long": 2
+        }
+      }
+    },
+    "receivers": {
+      "CCM": {
+        "#4": {
+          "rec": 2,
+          "yds": 49,
+          "td": 0,
+          "long": 33
+        }
+      },
+      "CU": {
+        "#18": {
+          "rec": 2,
+          "yds": 88,
+          "td": 1,
+          "long": 75
+        }
+      }
+    }
+  },
+  "computeAllPurposeMap": {
+    "CCM": {
+      "#4": {
+        "run": 0,
+        "rcv": 49,
+        "kr": 32,
+        "pr": 0,
+        "frir": 0,
+        "total": 81
+      },
+      "#21": {
+        "run": 16,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 16
+      },
+      "#23": {
+        "run": 2,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 2
+      },
+      "#9": {
+        "run": -6,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": -6
+      }
+    },
+    "CU": {
+      "#18": {
+        "run": 0,
+        "rcv": 88,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 88
+      },
+      "#11": {
+        "run": 2,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 2
+      }
+    }
+  },
+  "manualPathFunctions": {
+    "CCM": {
+      "passer": null,
+      "rusher": null,
+      "receiver": null,
+      "passingRows": [],
+      "rushingRows": [],
+      "receivingRows": []
+    },
+    "CU": {
+      "passer": null,
+      "rusher": null,
+      "receiver": null,
+      "passingRows": [],
+      "rushingRows": [],
+      "receivingRows": []
+    }
+  },
+  "teamGameStatsManualRowCount": 0,
+  "playerGameStatsManualRowCount": 0
+}

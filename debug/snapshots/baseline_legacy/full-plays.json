@@ -1,0 +1,1656 @@
+{
+  "meta": {
+    "gameId": "c0a826d4-5dfa-4279-942e-b3ecff24361c",
+    "homeAbbr": "MTY",
+    "awayAbbr": "AT",
+    "semana": "F",
+    "status": "live",
+    "playCount": 61,
+    "functionSource": "stats-lib.js (fully migrated)"
+  },
+  "computeComparisonStats": {
+    "MTY": {
+      "passYds": 115,
+      "rushYds": 28,
+      "totalPlays": 23,
+      "passCompletions": 9,
+      "passAttempts": 14,
+      "rushPlays": 9,
+      "sackAdjRushYds": 34,
+      "sackAdjRushPlays": 8,
+      "firstDowns": 7,
+      "thirdAtt": 3,
+      "thirdConv": 1,
+      "fourthAtt": 0,
+      "fourthConv": 0,
+      "redZoneTrips": 1,
+      "redZoneTDs": 0,
+      "turnovers": 2,
+      "fumbles": 0,
+      "fumblesLost": 0,
+      "intsThrown": 2,
+      "sacksMade": 1,
+      "sacksYds": 7,
+      "tflMade": 1,
+      "tflYds": 1
+    },
+    "AT": {
+      "passYds": 31,
+      "rushYds": 146,
+      "totalPlays": 25,
+      "passCompletions": 2,
+      "passAttempts": 5,
+      "rushPlays": 20,
+      "sackAdjRushYds": 153,
+      "sackAdjRushPlays": 19,
+      "firstDowns": 7,
+      "thirdAtt": 6,
+      "thirdConv": 2,
+      "fourthAtt": 0,
+      "fourthConv": 0,
+      "redZoneTrips": 1,
+      "redZoneTDs": 0,
+      "turnovers": 0,
+      "fumbles": 1,
+      "fumblesLost": 0,
+      "intsThrown": 0,
+      "sacksMade": 1,
+      "sacksYds": 6,
+      "tflMade": 1,
+      "tflYds": 4
+    }
+  },
+  "computeDrives": [
+    {
+      "possession": "AT",
+      "playCount": 3,
+      "seqs": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "possession": "MTY",
+      "playCount": 7,
+      "seqs": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "possession": "AT",
+      "playCount": 10,
+      "seqs": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ]
+    },
+    {
+      "possession": "MTY",
+      "playCount": 7,
+      "seqs": [
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27
+      ]
+    },
+    {
+      "possession": "AT",
+      "playCount": 4,
+      "seqs": [
+        28,
+        29,
+        30,
+        31
+      ]
+    },
+    {
+      "possession": "MTY",
+      "playCount": 5,
+      "seqs": [
+        32,
+        33,
+        34,
+        35,
+        36
+      ]
+    },
+    {
+      "possession": "AT",
+      "playCount": 11,
+      "seqs": [
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ]
+    },
+    {
+      "possession": "MTY",
+      "playCount": 9,
+      "seqs": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56
+      ]
+    },
+    {
+      "possession": "AT",
+      "playCount": 4,
+      "seqs": [
+        57,
+        58,
+        59,
+        60
+      ]
+    },
+    {
+      "possession": "MTY",
+      "playCount": 1,
+      "seqs": [
+        61
+      ]
+    }
+  ],
+  "computePenalties": [
+    {
+      "seq": 26,
+      "team": "MTY",
+      "quarter": 1,
+      "clock": "3:31",
+      "code": "DG",
+      "label": "Delay of game",
+      "player": "#15 F. Sarabia",
+      "result": "accepted",
+      "yards": 5,
+      "context": "2nd & 1 at AT 29: PENALTY DG (Delay of game) on MTY on #15 F. Sarabia — accepted → New LOS: AT 34 (repeat down) stats: no count"
+    },
+    {
+      "seq": 31,
+      "team": "MTY",
+      "quarter": 1,
+      "clock": "0:00",
+      "code": "NF",
+      "label": "Non-contact",
+      "player": null,
+      "result": "accepted",
+      "yards": 10,
+      "context": "Punt at AT 42: #8 L. Olvera punt to MTY 22 fair catch by #17 A. Elizondo at MTY 22 | FLAG: NF MTY (accepted) → MTY 12"
+    },
+    {
+      "seq": 43,
+      "team": "AT",
+      "quarter": 2,
+      "clock": "9:56",
+      "code": "FS",
+      "label": "False start",
+      "player": null,
+      "result": "accepted",
+      "yards": 5,
+      "context": "1st & 10 at MTY 15: PENALTY FS (False start) on AT — accepted → New LOS: MTY 20 (repeat down) stats: no count"
+    }
+  ],
+  "computePlayerStats": [
+    {
+      "team": "AT",
+      "number": 10,
+      "stats": {
+        "passing": {
+          "att": 5,
+          "comp": 2,
+          "yds": 31,
+          "td": 0,
+          "int": 0,
+          "compAtt": "2-5"
+        },
+        "rushing": {
+          "att": 5,
+          "yds": 3,
+          "td": 0,
+          "avg": 0.6
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 11,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 2,
+      "stats": {
+        "defense": {
+          "solo": 3,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 1,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 20,
+      "stats": {
+        "rushing": {
+          "att": 1,
+          "yds": 4,
+          "td": 0,
+          "avg": 4
+        },
+        "receiving": {
+          "rec": 1,
+          "yds": 6,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 21,
+      "stats": {
+        "rushing": {
+          "att": 5,
+          "yds": 33,
+          "td": 0,
+          "avg": 6.6
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 22,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 29,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 31,
+      "stats": {
+        "rushing": {
+          "att": 9,
+          "yds": 106,
+          "td": 1,
+          "avg": 11.8
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 35,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 1
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 4,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 1
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 47,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 56,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 7,
+      "stats": {
+        "defense": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 8,
+      "stats": {
+        "receiving": {
+          "rec": 1,
+          "yds": 25,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 82,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 94,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 96,
+      "stats": {
+        "defense": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "AT",
+      "number": 97,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 2,
+          "sacks": 1,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 0,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 2,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 10,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 15,
+      "stats": {
+        "passing": {
+          "att": 14,
+          "comp": 9,
+          "yds": 115,
+          "td": 0,
+          "int": 2,
+          "compAtt": "9-14"
+        },
+        "rushing": {
+          "att": 4,
+          "yds": 17,
+          "td": 0,
+          "avg": 4.3
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 16,
+      "stats": {
+        "receiving": {
+          "rec": 2,
+          "yds": 22,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 17,
+      "stats": {
+        "receiving": {
+          "rec": 1,
+          "yds": 37,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 2,
+      "stats": {
+        "defense": {
+          "solo": 8,
+          "ast": 4,
+          "sacks": 1,
+          "tfl": 2,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 23,
+      "stats": {
+        "rushing": {
+          "att": 5,
+          "yds": 11,
+          "td": 0,
+          "avg": 2.2
+        },
+        "receiving": {
+          "rec": 2,
+          "yds": 5,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 29,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 2,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 3,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 4,
+      "stats": {
+        "receiving": {
+          "rec": 2,
+          "yds": 26,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 55,
+      "stats": {
+        "defense": {
+          "solo": 2,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 72,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 1,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 75,
+      "stats": {
+        "defense": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 79,
+      "stats": {
+        "defense": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 82,
+      "stats": {
+        "receiving": {
+          "rec": 2,
+          "yds": 25,
+          "td": 0
+        }
+      }
+    },
+    {
+      "team": "MTY",
+      "number": 98,
+      "stats": {
+        "defense": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    }
+  ],
+  "computeDefenseStats": {
+    "MTY": {
+      "#55 E. Roiz": {
+        "label": "#55 E. Roiz",
+        "solo": 2,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#2 M. Martínez": {
+        "label": "#2 M. Martínez",
+        "solo": 8,
+        "ast": 4,
+        "sacks": 1,
+        "tfl": 2,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 7,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#29 P. Satisteban": {
+        "label": "#29 P. Satisteban",
+        "solo": 2,
+        "ast": 2,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#72 L. Torres": {
+        "label": "#72 L. Torres",
+        "solo": 1,
+        "ast": 1,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#0 E. Carrillo": {
+        "label": "#0 E. Carrillo",
+        "solo": 1,
+        "ast": 2,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#3 A. Flores": {
+        "label": "#3 A. Flores",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#10 R. Aceves": {
+        "label": "#10 R. Aceves",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#75 D. Canales": {
+        "label": "#75 D. Canales",
+        "solo": 0,
+        "ast": 1,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#98 R. Garza": {
+        "label": "#98 R. Garza",
+        "solo": 0,
+        "ast": 1,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#79 D. Fernández": {
+        "label": "#79 D. Fernández",
+        "solo": 0,
+        "ast": 1,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      }
+    },
+    "AT": {
+      "#35 L. Ascolani": {
+        "label": "#35 L. Ascolani",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#47": {
+        "label": "#47",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#2 G. Reyes": {
+        "label": "#2 G. Reyes",
+        "solo": 3,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 1,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#29 E. Caballero": {
+        "label": "#29 E. Caballero",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#97 J. Montes": {
+        "label": "#97 J. Montes",
+        "solo": 2,
+        "ast": 2,
+        "sacks": 1,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 6,
+        "qbh": 1,
+        "pbu": 0
+      },
+      "#7 B. Huez": {
+        "label": "#7 B. Huez",
+        "solo": 0,
+        "ast": 1,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#35 J. Mandujano": {
+        "label": "#35 J. Mandujano",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 1,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#56 S. Zambrano": {
+        "label": "#56 S. Zambrano",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#22 L. Cavazos": {
+        "label": "#22 L. Cavazos",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#11 E. Bocado": {
+        "label": "#11 E. Bocado",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#4 D. Carranza": {
+        "label": "#4 D. Carranza",
+        "solo": 2,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 1,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#94 M. García": {
+        "label": "#94 M. García",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#96 E. Arredondo": {
+        "label": "#96 E. Arredondo",
+        "solo": 0,
+        "ast": 1,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#82 M. Santos": {
+        "label": "#82 M. Santos",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      }
+    }
+  },
+  "computeSpecialTeamsStats": {
+    "punting": [
+      {
+        "team": "MTY",
+        "label": "#87 M. Fernández",
+        "no": 2,
+        "yds": 77,
+        "long": 40,
+        "in20": 0,
+        "tb": 0
+      },
+      {
+        "team": "AT",
+        "label": "#42 R. Blanco",
+        "no": 1,
+        "yds": 55,
+        "long": 55,
+        "in20": 1,
+        "tb": 0
+      },
+      {
+        "team": "AT",
+        "label": "#8 L. Olvera",
+        "no": 1,
+        "yds": 36,
+        "long": 36,
+        "in20": 0,
+        "tb": 0
+      }
+    ],
+    "kickoffs": [
+      {
+        "team": "AT",
+        "label": "#42 R. Blanco",
+        "no": 3,
+        "yds": 131,
+        "tb": 1
+      },
+      {
+        "team": "MTY",
+        "label": "#28 R. Medina",
+        "no": 1,
+        "yds": 65,
+        "tb": 1
+      }
+    ],
+    "fgs": [
+      {
+        "team": "AT",
+        "quarter": 1,
+        "clock": "5:37",
+        "distance": 46,
+        "result": "GOOD"
+      },
+      {
+        "team": "AT",
+        "quarter": 2,
+        "clock": "8:17",
+        "distance": 29,
+        "result": "GOOD"
+      }
+    ],
+    "kickReturns": [
+      {
+        "team": "MTY",
+        "label": "#81 F. Tonda",
+        "no": 1,
+        "yds": 22,
+        "long": 22
+      },
+      {
+        "team": "MTY",
+        "label": "#17 A. Elizondo",
+        "no": 1,
+        "yds": 18,
+        "long": 18
+      }
+    ],
+    "puntReturns": [
+      {
+        "team": "AT",
+        "label": "#3 A. Herrera",
+        "no": 1,
+        "yds": 7,
+        "long": 7
+      }
+    ]
+  },
+  "computeFumbleStats": [
+    {
+      "team": "AT",
+      "label": "#10 S. Resendiz",
+      "no": 1,
+      "lost": 0
+    }
+  ],
+  "computeTurnoverReturnYards": [
+    {
+      "team": "AT",
+      "label": "#35 J. Mandujano",
+      "yds": 13
+    },
+    {
+      "team": "AT",
+      "label": "#4 D. Carranza",
+      "yds": 33
+    }
+  ],
+  "computeTurnoverReturnYardsByTeam": {
+    "MTY": {
+      "intYds": 0,
+      "fumYds": 0
+    },
+    "AT": {
+      "intYds": 46,
+      "fumYds": 0
+    }
+  },
+  "computeTurnoverStatsByPlayer": {
+    "interceptions": {
+      "MTY": {},
+      "AT": {
+        "#35 J. Mandujano": {
+          "label": "#35 J. Mandujano",
+          "no": 1,
+          "yds": 13,
+          "td": 0,
+          "long": 13
+        },
+        "#4 D. Carranza": {
+          "label": "#4 D. Carranza",
+          "no": 1,
+          "yds": 33,
+          "td": 0,
+          "long": 33
+        }
+      }
+    },
+    "fumbleReturns": {
+      "MTY": {},
+      "AT": {}
+    }
+  },
+  "computeQBProgression": [
+    {
+      "team": "MTY",
+      "label": "#15 F. Sarabia",
+      "rows": [
+        {
+          "isComplete": true,
+          "caTally": "1-1",
+          "netYards": 6,
+          "receiver": "#4 V. Palacios",
+          "note": "",
+          "context": "1st & 10 at MTY 20: #15 F. Sarabia pass complete to #4 V. Palacios for 6 yards to MTY 26 (tackle: #35 L. Ascolani)"
+        },
+        {
+          "isComplete": true,
+          "caTally": "2-2",
+          "netYards": 10,
+          "receiver": "#16 M. Lozano",
+          "note": "",
+          "context": "2nd & 4 at MTY 26: #15 F. Sarabia pass complete to #16 M. Lozano for 10 yards to MTY 36 (tackle: #47)"
+        },
+        {
+          "isComplete": true,
+          "caTally": "3-3",
+          "netYards": -4,
+          "receiver": "#23 A. Cruz",
+          "note": "",
+          "context": "1st & 10 at MTY 36: #15 F. Sarabia pass complete to #23 A. Cruz for loss of 4 yards to MTY 32 (tackle: #2 G. Reyes)"
+        },
+        {
+          "isComplete": true,
+          "caTally": "4-4",
+          "netYards": 9,
+          "receiver": "#23 A. Cruz",
+          "note": "",
+          "context": "2nd & 14 at MTY 32: #15 F. Sarabia pass complete to #23 A. Cruz for 9 yards to MTY 41 (tackle: #29 E. Caballero)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "4-4",
+          "netYards": -6,
+          "receiver": null,
+          "note": "SACK",
+          "context": "3rd & 5 at MTY 41: #15 F. Sarabia SACK by #97 J. Montes for loss of 6 yards to MTY 35"
+        },
+        {
+          "isComplete": true,
+          "caTally": "5-5",
+          "netYards": 20,
+          "receiver": "#4 V. Palacios",
+          "note": "",
+          "context": "2nd & 10 at MTY 26: #15 F. Sarabia pass complete to #4 V. Palacios for 20 yards to MTY 46"
+        },
+        {
+          "isComplete": true,
+          "caTally": "6-6",
+          "netYards": 16,
+          "receiver": "#82 M. Santos",
+          "note": "",
+          "context": "1st & 10 at MTY 46: #15 F. Sarabia pass complete to #82 M. Santos for 16 yards to AT 38 (tackle: #2 G. Reyes)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "6-6",
+          "netYards": 9,
+          "receiver": null,
+          "note": "",
+          "context": "1st & 10 at AT 38: #15 F. Sarabia scramble for 9 yards to AT 29"
+        },
+        {
+          "isComplete": false,
+          "caTally": "6-7",
+          "netYards": null,
+          "receiver": null,
+          "note": "INT",
+          "context": "2nd & 6 at AT 34: #15 F. Sarabia INTERCEPTED by #35 J. Mandujano at AT 24 returned by #35 J. Mandujano to AT 37"
+        },
+        {
+          "isComplete": true,
+          "caTally": "7-8",
+          "netYards": 12,
+          "receiver": "#16 M. Lozano",
+          "note": "",
+          "context": "1st & 10 at MTY 12: #15 F. Sarabia pass complete to #16 M. Lozano for 12 yards to MTY 24 (tackle: #22 L. Cavazos)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "7-8",
+          "netYards": 4,
+          "receiver": null,
+          "note": "",
+          "context": "2nd & 9 at MTY 25: #15 F. Sarabia scramble for 4 yards to MTY 29"
+        },
+        {
+          "isComplete": false,
+          "caTally": "7-9",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "3rd & 5 at MTY 29: #15 F. Sarabia pass DROPPED intended for #4 V. Palacios"
+        },
+        {
+          "isComplete": true,
+          "caTally": "8-10",
+          "netYards": 37,
+          "receiver": "#17 A. Elizondo",
+          "note": "",
+          "context": "2nd & 7 at MTY 28: #15 F. Sarabia pass complete to #17 A. Elizondo for 37 yards to AT 35 (tackle: #4 D. Carranza)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "8-10",
+          "netYards": 10,
+          "receiver": null,
+          "note": "",
+          "context": "2nd & 7 at AT 32: #15 F. Sarabia scramble for 10 yards to AT 22"
+        },
+        {
+          "isComplete": false,
+          "caTally": "8-11",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "1st & 10 at AT 22: #15 F. Sarabia pass INCOMPLETE intended for #4 V. Palacios (hurried by #97 J. Montes)"
+        },
+        {
+          "isComplete": true,
+          "caTally": "9-12",
+          "netYards": 9,
+          "receiver": "#82 M. Santos",
+          "note": "",
+          "context": "2nd & 10 at AT 22: #15 F. Sarabia pass complete to #82 M. Santos for 9 yards to AT 13 (tackle: #4 D. Carranza)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "9-13",
+          "netYards": null,
+          "receiver": null,
+          "note": "INT",
+          "context": "1st & 10 at AT 9: #15 F. Sarabia INTERCEPTED by #4 D. Carranza at AT 2 returned by #4 D. Carranza to AT 35"
+        },
+        {
+          "isComplete": false,
+          "caTally": "9-14",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "[SNAP FUMBLE] 1st & 10 at MTY 12: #15 F. Sarabia pass INCOMPLETE intended for #82 M. Santos"
+        }
+      ],
+      "comp": 9,
+      "att": 14,
+      "yds": 115,
+      "td": 0,
+      "int": 2
+    },
+    {
+      "team": "AT",
+      "label": "#10 S. Resendiz",
+      "rows": [
+        {
+          "isComplete": true,
+          "caTally": "1-1",
+          "netYards": 6,
+          "receiver": "#20 J. Chaib",
+          "note": "",
+          "context": "1st & 10 at MTY 43: #10 S. Resendiz pass complete to #20 J. Chaib for 6 yards to MTY 37 (tackle: #2 M. Martínez)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "1-2",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "3rd & 5 at AT 42: #10 S. Resendiz pass INCOMPLETE intended for #82 M. García"
+        },
+        {
+          "isComplete": false,
+          "caTally": "1-3",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "2nd & 8 at AT 43: #10 S. Resendiz pass DROPPED intended for #3 A. Herrera"
+        },
+        {
+          "isComplete": true,
+          "caTally": "2-4",
+          "netYards": 25,
+          "receiver": "#8 L. Olvera",
+          "note": "",
+          "context": "3rd & 8 at AT 43: #10 S. Resendiz pass complete to #8 L. Olvera for 25 yards to MTY 32 (tackle: #29 P. Satisteban)"
+        },
+        {
+          "isComplete": false,
+          "caTally": "2-5",
+          "netYards": null,
+          "receiver": null,
+          "note": "",
+          "context": "3rd & 7 at MTY 12: #10 S. Resendiz pass DROPPED intended for #6 C. Espinosa"
+        },
+        {
+          "isComplete": false,
+          "caTally": "2-5",
+          "netYards": -7,
+          "receiver": null,
+          "note": "SACK",
+          "context": "3rd & 6 at AT 40: #10 S. Resendiz SACK by #2 M. Martínez for loss of 7 yards to AT 33"
+        }
+      ],
+      "comp": 2,
+      "att": 5,
+      "yds": 31,
+      "td": 0,
+      "int": 0
+    }
+  ],
+  "computeExplosivePlays": {
+    "passing": [
+      {
+        "seq": 50,
+        "effYards": 37
+      },
+      {
+        "seq": 39,
+        "effYards": 25
+      },
+      {
+        "seq": 23,
+        "effYards": 20
+      },
+      {
+        "seq": 24,
+        "effYards": 16
+      }
+    ],
+    "rushing": [
+      {
+        "seq": 2,
+        "effYards": 75
+      },
+      {
+        "seq": 12,
+        "effYards": 17
+      },
+      {
+        "seq": 52,
+        "effYards": 10
+      }
+    ]
+  },
+  "buildOffenseMaps": {
+    "passers": {
+      "MTY": {
+        "#15 F. Sarabia": {
+          "att": 14,
+          "comp": 9,
+          "yds": 115,
+          "td": 0,
+          "long": 37,
+          "sacked": 1,
+          "sackedYds": 6
+        }
+      },
+      "AT": {
+        "#10 S. Resendiz": {
+          "att": 5,
+          "comp": 2,
+          "yds": 31,
+          "td": 0,
+          "long": 25,
+          "sacked": 1,
+          "sackedYds": 7
+        }
+      }
+    },
+    "rushers": {
+      "AT": {
+        "#31 Á. Alvarado": {
+          "att": 9,
+          "yds": 106,
+          "td": 1,
+          "gained": 106,
+          "long": 75
+        },
+        "#21 E. Martínez": {
+          "att": 5,
+          "yds": 33,
+          "td": 0,
+          "gained": 33,
+          "long": 17
+        },
+        "#10 S. Resendiz": {
+          "att": 5,
+          "yds": 3,
+          "td": 0,
+          "gained": 11,
+          "long": 6
+        },
+        "#20 J. Chaib": {
+          "att": 1,
+          "yds": 4,
+          "td": 0,
+          "gained": 4,
+          "long": 4
+        }
+      },
+      "MTY": {
+        "#15 F. Sarabia": {
+          "att": 4,
+          "yds": 17,
+          "td": 0,
+          "gained": 23,
+          "long": 10
+        },
+        "#23 A. Cruz": {
+          "att": 5,
+          "yds": 11,
+          "td": 0,
+          "gained": 11,
+          "long": 4
+        }
+      }
+    },
+    "receivers": {
+      "MTY": {
+        "#4 V. Palacios": {
+          "rec": 2,
+          "yds": 26,
+          "td": 0,
+          "long": 20
+        },
+        "#16 M. Lozano": {
+          "rec": 2,
+          "yds": 22,
+          "td": 0,
+          "long": 12
+        },
+        "#23 A. Cruz": {
+          "rec": 2,
+          "yds": 5,
+          "td": 0,
+          "long": 9
+        },
+        "#82 M. Santos": {
+          "rec": 2,
+          "yds": 25,
+          "td": 0,
+          "long": 16
+        },
+        "#17 A. Elizondo": {
+          "rec": 1,
+          "yds": 37,
+          "td": 0,
+          "long": 37
+        }
+      },
+      "AT": {
+        "#20 J. Chaib": {
+          "rec": 1,
+          "yds": 6,
+          "td": 0,
+          "long": 6
+        },
+        "#8 L. Olvera": {
+          "rec": 1,
+          "yds": 25,
+          "td": 0,
+          "long": 25
+        }
+      }
+    }
+  },
+  "computeAllPurposeMap": {
+    "MTY": {
+      "#17 A. Elizondo": {
+        "run": 0,
+        "rcv": 37,
+        "kr": 18,
+        "pr": 0,
+        "frir": 0,
+        "total": 55
+      },
+      "#4 V. Palacios": {
+        "run": 0,
+        "rcv": 26,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 26
+      },
+      "#82 M. Santos": {
+        "run": 0,
+        "rcv": 25,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 25
+      },
+      "#16 M. Lozano": {
+        "run": 0,
+        "rcv": 22,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 22
+      },
+      "#81 F. Tonda": {
+        "run": 0,
+        "rcv": 0,
+        "kr": 22,
+        "pr": 0,
+        "frir": 0,
+        "total": 22
+      },
+      "#15 F. Sarabia": {
+        "run": 17,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 17
+      },
+      "#23 A. Cruz": {
+        "run": 11,
+        "rcv": 5,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 16
+      }
+    },
+    "AT": {
+      "#31 Á. Alvarado": {
+        "run": 106,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 106
+      },
+      "#21 E. Martínez": {
+        "run": 33,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 33
+      },
+      "#4 D. Carranza": {
+        "run": 0,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 33,
+        "total": 33
+      },
+      "#8 L. Olvera": {
+        "run": 0,
+        "rcv": 25,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 25
+      },
+      "#35 J. Mandujano": {
+        "run": 0,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 13,
+        "total": 13
+      },
+      "#20 J. Chaib": {
+        "run": 4,
+        "rcv": 6,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 10
+      },
+      "#3 A. Herrera": {
+        "run": 0,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 7,
+        "frir": 0,
+        "total": 7
+      },
+      "#10 S. Resendiz": {
+        "run": 3,
+        "rcv": 0,
+        "kr": 0,
+        "pr": 0,
+        "frir": 0,
+        "total": 3
+      }
+    }
+  },
+  "manualPathFunctions": {
+    "MTY": {
+      "passer": null,
+      "rusher": null,
+      "receiver": null,
+      "passingRows": [],
+      "rushingRows": [],
+      "receivingRows": []
+    },
+    "AT": {
+      "passer": null,
+      "rusher": null,
+      "receiver": null,
+      "passingRows": [],
+      "rushingRows": [],
+      "receivingRows": []
+    }
+  },
+  "teamGameStatsManualRowCount": 0,
+  "playerGameStatsManualRowCount": 0
+}

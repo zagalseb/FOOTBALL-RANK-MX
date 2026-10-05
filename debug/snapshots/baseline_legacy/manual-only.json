@@ -1,0 +1,176 @@
+{
+  "meta": {
+    "gameId": "f75f4008-75b0-4455-911e-1995d52cf605",
+    "homeAbbr": "AT",
+    "awayAbbr": "AB",
+    "semana": "1",
+    "status": "final",
+    "playCount": 0,
+    "functionSource": "stats-lib.js (fully migrated)"
+  },
+  "computeComparisonStats": {
+    "AT": {
+      "passYds": 0,
+      "rushYds": 0,
+      "totalPlays": 0,
+      "passCompletions": 0,
+      "passAttempts": 0,
+      "rushPlays": 0,
+      "sackAdjRushYds": 0,
+      "sackAdjRushPlays": 0,
+      "firstDowns": 0,
+      "thirdAtt": 0,
+      "thirdConv": 0,
+      "fourthAtt": 0,
+      "fourthConv": 0,
+      "redZoneTrips": 0,
+      "redZoneTDs": 0,
+      "turnovers": 0,
+      "fumbles": 0,
+      "fumblesLost": 0,
+      "intsThrown": 0,
+      "sacksMade": 0,
+      "sacksYds": 0,
+      "tflMade": 0,
+      "tflYds": 0
+    },
+    "AB": {
+      "passYds": 0,
+      "rushYds": 0,
+      "totalPlays": 0,
+      "passCompletions": 0,
+      "passAttempts": 0,
+      "rushPlays": 0,
+      "sackAdjRushYds": 0,
+      "sackAdjRushPlays": 0,
+      "firstDowns": 0,
+      "thirdAtt": 0,
+      "thirdConv": 0,
+      "fourthAtt": 0,
+      "fourthConv": 0,
+      "redZoneTrips": 0,
+      "redZoneTDs": 0,
+      "turnovers": 0,
+      "fumbles": 0,
+      "fumblesLost": 0,
+      "intsThrown": 0,
+      "sacksMade": 0,
+      "sacksYds": 0,
+      "tflMade": 0,
+      "tflYds": 0
+    }
+  },
+  "computeDrives": [],
+  "computePenalties": [],
+  "computePlayerStats": [],
+  "computeDefenseStats": {
+    "AT": {},
+    "AB": {}
+  },
+  "computeSpecialTeamsStats": {
+    "punting": [],
+    "kickoffs": [],
+    "fgs": [],
+    "kickReturns": [],
+    "puntReturns": []
+  },
+  "computeFumbleStats": [],
+  "computeTurnoverReturnYards": [],
+  "computeTurnoverReturnYardsByTeam": {
+    "AT": {
+      "intYds": 0,
+      "fumYds": 0
+    },
+    "AB": {
+      "intYds": 0,
+      "fumYds": 0
+    }
+  },
+  "computeTurnoverStatsByPlayer": {
+    "interceptions": {
+      "AT": {},
+      "AB": {}
+    },
+    "fumbleReturns": {
+      "AT": {},
+      "AB": {}
+    }
+  },
+  "computeQBProgression": [],
+  "computeExplosivePlays": {
+    "passing": [],
+    "rushing": []
+  },
+  "buildOffenseMaps": {
+    "passers": {},
+    "rushers": {},
+    "receivers": {}
+  },
+  "computeAllPurposeMap": {
+    "AT": {},
+    "AB": {}
+  },
+  "manualPathFunctions": {
+    "AT": {
+      "passer": {
+        "player": {
+          "id": "d3ea8172-1679-4bed-99d3-78cb6c8f8671",
+          "nombre": "Mirko",
+          "number": 17,
+          "team_id": "641143d3-4969-4384-bb3b-2b872906d5b8",
+          "apellido": "Martos",
+          "position": "QB"
+        },
+        "val": 278
+      },
+      "rusher": {
+        "player": {
+          "id": "d3ea8172-1679-4bed-99d3-78cb6c8f8671",
+          "nombre": "Mirko",
+          "number": 17,
+          "team_id": "641143d3-4969-4384-bb3b-2b872906d5b8",
+          "apellido": "Martos",
+          "position": "QB"
+        },
+        "val": 70
+      },
+      "receiver": null,
+      "passingRows": [
+        [
+          "#17 M. Martos",
+          17,
+          25,
+          "68.0%",
+          278,
+          4,
+          0,
+          "—",
+          "—",
+          "144.7"
+        ]
+      ],
+      "rushingRows": [
+        [
+          "#17 M. Martos",
+          0,
+          "—",
+          70,
+          "0.0",
+          0,
+          "—"
+        ]
+      ],
+      "receivingRows": []
+    },
+    "AB": {
+      "passer": null,
+      "rusher": null,
+      "receiver": null,
+      "passingRows": [],
+      "rushingRows": [],
+      "receivingRows": []
+    }
+  },
+  "teamGameStatsManualRowCount": 2,
+  "playerGameStatsManualRowCount": 1
+}

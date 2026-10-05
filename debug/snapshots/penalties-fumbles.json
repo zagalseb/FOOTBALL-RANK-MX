@@ -171,50 +171,12 @@
     },
     {
       "team": "CCM",
-      "number": 21,
-      "stats": {
-        "rushing": {
-          "att": 2,
-          "yds": 16,
-          "td": 0,
-          "avg": 8
-        }
-      }
-    },
-    {
-      "team": "CCM",
-      "number": 23,
-      "stats": {
-        "rushing": {
-          "att": 1,
-          "yds": 2,
-          "td": 1,
-          "avg": 2
-        }
-      }
-    },
-    {
-      "team": "CCM",
       "number": 4,
       "stats": {
         "receiving": {
           "rec": 2,
           "yds": 49,
           "td": 0
-        }
-      }
-    },
-    {
-      "team": "CCM",
-      "number": 52,
-      "stats": {
-        "defense": {
-          "solo": 1,
-          "ast": 0,
-          "sacks": 0,
-          "tfl": 0,
-          "ff": 0,
-          "int": 0
         }
       }
     },
@@ -240,6 +202,44 @@
     },
     {
       "team": "CCM",
+      "number": 21,
+      "stats": {
+        "rushing": {
+          "att": 2,
+          "yds": 16,
+          "td": 0,
+          "avg": 8
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 23,
+      "stats": {
+        "rushing": {
+          "att": 1,
+          "yds": 2,
+          "td": 1,
+          "avg": 2
+        }
+      }
+    },
+    {
+      "team": "CCM",
+      "number": 52,
+      "stats": {
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
+        }
+      }
+    },
+    {
+      "team": "CCM",
       "number": 99,
       "stats": {
         "defense": {
@@ -249,6 +249,20 @@
           "tfl": 0,
           "ff": 1,
           "int": 0
+        }
+      }
+    },
+    {
+      "team": "CU",
+      "number": 3,
+      "stats": {
+        "passing": {
+          "att": 4,
+          "comp": 2,
+          "yds": 88,
+          "td": 1,
+          "int": 0,
+          "compAtt": "2-4"
         }
       }
     },
@@ -305,20 +319,6 @@
     },
     {
       "team": "CU",
-      "number": 3,
-      "stats": {
-        "passing": {
-          "att": 4,
-          "comp": 2,
-          "yds": 88,
-          "td": 1,
-          "int": 0,
-          "compAtt": "2-4"
-        }
-      }
-    },
-    {
-      "team": "CU",
       "number": 54,
       "stats": {
         "defense": {
@@ -348,8 +348,8 @@
   ],
   "computeDefenseStats": {
     "CCM": {
-      "#0": {
-        "label": "#0",
+      "#0 C. Velez": {
+        "label": "#0 C. Velez",
         "solo": 2,
         "ast": 0,
         "sacks": 0,
@@ -360,8 +360,8 @@
         "qbh": 0,
         "pbu": 1
       },
-      "#52": {
-        "label": "#52",
+      "#52 M. Herrera": {
+        "label": "#52 M. Herrera",
         "solo": 1,
         "ast": 0,
         "sacks": 0,
@@ -372,8 +372,8 @@
         "qbh": 0,
         "pbu": 0
       },
-      "#99": {
-        "label": "#99",
+      "#99 M. Gama": {
+        "label": "#99 M. Gama",
         "solo": 0,
         "ast": 0,
         "sacks": 0,
@@ -461,7 +461,7 @@
       },
       {
         "team": "CCM",
-        "label": "#94",
+        "label": "#94 H. Minarro",
         "no": 1,
         "yds": 0,
         "long": 0,
@@ -479,7 +479,7 @@
       },
       {
         "team": "CCM",
-        "label": "#92",
+        "label": "#92 G. Herrera",
         "no": 1,
         "yds": 65,
         "tb": 1
@@ -489,7 +489,7 @@
     "kickReturns": [
       {
         "team": "CCM",
-        "label": "#4",
+        "label": "#4 C. Confalonieri",
         "no": 1,
         "yds": 32,
         "long": 32
@@ -523,8 +523,8 @@
     },
     "fumbleReturns": {
       "CCM": {
-        "#94": {
-          "label": "#94",
+        "#94 H. Minarro": {
+          "label": "#94 H. Minarro",
           "no": 1,
           "yds": 0,
           "td": 0,
@@ -537,7 +537,7 @@
   "computeQBProgression": [
     {
       "team": "CCM",
-      "label": "#9",
+      "label": "#9 A. Avila",
       "rows": [
         {
           "isComplete": false,
@@ -559,7 +559,7 @@
           "isComplete": true,
           "caTally": "1-2",
           "netYards": 16,
-          "receiver": "#4",
+          "receiver": "#4 C. Confalonieri",
           "note": "",
           "context": "1st & 10 at CCM 32: #9 pass complete to #4 for 16 yards to CCM 48 (tackle: #54)"
         },
@@ -583,7 +583,7 @@
           "isComplete": true,
           "caTally": "2-4",
           "netYards": 33,
-          "receiver": "#4",
+          "receiver": "#4 C. Confalonieri",
           "note": "",
           "context": "1st & 10 at CU 35: #9 pass complete to #4 for 33 yards to CU 2 (tackle: #16)"
         }
@@ -671,7 +671,7 @@
   "buildOffenseMaps": {
     "passers": {
       "CCM": {
-        "#9": {
+        "#9 A. Avila": {
           "att": 4,
           "comp": 2,
           "yds": 49,
@@ -695,14 +695,14 @@
     },
     "rushers": {
       "CCM": {
-        "#21": {
+        "#21 G. Martinez": {
           "att": 2,
           "yds": 16,
           "td": 0,
           "gained": 16,
           "long": 14
         },
-        "#9": {
+        "#9 A. Avila": {
           "att": 2,
           "yds": -6,
           "td": 0,
@@ -729,7 +729,7 @@
     },
     "receivers": {
       "CCM": {
-        "#4": {
+        "#4 C. Confalonieri": {
           "rec": 2,
           "yds": 49,
           "td": 0,
@@ -748,7 +748,7 @@
   },
   "computeAllPurposeMap": {
     "CCM": {
-      "#4": {
+      "#4 C. Confalonieri": {
         "run": 0,
         "rcv": 49,
         "kr": 32,
@@ -756,7 +756,7 @@
         "frir": 0,
         "total": 81
       },
-      "#21": {
+      "#21 G. Martinez": {
         "run": 16,
         "rcv": 0,
         "kr": 0,
@@ -772,7 +772,7 @@
         "frir": 0,
         "total": 2
       },
-      "#9": {
+      "#9 A. Avila": {
         "run": -6,
         "rcv": 0,
         "kr": 0,
