@@ -57,3 +57,10 @@ el roster de MTY). Puede ser una captura en el lado equivocado. No se corrige aq
 - **B. Mismo apellido, nombre distinto (resuelto):** 0 en ambos partidos.
 - **Huérfanos por número ausente del roster:** CCM vs CU 26 (el roster de CCM está vacío;
   el de CU no tiene #23 ni otros números de sus jugadas).
+
+## Temporada de los partidos de referencia (preparación, pendiente de la migración)
+
+Los 3 partidos se asignarán a temporada `2026` en la migración
+`debug/migrations/2026-10-05_players_temporada.sql` (aún no aplicada).
+El Final (MTY vs AT) es un partido de prueba con kickoff 2025, asignado a 2026 porque no hay
+roster 2025 cargado; reasignar a 2025 cuando se cargue ese roster.
