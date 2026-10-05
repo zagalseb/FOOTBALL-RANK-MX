@@ -145,3 +145,29 @@ test('rows without temporada field are compared without season filtering', () =>
   const noSeason = [{ id: 'x', number: 4, nombre: 'Ana', apellido: 'Ruiz' }]
   assert.equal(rosterDuplicate({ number: 4, nombre: 'ana', apellido: 'ruiz', temporada: '2026' }, noSeason).kind, 'exact')
 })
+
+// Temporada (preparation): same number and team in two seasons is not a repeat.
+import { getGameTemporada, filterRosterBySeason } from '../shared/stats-lib.js'
+const two = [
+  { id: 'old', team_id: TEAM, number: 7, nombre: 'Luis', apellido: 'Pérez', temporada: '2025' },
+  { id: 'new', team_id: TEAM, number: 7, nombre: 'Luis', apellido: 'Pérez', temporada: '2026' },
+]
+test('same number/team in two seasons: index of one season sees only that season', () => {
+  const i26 = buildRosterIndex(TEAM, two, '2026')
+  assert.deepEqual(i26.byNumber.get(7).map(p => p.id), ['new'])
+  assert.equal(resolvePlayerKey({ nombre: 'Luis', apellido: 'Pérez', number: 7 }, i26), 'new')
+  assert.equal(resolvePlayerKey({ nombre: 'Luis', apellido: 'Pérez', number: 7 }, buildRosterIndex(TEAM, two, '2025')), 'old')
+})
+test('same number in two seasons is not a duplicate in the roster rule', () => {
+  assert.equal(rosterDuplicate({ number: 7, nombre: 'Luis', apellido: 'Pérez', temporada: '2026' }, two.filter(p => p.temporada === '2025')), null)
+})
+test('rows without temporada are not season-filtered', () => {
+  const plain = [{ id: 'p', number: 3, nombre: 'Ana', apellido: 'Ruiz' }]
+  assert.equal(buildRosterIndex(TEAM, plain, '2026').byNumber.get(3).length, 1)
+  assert.equal(filterRosterBySeason(plain, '2026').length, 1)
+})
+test('getGameTemporada: explicit season, else kickoff year', () => {
+  assert.equal(getGameTemporada({ temporada: '2026', kickoff: '2025-09-01T00:00:00+00:00' }), '2026')
+  assert.equal(getGameTemporada({ temporada: null, kickoff: '2025-09-01T00:00:00+00:00' }), '2025')
+  assert.equal(getGameTemporada({ temporada: null, kickoff: null }), null)
+})

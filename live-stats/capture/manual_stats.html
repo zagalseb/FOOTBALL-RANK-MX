@@ -342,7 +342,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
-    import { rosterDuplicate } from '../../shared/stats-lib.js'
+    import { rosterDuplicate, seasonField, filterRosterBySeason, TEMPORADA_ACTIVA } from '../../shared/stats-lib.js'
     import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
     import { secondsToMMSS } from '../../shared/stats-lib.js'
 
@@ -604,7 +604,7 @@
     async function loadPlayerStatsSection() {
       document.getElementById('player-preview').innerHTML = ''
       try {
-        roster = await sbGet(`players?team_id=eq.${encodeURIComponent(selectedTeamId)}&order=number.asc`)
+        roster = filterRosterBySeason(await sbGet(`players?team_id=eq.${encodeURIComponent(selectedTeamId)}&order=number.asc`), TEMPORADA_ACTIVA)
         const existing = await sbGet(
           `player_game_stats_manual?game_id=eq.${encodeURIComponent(selectedGameId)}&select=*`
         )
@@ -752,7 +752,7 @@
 
         try {
           const created = await sbWrite('POST', 'players', {
-            team_id: selectedTeamId, number, nombre: nombre || null, apellido: apellido || null, position: position || null,
+            team_id: selectedTeamId, ...seasonField(), number, nombre: nombre || null, apellido: apellido || null, position: position || null,
           })
           roster.push(created)
           roster.sort((a, b) => a.number - b.number)

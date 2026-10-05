@@ -16,8 +16,7 @@ import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
 // stats-lib.js instead, going forward.
 import {
   gameState, absYard, advanceGameState, applyFlags,
-  isTouchdown, calcNetYards, formatPlay, playerShortLabel,
-} from '../../shared/stats-lib.js'
+  isTouchdown, calcNetYards, formatPlay, playerShortLabel, filterRosterBySeason } from '../../shared/stats-lib.js'
 
 // ── Play storage ──────────────────────────────────────────────────────────────
 
@@ -337,7 +336,7 @@ let rosterAway = []
 // Fetches a team's real roster from covercero.players. Returns [] (rather than
 // throwing) on failure so the wizard falls back to the generic 0-99 placeholder
 // instead of breaking play capture when offline or Setup hasn't been used yet.
-export async function loadRoster(teamId) {
+export async function loadRoster(teamId, temporada = null) {
   if (!teamId) return []
   try {
     const res = await fetch(
@@ -345,7 +344,7 @@ export async function loadRoster(teamId) {
       { headers: SUPABASE_HEADERS }
     )
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return await res.json()
+    return filterRosterBySeason(await res.json(), temporada)
   } catch (err) {
     console.error('[Cover Cero] loadRoster failed:', err)
     return []

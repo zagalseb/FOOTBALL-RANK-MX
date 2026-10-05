@@ -2789,6 +2789,27 @@ export function rosterDuplicate(candidate, roster) {
   return null
 }
 
+// ── Temporada (preparación, 2026-10-05) ─────────────────────────────────────
+// TEMPORADA_ACTIVA: season new roster rows are written to.
+// PLAYERS_HAS_TEMPORADA: writes send players.temporada only once that column
+// exists (migration A0). Until then a write must not name the column.
+export const TEMPORADA_ACTIVA = '2026'
+export const PLAYERS_HAS_TEMPORADA = false
+export function seasonField() {
+  return PLAYERS_HAS_TEMPORADA ? { temporada: TEMPORADA_ACTIVA } : {}
+}
+// games.temporada if set, otherwise the kickoff year as fallback.
+export function getGameTemporada(game) {
+  if (game?.temporada) return String(game.temporada)
+  if (game?.kickoff) return String(game.kickoff).slice(0, 4)
+  return null
+}
+// Keeps rows of the given season. Rows without a temporada field (or a null
+// temporada query) are kept, so nothing is filtered until the column exists.
+export function filterRosterBySeason(rows, temporada) {
+  return (rows || []).filter(p => temporada == null || p.temporada == null || String(p.temporada) === String(temporada))
+}
+
 // Counts orphan keys in a list of resolved keys, for the debug report.
 export function countOrphans(keys) {
   let n = 0

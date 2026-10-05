@@ -505,7 +505,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
-    import { rosterDuplicate, normName } from '../../shared/stats-lib.js'
+    import { rosterDuplicate, normName, seasonField, filterRosterBySeason, TEMPORADA_ACTIVA } from '../../shared/stats-lib.js'
     // getAuthHeaders() carries the signed-in operator's session token — used
     // for all writes below (games/players/teams INSERT/UPDATE/DELETE now
     // require role=authenticated). Reads (sbGet) stay on the static anon
@@ -616,7 +616,7 @@
 
     async function loadRoster() {
       try {
-        roster = await sbGet(`players?team_id=eq.${encodeURIComponent(rosterTeamId)}&order=number.asc`)
+        roster = filterRosterBySeason(await sbGet(`players?team_id=eq.${encodeURIComponent(rosterTeamId)}&order=number.asc`), TEMPORADA_ACTIVA)
         renderRoster()
       } catch (err) {
         console.error(err)
@@ -725,6 +725,7 @@
       try {
         const created = await sbWrite('POST', 'players', {
           team_id: rosterTeamId,
+          ...seasonField(),
           number,
           nombre: nombre || null,
           apellido: apellido || null,
@@ -965,6 +966,7 @@
 
       const toInsert = validRows.filter(r => r.status === 'new').map(r => ({
         team_id: rosterTeamId,
+        ...seasonField(),
         number: r.number,
         nombre: r.nombre || null,
         apellido: r.apellido || null,
