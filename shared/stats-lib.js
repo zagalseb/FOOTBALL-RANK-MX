@@ -85,7 +85,16 @@ function _isSamePlayer(ref, player) {
   return !!(ref && player && Number(ref.number) === Number(player.number))
 }
 
-export function computePlayerStats(plays, player, teamAbbr) {
+// index (optional, C3): buildRosterIndex() of teamAbbr's roster. With it, a
+// reference counts as the target when both resolve to the same canonical key
+// (see resolvePlayerKey); without it, the legacy number-only match is used, so
+// existing callers (capture Reports) keep their exact behaviour.
+export function computePlayerStats(plays, player, teamAbbr, index = null) {
+  const targetKey = index
+    ? (player.id ?? resolvePlayerKey({ number: player.number, nombre: player.nombre, apellido: player.apellido }, index))
+    : null
+  const same = ref => index ? !!ref && resolvePlayerKey(ref, index) === targetKey : _isSamePlayer(ref, player)
+
   let rushing = null, passing = null, receiving = null, defense = null
   const ensureRushing   = () => rushing   ?? (rushing   = { att: 0, yds: 0, td: 0 })
   const ensurePassing   = () => passing   ?? (passing   = { att: 0, comp: 0, yds: 0, td: 0, int: 0 })
@@ -96,7 +105,7 @@ export function computePlayerStats(plays, player, teamAbbr) {
     if (p.play_type === 'GAME_CTRL') continue
 
     if (p.possession === teamAbbr && p.stats_count !== false) {
-      if (p.play_type === 'RUSH' && _isSamePlayer(p.rush_by, player)) {
+      if (p.play_type === 'RUSH' && same(p.rush_by)) {
         const r = ensureRushing()
         r.att++
         r.yds += p.net_yards || 0
@@ -104,7 +113,7 @@ export function computePlayerStats(plays, player, teamAbbr) {
       }
 
       if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack') &&
-          _isSamePlayer(p.pass_by, player)) {
+          same(p.pass_by)) {
         const r = ensureRushing()
         r.att++
         r.yds += p.net_yards || 0
@@ -115,7 +124,7 @@ export function computePlayerStats(plays, player, teamAbbr) {
       // 'dropped'/'broken_up' — same rule as viewer.html:1975, not just
       // complete/incomplete/intercepted.
       if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack' &&
-          _isSamePlayer(p.pass_by, player)) {
+          same(p.pass_by)) {
         const pa = ensurePassing()
         pa.att++
         if (p.pass_result === 'complete') {
@@ -126,7 +135,7 @@ export function computePlayerStats(plays, player, teamAbbr) {
         if (p.pass_result === 'intercepted') pa.int++
       }
 
-      if (p.play_type === 'PASS' && p.pass_result === 'complete' && _isSamePlayer(p.received_by, player)) {
+      if (p.play_type === 'PASS' && p.pass_result === 'complete' && same(p.received_by)) {
         const rc = ensureReceiving()
         rc.rec++
         rc.yds += p.net_yards || 0
@@ -142,21 +151,21 @@ export function computePlayerStats(plays, player, teamAbbr) {
         if (!Array.isArray(arr) || !arr.length) continue
         const isSolo = arr.length === 1
         for (const ref of arr) {
-          if (!_isSamePlayer(ref, player)) continue
+          if (!same(ref)) continue
           const d = ensureDefense()
           d[isSolo ? 'solo' : 'ast']++
           if (p.net_yards != null && p.net_yards < 0) d.tfl++
         }
       }
-      if (p.play_type === 'PASS' && p.pass_result === 'sack' && _isSamePlayer(p.sack_by, player)) {
+      if (p.play_type === 'PASS' && p.pass_result === 'sack' && same(p.sack_by)) {
         const d = ensureDefense()
         d.sacks++
         d.solo++
       }
-      if (_isSamePlayer(p.fumble_forced_by, player) || _isSamePlayer(p.fumble_2_forced_by, player)) {
+      if (same(p.fumble_forced_by) || same(p.fumble_2_forced_by)) {
         ensureDefense().ff++
       }
-      if (p.pass_result === 'intercepted' && _isSamePlayer(p.intercepted_by, player)) {
+      if (p.pass_result === 'intercepted' && same(p.intercepted_by)) {
         ensureDefense().int++
       }
     }
@@ -2638,11 +2647,15 @@ export function normName(s) {
   return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
 }
 
-// players: rows of the `players` table for ONE team (teamId = their team_id).
-export function buildRosterIndex(teamId, players) {
+// teamId: the team's id (needed even for an empty roster, to build orphan keys).
+// players: rows of the `players` table for that team. temporada (optional): the
+// match's season; when the rows carry a `temporada` field, only rows of that
+// season are indexed. Without it (or without the field) nothing is filtered.
+export function buildRosterIndex(teamId, players, temporada = null) {
   const byNumber = new Map()
   const byId = new Map()
   for (const p of players || []) {
+    if (temporada != null && p.temporada != null && p.temporada !== temporada) continue
     byId.set(p.id, p)
     const k = Number(p.number)
     if (!byNumber.has(k)) byNumber.set(k, [])

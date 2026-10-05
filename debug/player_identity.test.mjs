@@ -68,3 +68,23 @@ test('labelForKey falls back to the reference for orphans', () => {
 test('normName strips accents, case and spaces', () => {
   assert.equal(normName('  Rincón '), 'rincon')
 })
+
+import { computePlayerStats } from '../shared/stats-lib.js'
+
+test('computePlayerStats with roster index separates duplicate numbers (C3)', () => {
+  const dupIdx = buildRosterIndex('T', [
+    { id: 'a', number: 12, nombre: 'Edson', apellido: 'Rincón' },
+    { id: 'b', number: 12, nombre: 'Luis', apellido: 'Pérez' },
+  ])
+  const plays = [
+    { play_type: 'RUSH', possession: 'T', net_yards: 5, rush_by: { number: 12, nombre: 'Edson', apellido: 'Rincón' } },
+    { play_type: 'RUSH', possession: 'T', net_yards: 9, rush_by: { number: 12, nombre: 'Luis', apellido: 'Pérez' } },
+    { play_type: 'RUSH', possession: 'T', net_yards: 2, rush_by: { number: 12, name: '' } },   // old ref, number-only
+  ]
+  const a = computePlayerStats(plays, { id: 'a', number: 12 }, 'T', dupIdx)
+  const b = computePlayerStats(plays, { id: 'b', number: 12 }, 'T', dupIdx)
+  assert.equal(a.rushing.yds, 5)   // old ref without names: unresolvable among duplicates -> orphan, not counted
+  assert.equal(b.rushing.yds, 9)
+  // legacy call (no index) keeps number-only behaviour
+  assert.equal(computePlayerStats(plays, { number: 12 }, 'T').rushing.yds, 16)
+})

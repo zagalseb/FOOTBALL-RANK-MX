@@ -29,6 +29,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
+import { resolvePlayerKey } from '../shared/stats-lib.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
@@ -199,24 +200,26 @@ async function buildFunctionRegistry(statsLib) {
 // team). This is how a "stats for every player who showed up" sweep has to
 // be built without a roster table join, and mirrors computePlayerStats' own
 // per-field team attribution.
-function collectRoster(plays, homeAbbr, awayAbbr) {
-  const roster = new Set()   // "TEAM::number"
+function collectRoster(plays, homeAbbr, awayAbbr, indexes) {
+  // one entry per distinct (team, canonical key), like the old team::number
+  const seen = new Map()   // "TEAM::key" -> { team, number, key }
   const other = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null))
+  const add = (team, ref) => {
+    if (!ref || ref.number == null || !team || !indexes[team]) return
+    const key = resolvePlayerKey(ref, indexes[team])
+    const id = `${team}::${key}`
+    if (!seen.has(id)) seen.set(id, { team, number: Number(ref.number), key })
+  }
   for (const p of plays) {
     const off = p.possession
     const def = other(off)
-    const addOff = ref => { if (ref?.number != null && off) roster.add(`${off}::${ref.number}`) }
-    const addDef = ref => { if (ref?.number != null && def) roster.add(`${def}::${ref.number}`) }
-    addOff(p.rush_by); addOff(p.pass_by); addOff(p.received_by)
+    add(off, p.rush_by); add(off, p.pass_by); add(off, p.received_by)
     ;[p.tackle_by, p.fumble_tackle_by, p.punt_block_ret_tackle_by, p.return_tackle_by].forEach(arr => {
-      if (Array.isArray(arr)) arr.forEach(addDef)
+      if (Array.isArray(arr)) arr.forEach(r => add(def, r))
     })
-    addDef(p.sack_by); addDef(p.fumble_forced_by); addDef(p.fumble_2_forced_by); addDef(p.intercepted_by)
+    add(def, p.sack_by); add(def, p.fumble_forced_by); add(def, p.fumble_2_forced_by); add(def, p.intercepted_by)
   }
-  return [...roster].sort().map(key => {
-    const [team, number] = key.split('::')
-    return { team, number: Number(number) }
-  })
+  return [...seen.values()].sort((x, y) => x.team.localeCompare(y.team) || x.number - y.number || x.key.localeCompare(y.key))
 }
 
 async function snapshotGame(gameId) {
@@ -233,7 +236,7 @@ async function snapshotGame(gameId) {
   const homeAbbr = game.home?.abreviatura || ''
   const awayAbbr = game.away?.abreviatura || ''
 
-  const statsLib = await loadStatsLib()
+  const statsLib = await loadStatsLib()  // also exposes buildRosterIndex/resolvePlayerKey (C1)
   const { registry: fn, source } = await buildFunctionRegistry(statsLib)
 
   const teamsFull = { home: { name: homeAbbr }, away: { name: awayAbbr } }
@@ -241,9 +244,13 @@ async function snapshotGame(gameId) {
   const comparison = fn.computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teamsFull)
   const penalties = fn.computePenalties(plays, homeAbbr)
 
-  const roster = collectRoster(plays, homeAbbr, awayAbbr)
-  const playerStats = roster.map(({ team, number }) => ({
-    team, number, stats: fn.computePlayerStats(plays, { number }, team),
+  const teamIds = { [homeAbbr]: game.home_team_id, [awayAbbr]: game.away_team_id }
+  const rosterRows = await sbFetch(`players?select=id,team_id,number,nombre,apellido&team_id=in.(${Object.values(teamIds).join(',')})`)
+  const indexes = Object.fromEntries(Object.entries(teamIds).map(([abbr, tid]) =>
+    [abbr, fn.buildRosterIndex(tid, rosterRows.filter(r => r.team_id === tid))]))
+  const roster = collectRoster(plays, homeAbbr, awayAbbr, indexes)
+  const playerStats = roster.map(({ team, number, key }) => ({
+    team, number, stats: fn.computePlayerStats(plays, { id: key, number }, team, indexes[team]),
   }))
 
   const defenseStats = fn.computeDefenseStats(plays, homeAbbr, awayAbbr)
