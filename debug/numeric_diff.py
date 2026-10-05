@@ -4,12 +4,16 @@
 # roster). Every remaining numeric difference must appear in ALLOWED below, as
 # the exact rows removed and added in that section. Anything else fails (exit 1).
 #
-# Usage: python3 debug/numeric_diff.py <snapshot-name> [--baseline-dir DIR]
-import json, subprocess, sys
+# The reference is debug/snapshots/baseline_legacy/ (the pre-C4 baseline), because
+# the ALLOWED entries describe the changes from that baseline. Once the allowlist
+# is consolidated, the reference moves to the committed baseline (HEAD).
+#
+# Usage: python3 debug/numeric_diff.py <snapshot-name>
+import json, sys
 from collections import Counter
 
 name = sys.argv[1]
-BASELINE_REF = 'HEAD:debug/snapshots'
+BASELINE_DIR = 'debug/snapshots/baseline_legacy'
 
 # Expected numeric changes. Only by surname contradiction (see README).
 # Final MTY vs AT: AT #35 "L. Ascolani" (another season) was credited to the
@@ -62,7 +66,7 @@ def rows_of(sec, data):
     walk(strip(data[sec]))
     return out
 
-base = json.loads(subprocess.check_output(['git', 'show', f'{BASELINE_REF}/{name}.json']))
+base = json.load(open(f'{BASELINE_DIR}/{name}.json'))
 new = json.load(open(f'debug/snapshots/{name}.json'))
 allowed = ALLOWED.get(name, {})
 failures = []
