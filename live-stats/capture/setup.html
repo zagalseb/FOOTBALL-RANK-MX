@@ -505,6 +505,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { rosterDuplicate, normName } from '../../shared/stats-lib.js'
     // getAuthHeaders() carries the signed-in operator's session token — used
     // for all writes below (games/players/teams INSERT/UPDATE/DELETE now
     // require role=authenticated). Reads (sbGet) stay on the static anon
@@ -713,11 +714,10 @@
         return
       }
 
-      // Client-side duplicate check — the DB unique constraint (team_id, number)
-      // already prevents this, but this gives an immediate, friendly message
-      // instead of only surfacing the raw 409 from Supabase.
-      if (roster.some(p => p.number === number)) {
-        errorEl.textContent = `Ya existe el jugador #${number} en este equipo.`
+      // Duplicate rule by identity (B4): numbers may repeat with different names.
+      const dup = rosterDuplicate({ number, nombre, apellido }, roster)
+      if (dup) {
+        errorEl.textContent = dup.message
         errorEl.classList.add('form-error--visible')
         return
       }
@@ -766,8 +766,9 @@
           showToast('Número de jugador inválido', 'error')
           return
         }
-        if (roster.some(p => p.id !== id && p.number === number)) {
-          showToast(`Ya existe el jugador #${number} en este equipo.`, 'error')
+        const dupEdit = rosterDuplicate({ id, number, nombre, apellido }, roster)
+        if (dupEdit) {
+          showToast(dupEdit.message, 'error')
           return
         }
 
@@ -836,22 +837,31 @@
       return rows.filter(r => !(r.length === 1 && r[0].trim() === ''))
     }
 
-    function classifyImportRow(r, dupCounts) {
+    // B4: a CSV row is an update of the roster player with the same number AND
+    // names; a repeated number with other names is a new player; exact or
+    // unnamed duplicates are errors. csv: identity and number counts within the file.
+    function classifyImportRow(r, csv) {
       const validNumber = /^\d{1,2}$/.test(r.numberRaw)
       if (!validNumber) {
         return { ...r, status: 'error', reason: 'Número vacío o inválido (debe ser 0-99)', number: null }
       }
       const number = parseInt(r.numberRaw, 10)
-      if (dupCounts[number] > 1) {
-        return { ...r, status: 'error', reason: 'Número duplicado dentro del CSV', number }
+      const nn = normName(r.nombre), na = normName(r.apellido)
+      if (csv.identity[`${number}|${nn}|${na}`] > 1) {
+        return { ...r, status: 'error', reason: 'Jugador duplicado dentro del CSV', number }
       }
-      const existing = roster.find(p => p.number === number)
-      if (existing) {
+      if (csv.nameless[number] && (!nn && !na)) {
+        return { ...r, status: 'error', reason: 'Número repetido en el CSV con un jugador sin nombre', number }
+      }
+      const same = (nn || na) && roster.find(p => p.number === number && normName(p.nombre) === nn && normName(p.apellido) === na)
+      if (same) {
         return {
-          ...r, status: 'update', number, id: existing.id,
-          old: { nombre: existing.nombre, apellido: existing.apellido, position: existing.position },
+          ...r, status: 'update', number, id: same.id,
+          old: { nombre: same.nombre, apellido: same.apellido, position: same.position },
         }
       }
+      const dup = rosterDuplicate({ number, nombre: r.nombre, apellido: r.apellido }, roster)
+      if (dup) return { ...r, status: 'error', reason: dup.message, number }
       return { ...r, status: 'new', number }
     }
 
@@ -879,15 +889,17 @@
         position:  idx.position >= 0 ? (cols[idx.position] ?? '').trim() : '',
       }))
 
-      const dupCounts = {}
+      // Within-file counts: identity (number+names) and numbers that have a nameless row.
+      const csv = { identity: {}, nameless: {} }
       parsed.forEach(r => {
-        if (/^\d{1,2}$/.test(r.numberRaw)) {
-          const n = parseInt(r.numberRaw, 10)
-          dupCounts[n] = (dupCounts[n] || 0) + 1
-        }
+        if (!/^\d{1,2}$/.test(r.numberRaw)) return
+        const n = parseInt(r.numberRaw, 10)
+        const k = `${n}|${normName(r.nombre)}|${normName(r.apellido)}`
+        csv.identity[k] = (csv.identity[k] || 0) + 1
+        if (!normName(r.nombre) && !normName(r.apellido)) csv.nameless[n] = true
       })
 
-      return { rows: parsed.map(r => classifyImportRow(r, dupCounts)) }
+      return { rows: parsed.map(r => classifyImportRow(r, csv)) }
     }
 
     function diffCell(oldVal, newVal) {

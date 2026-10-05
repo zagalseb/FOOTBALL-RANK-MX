@@ -2762,6 +2762,33 @@ function _keyLabelOr(ref, index, fallback) {
   return _playerKeyLabel(ref, index) ?? { key: playerShortLabel(ref), label: playerShortLabel(ref) }
 }
 
+// ── Roster duplicate rule (B4, 2026-10-05) ──────────────────────────────────
+// Numbers may repeat within a team, so the check is by identity, not by number:
+//   - same number + same normalized nombre and apellido → exact duplicate (blocked)
+//   - same number, both players named, different names → allowed
+//   - same number and either side has no name → blocked (cannot be told apart)
+// When both rows carry a `temporada`, only rows of the same season are compared;
+// without the field nothing is filtered by season.
+const _fullName = p => [p.nombre, p.apellido].filter(Boolean).join(' ').trim()
+export function rosterDuplicate(candidate, roster) {
+  const cn = normName(candidate.nombre), ca = normName(candidate.apellido)
+  const cNameless = !cn && !ca
+  for (const p of roster || []) {
+    if (candidate.id != null && p.id === candidate.id) continue
+    if (candidate.temporada != null && p.temporada != null && p.temporada !== candidate.temporada) continue
+    if (Number(p.number) !== Number(candidate.number)) continue
+    const pn = normName(p.nombre), pa = normName(p.apellido)
+    const pNameless = !pn && !pa
+    if (cNameless || pNameless) {
+      return { kind: 'nameless', existing: p, message: `Ya hay un jugador #${p.number} sin nombre en este equipo. Completa nombre y apellido de ambos para distinguirlos.` }
+    }
+    if (pn === cn && pa === ca) {
+      return { kind: 'exact', existing: p, message: `Ya existe #${p.number} ${_fullName(p)} en este equipo.` }
+    }
+  }
+  return null
+}
+
 // Counts orphan keys in a list of resolved keys, for the debug report.
 export function countOrphans(keys) {
   let n = 0

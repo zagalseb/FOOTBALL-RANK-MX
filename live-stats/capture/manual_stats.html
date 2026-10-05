@@ -342,6 +342,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { rosterDuplicate } from '../../shared/stats-lib.js'
     import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
     import { secondsToMMSS } from '../../shared/stats-lib.js'
 
@@ -742,8 +743,10 @@
           showToast('Ingresa un número de jugador válido (0-99).', 'error')
           return
         }
-        if (roster.some(p => p.number === number)) {
-          showToast(`Ya existe el jugador #${number} en este equipo.`, 'error')
+        // Duplicate rule by identity (B4): numbers may repeat with different names.
+        const dup = rosterDuplicate({ number, nombre, apellido }, roster)
+        if (dup) {
+          showToast(dup.message, 'error')
           return
         }
 

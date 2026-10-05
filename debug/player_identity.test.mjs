@@ -116,3 +116,32 @@ test('ref with surname against roster row with empty surname resolves as before'
   const blank = buildRosterIndex(TEAM, [{ id: 'z', number: 9, nombre: 'Sin', apellido: '' }])
   assert.equal(resolvePlayerKey({ nombre: 'Ana', apellido: 'Lopez', number: 9 }, blank), 'z')
 })
+
+// Roster duplicate rule (B4).
+import { rosterDuplicate } from '../shared/stats-lib.js'
+const named = [
+  { id: 'a', number: 7, nombre: 'Luis', apellido: 'Pérez', temporada: '2026' },
+  { id: 'n', number: 9, nombre: '', apellido: '', temporada: '2026' },
+]
+test('exact duplicate (same number, names, accents/case) is blocked', () => {
+  assert.equal(rosterDuplicate({ number: 7, nombre: ' LUIS ', apellido: 'perez' }, named).kind, 'exact')
+})
+test('same number with different names is allowed', () => {
+  assert.equal(rosterDuplicate({ number: 7, nombre: 'Jorge', apellido: 'Gómez' }, named), null)
+})
+test('same number when either side has no name is blocked with a clear message', () => {
+  const r1 = rosterDuplicate({ number: 9, nombre: 'Ana', apellido: 'Lopez' }, named)
+  assert.equal(r1.kind, 'nameless')
+  assert.match(r1.message, /sin nombre/)
+  assert.equal(rosterDuplicate({ number: 7, nombre: '', apellido: '' }, named).kind, 'nameless')
+})
+test('the row being edited is not a duplicate of itself', () => {
+  assert.equal(rosterDuplicate({ id: 'a', number: 7, nombre: 'Luis', apellido: 'Pérez' }, named), null)
+})
+test('a row of another season does not count as a duplicate', () => {
+  assert.equal(rosterDuplicate({ number: 7, nombre: 'Luis', apellido: 'Pérez', temporada: '2025' }, named), null)
+})
+test('rows without temporada field are compared without season filtering', () => {
+  const noSeason = [{ id: 'x', number: 4, nombre: 'Ana', apellido: 'Ruiz' }]
+  assert.equal(rosterDuplicate({ number: 4, nombre: 'ana', apellido: 'ruiz', temporada: '2026' }, noSeason).kind, 'exact')
+})
