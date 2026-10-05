@@ -11,10 +11,10 @@ Guardia de regresión, **no verdad histórica**. Cada JSON es la salida de
 
 ## Partido de prueba (Final)
 
-MTY vs AT tiene kickoff en 2025, pero **es un partido de prueba** y no hay roster
-2025 cargado. Sus jugadores se resuelven contra el roster 2026. Se asignará a la
-temporada 2025 cuando se cargue ese roster. Hasta entonces, las jugadas de otra
-temporada aparecen como huérfanas.
+MTY vs AT tiene kickoff en 2025 y es un partido de prueba. Desde la migración
+`debug/migrations/2026-10-06_mty_at_temporada_2025.sql` está en **temporada 2025**, con los
+140 jugadores de MTY y AT también en 2025. Los rosters 2026 de MTY y AT se cargarán después,
+así que los partidos 2026 de esos equipos quedarán sin roster hasta entonces (esperado).
 
 ## Baselines
 
@@ -37,7 +37,7 @@ Las diferencias de texto (nombres mostrados, `label`, `key`, `receiver`) no cuen
 
 ### Huérfanos nuevos del Final (no resueltos)
 
-Todos son jugadas de otra temporada: no hay roster 2025 cargado.
+Los 140 jugadores de MTY y AT ya están en temporada 2025; estos tres números no están en esos rosters.
 
 | Equipo | # | Referencia | Motivo |
 |---|---|---|---|
@@ -58,9 +58,7 @@ el roster de MTY). Puede ser una captura en el lado equivocado. No se corrige aq
 - **Huérfanos por número ausente del roster:** CCM vs CU 26 (el roster de CCM está vacío;
   el de CU no tiene #23 ni otros números de sus jugadas).
 
-## Temporada de los partidos de referencia (preparación, pendiente de la migración)
+## Temporada de los partidos de referencia
 
-Los 3 partidos se asignarán a temporada `2026` en la migración
-`debug/migrations/2026-10-05_players_temporada.sql` (aún no aplicada).
-El Final (MTY vs AT) es un partido de prueba con kickoff 2025, asignado a 2026 porque no hay
-roster 2025 cargado; reasignar a 2025 cuando se cargue ese roster.
+- Final MTY vs AT: `temporada = '2025'` (migración 2026-10-06).
+- CCM vs CU y AT vs AB: `temporada = '2026'` (migración 2026-10-05).
