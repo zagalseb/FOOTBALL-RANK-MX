@@ -532,7 +532,16 @@ export function renderByMenu(config) {
   const roster = getRoster(teamName)
   let selections = []
   let typedDigits = ''
+  let notice = ''
   const container = _container()
+
+  // Numbers can repeat within a team (league rule). A repeated number is shown
+  // with the player's name in the grid; a player with no name gets "#N (sin nombre)".
+  const numCount = {}
+  roster.forEach(p => { numCount[p.number] = (numCount[p.number] || 0) + 1 })
+  const _titleOf = p => [p.nombre, p.apellido].filter(Boolean).join(' ').trim() || `#${p.number} (sin nombre)`
+  // Same player in a selection: by roster identity (number + names), not number alone.
+  const _sameAsRoster = (sel, p) => sel.number === p.number && (sel.nombre || '') === (p.nombre || '') && (sel.apellido || '') === (p.apellido || '')
 
   function rebuild() {
     const pillsHTML = selections.map((p, i) => `
@@ -542,17 +551,20 @@ export function renderByMenu(config) {
       </span>
     `).join('')
 
-    const playerBtns = roster.map(p => {
-      const isSelected = selections.some(s => s.number === p.number)
+    const playerBtns = roster.map((p, ri) => {
+      const isSelected = selections.some(s => _sameAsRoster(s, p))
       const hasInfo = p.nombre || p.apellido || p.position
-      return `<button class="player-btn${isSelected ? ' player-btn--selected' : ''}" data-number="${p.number}">
+      const dup = numCount[p.number] > 1
+      return `<button class="player-btn${isSelected ? ' player-btn--selected' : ''}" data-number="${p.number}" data-ridx="${ri}">
         <span class="player-btn__num">${p.number}</span>
+        ${dup ? `<span class="player-btn__name">${_titleOf(p)}</span>` : ''}
         ${hasInfo ? `<span class="player-btn__pos">${p.position || ''}</span>` : ''}
       </button>`
     }).join('')
 
-    const hint = multiple && selections.length === 1
-      ? '<div class="by-hint">Agregar 2do jugador (opcional)</div>' : ''
+    const hint = notice
+      ? `<div class="by-hint">${notice}</div>`
+      : (multiple && selections.length === 1 ? '<div class="by-hint">Agregar 2do jugador (opcional)</div>' : '')
     const showContinue = multiple && selections.length >= 1
 
     container.innerHTML = `
@@ -574,7 +586,7 @@ export function renderByMenu(config) {
     if (typedDigits) _highlightNum(parseInt(typedDigits, 10))
 
     container.querySelectorAll('.player-btn').forEach(btn => {
-      btn.addEventListener('click', () => _selectPlayer(parseInt(btn.dataset.number, 10)))
+      btn.addEventListener('click', () => _selectPlayer(roster[parseInt(btn.dataset.ridx, 10)]))
     })
     container.querySelectorAll('.player-pill__remove').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -601,8 +613,9 @@ export function renderByMenu(config) {
     }
   }
 
-  function _selectPlayer(num) {
-    const rosterPlayer = roster.find(p => p.number === num)
+  // rosterPlayer: the roster row the operator chose (click, or a typed number that
+  // maps to exactly one player). num: only for a number that is not on the roster.
+  function _selectPlayer(rosterPlayer, num = null) {
     // Only number/nombre/apellido/position get persisted onto the play — not
     // the players-table id/team_id/created_at, which have no meaning once
     // baked into a play's play_data.
@@ -610,9 +623,10 @@ export function renderByMenu(config) {
       ? { number: rosterPlayer.number, nombre: rosterPlayer.nombre || '', apellido: rosterPlayer.apellido || '', position: rosterPlayer.position || '' }
       : { number: num, nombre: '', apellido: '', position: '' }
     if (!multiple) { onComplete(player); return }
-    if (selections.length >= 2 || selections.some(s => s.number === num)) return
+    if (selections.length >= 2 || selections.some(s => (rosterPlayer ? _sameAsRoster(s, rosterPlayer) : s.number === num))) return
     selections.push(player)
     typedDigits = ''
+    notice = ''
     rebuild()
     if (selections.length >= 2) onComplete(multiple ? selections : selections[0])
   }
@@ -621,7 +635,15 @@ export function renderByMenu(config) {
     if (!typedDigits) return
     const num = parseInt(typedDigits, 10)
     typedDigits = ''
-    _selectPlayer(num)
+    const matches = roster.filter(p => p.number === num)
+    if (matches.length > 1) {
+      // Several players wear this number: the operator picks one from the grid.
+      notice = `Hay ${matches.length} jugadores con #${num}: elige uno de la lista.`
+      rebuild()
+      _highlightNum(num)
+      return
+    }
+    _selectPlayer(matches[0] || null, num)
   }
 
   // Digit/backspace/enter — closure because it needs selections + typedDigits
