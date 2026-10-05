@@ -76,7 +76,7 @@ let computeDrives, computeComparisonStats, computePenalties, driveEndLabel, _eff
 let secondsToMMSS;
 let computeDefenseStats, computeSpecialTeamsStats, computeFumbleStats, fumbleStatsToMap;
 let computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnoverStatsByPlayer;
-let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps;
+let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps, buildRosterIndex;
 // Fase 3: manual-capture path row/lookup builders (BasicBoxScore's data).
 let _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows;
 const engineReady = import('../../shared/stats-lib.js').then(m => {
@@ -104,6 +104,7 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   computeQBProgression             = m.computeQBProgression;
   computeExplosivePlays            = m.computeExplosivePlays;
   buildOffenseMaps                 = m.buildOffenseMaps;
+  buildRosterIndex                 = m.buildRosterIndex;
   _passerRating                    = m._passerRating;
   _topManualStat                   = m._topManualStat;
   _manualPassingRows               = m._manualPassingRows;
@@ -824,8 +825,9 @@ const COMPARACION_SUBTABS = [
 // throw a pick", not two that could drift apart.
 function _passingRows(passers, teamAbbr, qbIntMap) {
   const data = passers[teamAbbr] || {};
-  return Object.entries(data).map(([name, d]) => {
-    const int = qbIntMap[`${teamAbbr}::${name}`] || 0;
+  return Object.entries(data).map(([key, d]) => {
+    const name = d.label ?? key;
+    const int = qbIntMap[`${teamAbbr}::${key}`] || 0;
     const pct = d.att ? `${((d.comp / d.att) * 100).toFixed(1)}%` : '0.0%';
     const rating = _passerRating(d.comp, d.att, d.yds, d.td, int);
     const long = d.long === -Infinity ? 0 : d.long;
@@ -839,7 +841,8 @@ function _passingRows(passers, teamAbbr, qbIntMap) {
 
 function _rushingRows(rushers, teamAbbr) {
   const data = rushers[teamAbbr] || {};
-  return Object.entries(data).map(([name, d]) => {
+  return Object.entries(data).map(([key, d]) => {
+    const name = d.label ?? key;
     const long = d.long === -Infinity ? 0 : d.long;
     return [name, d.att, d.gained || 0, d.yds, d.att ? (d.yds / d.att).toFixed(1) : '0.0', d.td, long];
   });
@@ -847,7 +850,8 @@ function _rushingRows(rushers, teamAbbr) {
 
 function _receivingRows(receivers, teamAbbr) {
   const data = receivers[teamAbbr] || {};
-  return Object.entries(data).map(([name, d]) => {
+  return Object.entries(data).map(([key, d]) => {
+    const name = d.label ?? key;
     const long = d.long === -Infinity ? 0 : d.long;
     return [name, d.rec, d.yds, d.rec ? (d.yds / d.rec).toFixed(1) : '0.0', d.td, long];
   });
@@ -884,7 +888,7 @@ function _sacksRows(defenseStats, teamAbbr) {
   const data = defenseStats[teamAbbr] || {};
   return Object.entries(data)
     .filter(([, d]) => d.sacks > 0 || d.qbh > 0)
-    .map(([name, d]) => [name, d.sacks, d.sackYds, d.qbh]);
+    .map(([key, d]) => [d.label ?? key, d.sacks, d.sackYds, d.qbh]);
 }
 
 // PBU/Int-count come from computeDefenseStats() (same source Team Stats
@@ -894,21 +898,21 @@ function _sacksRows(defenseStats, teamAbbr) {
 function _passDefenseRows(defenseStats, interceptions, teamAbbr) {
   const def  = defenseStats[teamAbbr] || {};
   const ints = interceptions[teamAbbr] || {};
-  const labels = new Set([...Object.keys(def), ...Object.keys(ints)]);
+  const keys = new Set([...Object.keys(def), ...Object.keys(ints)]);
   const rows = [];
-  labels.forEach(label => {
-    const d = def[label] || {};
-    const i = ints[label] || {};
+  keys.forEach(key => {
+    const d = def[key] || {};
+    const i = ints[key] || {};
     const pbu   = d.pbu || 0;
     const intNo = d.int || i.no || 0;
-    if (pbu > 0 || intNo > 0) rows.push([label, pbu, intNo, i.yds || 0]);
+    if (pbu > 0 || intNo > 0) rows.push([d.label ?? i.label ?? key, pbu, intNo, i.yds || 0]);
   });
   return rows;
 }
 
 function _turnoverRows(map, teamAbbr) {
   const data = map[teamAbbr] || {};
-  return Object.entries(data).map(([name, d]) => [name, d.no, d.yds, d.td, d.long === -Infinity ? 0 : d.long]);
+  return Object.entries(data).map(([key, d]) => [d.label ?? key, d.no, d.yds, d.td, d.long === -Infinity ? 0 : d.long]);
 }
 
 function DefenseTeamCard({ abbr, label, color, defenseStats, interceptions, fumbleReturns }) {
@@ -1093,17 +1097,17 @@ function BasicBoxScore({
 
 function ComparacionTab({
   plays, drives, homeAbbr, awayAbbr, homeApodo, awayApodo, homeColor, awayColor,
-  passers, rushers, receivers, qbProgression, specialTeamsStats, penalties, defenseStats,
+  passers, rushers, receivers, qbProgression, specialTeamsStats, penalties, defenseStats, rosters,
 }) {
   const [subTab, setSubTab] = useState('offense');
   const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
 
   const stats = useMemo(() => computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams), [plays, drives, homeAbbr, awayAbbr]);
   const turnoverYdsByTeam = useMemo(() => computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, teams), [plays, homeAbbr, awayAbbr]);
-  const turnoverStatsByPlayer = useMemo(() => computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams), [plays, homeAbbr, awayAbbr]);
+  const turnoverStatsByPlayer = useMemo(() => computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, rosters), [plays, homeAbbr, awayAbbr, rosters]);
   const qbIntMap = useMemo(() => {
     const m = {};
-    qbProgression.forEach(qb => { m[`${qb.team}::${qb.label}`] = qb.int; });
+    qbProgression.forEach(qb => { m[`${qb.team}::${qb.key}`] = qb.int; });
     return m;
   }, [qbProgression]);
 
@@ -1964,6 +1968,9 @@ function App() {
   // as a live play-by-play. See isManualOnly below.
   const [teamManualStats,   setTeamManualStats]   = useState([]);
   const [playerManualStats, setPlayerManualStats] = useState([]);
+  // C4: per-team roster indexes ({ [abbr]: index }); null until loaded, then the
+  // stats functions key their maps by canonical player instead of by label.
+  const [rosters, setRosters] = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [loadErr,   setLoadErr]   = useState(null);
   const [scoresOpen,setScoresOpen]= useState(false);
@@ -1985,6 +1992,13 @@ function App() {
           engineReady,
         ]);
         const g = gArr[0] || null;
+        if (g?.home_team_id && g?.away_team_id) {
+          const pl = await sbFetch(`players?select=id,team_id,number,nombre,apellido&team_id=in.(${g.home_team_id},${g.away_team_id})`);
+          setRosters({
+            [g.home.abreviatura]: buildRosterIndex(g.home_team_id, pl.filter(r => r.team_id === g.home_team_id)),
+            [g.away.abreviatura]: buildRosterIndex(g.away_team_id, pl.filter(r => r.team_id === g.away_team_id)),
+          });
+        }
         setGame(g);
         setPlays((pArr || []).map(_flattenPlay));
         setTeamManualStats(tmArr || []);
@@ -2097,8 +2111,8 @@ function App() {
   // buildOffenseMaps() moved to stats-lib.js (Fase 1 of the 2026-09-29
   // refactor) — same single pass over `plays`, same field names.
   const { passers, rushers, receivers } = useTabGatedMemo(
-    () => (typeof buildOffenseMaps === 'function' ? buildOffenseMaps(plays, homeAbbr, awayAbbr) : { passers: {}, rushers: {}, receivers: {} }),
-    offenseTabsNeeded, [plays, homeAbbr, awayAbbr], { passers: {}, rushers: {}, receivers: {} }
+    () => (typeof buildOffenseMaps === 'function' ? buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters) : { passers: {}, rushers: {}, receivers: {} }),
+    offenseTabsNeeded, [plays, homeAbbr, awayAbbr, rosters], { passers: {}, rushers: {}, receivers: {} }
   );
 
   const scoringEvents = useTabGatedMemo(() => computeScoringPlays(plays, homeAbbr, awayAbbr), scoringNeeded, [plays, homeAbbr, awayAbbr], []);
@@ -2114,8 +2128,8 @@ function App() {
   const specialTeamsStats = useTabGatedMemo(() => {
     if (typeof computeSpecialTeamsStats !== 'function') return SPECIAL_TEAMS_EMPTY;
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
-    return computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams);
-  }, offenseTabsNeeded, [plays, homeAbbr, awayAbbr], SPECIAL_TEAMS_EMPTY);
+    return computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams, rosters);
+  }, offenseTabsNeeded, [plays, homeAbbr, awayAbbr, rosters], SPECIAL_TEAMS_EMPTY);
 
   const { apRows, fumbleRows } = useMemo(() => {
     if (typeof computeTurnoverReturnYards !== 'function' || typeof computeAllPurposeMap !== 'function' ||
@@ -2123,20 +2137,20 @@ function App() {
       return { apRows: [], fumbleRows: [] };
     }
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
-    const turnoverReturns = computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams);
+    const turnoverReturns = computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, rosters);
     const apMap = computeAllPurposeMap(
       rushers, receivers, specialTeamsStats.kickReturns, specialTeamsStats.puntReturns,
       turnoverReturns, homeAbbr, awayAbbr
     );
-    const fumbleMap = fumbleStatsToMap(computeFumbleStats(plays), homeAbbr, awayAbbr);
+    const fumbleMap = fumbleStatsToMap(computeFumbleStats(plays, rosters), homeAbbr, awayAbbr);
     return {
       apRows:     buildRows(apMap, ['RUN','RCV','KR','PR','FR/IR','TOT'], d => [d.run, d.rcv, d.kr, d.pr, d.frir, d.total]),
       fumbleRows: buildRows(fumbleMap, ['NO','LOST'], d => [d.no, d.lost]),
     };
-  }, [plays, homeAbbr, awayAbbr, rushers, receivers, specialTeamsStats]);
+  }, [plays, homeAbbr, awayAbbr, rushers, receivers, specialTeamsStats, rosters]);
 
-  const defenseStats = useTabGatedMemo(() => (typeof computeDefenseStats === 'function' ? computeDefenseStats(plays, homeAbbr, awayAbbr) : {}), offenseTabsNeeded, [plays, homeAbbr, awayAbbr], {});
-  const qbProgression = useTabGatedMemo(() => (typeof computeQBProgression === 'function' ? computeQBProgression(plays) : []), offenseTabsNeeded, [plays], []);
+  const defenseStats = useTabGatedMemo(() => (typeof computeDefenseStats === 'function' ? computeDefenseStats(plays, homeAbbr, awayAbbr, rosters) : {}), offenseTabsNeeded, [plays, homeAbbr, awayAbbr, rosters], {});
+  const qbProgression = useTabGatedMemo(() => (typeof computeQBProgression === 'function' ? computeQBProgression(plays, rosters) : []), offenseTabsNeeded, [plays, rosters], []);
   const explosivePlays = useTabGatedMemo(() => {
     if (typeof computeExplosivePlays !== 'function') return { passing: [], rushing: [] };
     const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
@@ -2212,8 +2226,8 @@ function App() {
       const color = abbr === homeAbbr ? homeColor : awayColor;
       const label = abbr === homeAbbr ? homeApodo : awayApodo;
       rows.push({ isHeader: true, name: label || abbr, color, team: abbr });
-      Object.entries(td).forEach(([name, d]) => {
-        rows.push({ name, vals: keyFn(d), team: abbr });
+      Object.entries(td).forEach(([key, d]) => {
+        rows.push({ name: d.label ?? key, vals: keyFn(d), team: abbr });
       });
     }
     return rows;
@@ -2509,6 +2523,7 @@ function App() {
             )}
             {activeTab === 'comparacion' && (
               <ComparacionTab
+              rosters={rosters}
                 plays={plays} drives={drives} homeAbbr={homeAbbr} awayAbbr={awayAbbr}
                 homeApodo={homeApodo} awayApodo={awayApodo} homeColor={homeColor} awayColor={awayColor}
                 passers={passers} rushers={rushers} receivers={receivers}
