@@ -404,6 +404,10 @@
         <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:10px">
           Formato: <code>number,nombre,apellido,position</code> (con fila de encabezado)
         </div>
+        <div class="field" style="max-width:320px;margin-bottom:10px">
+          <label class="field-label" for="roster-import-year">Año de la temporada (obligatorio)</label>
+          <input class="input" type="number" id="roster-import-year" min="2000" max="2100" placeholder="Ej. 2026" autocomplete="off">
+        </div>
         <input class="input" type="file" accept=".csv,text/csv" id="roster-csv-input" style="max-width:320px">
         <div id="roster-import-preview" style="margin-top:14px"></div>
       </div>
@@ -510,7 +514,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
-    import { rosterDuplicate, normName, seasonField, TEMPORADA_ACTIVA, TEMPORADAS_DISPONIBLES } from '../../shared/stats-lib.js'
+    import { rosterDuplicate, normName, TEMPORADA_ACTIVA, TEMPORADAS_DISPONIBLES, classifyRosterImport } from '../../shared/stats-lib.js'
     // getAuthHeaders() carries the signed-in operator's session token — used
     // for all writes below (games/players/teams INSERT/UPDATE/DELETE now
     // require role=authenticated). Reads (sbGet) stay on the static anon
@@ -529,6 +533,7 @@
     let editingGameId = null
     let editingPlayerId = null
     let importRows = []
+    let importText = ''
 
     // ── Supabase helpers ─────────────────────────────────────────────────────
 
@@ -615,6 +620,7 @@
       editingPlayerId = null
       resetImportState()
       document.getElementById('roster-import-card').style.display = rosterTeamId ? 'block' : 'none'
+      document.getElementById('roster-import-year').value = ''
       populateSeasonSelect()
       if (!rosterTeamId) {
         document.getElementById('roster-content').innerHTML = ''
@@ -837,6 +843,7 @@
 
     function resetImportState() {
       importRows = []
+      importText = ''
       const fileInput = document.getElementById('roster-csv-input')
       if (fileInput) fileInput.value = ''
       const previewEl = document.getElementById('roster-import-preview')
@@ -870,32 +877,11 @@
       return rows.filter(r => !(r.length === 1 && r[0].trim() === ''))
     }
 
-    // B4: a CSV row is an update of the roster player with the same number AND
-    // names; a repeated number with other names is a new player; exact or
-    // unnamed duplicates are errors. csv: identity and number counts within the file.
-    function classifyImportRow(r, csv) {
-      const validNumber = /^\d{1,2}$/.test(r.numberRaw)
-      if (!validNumber) {
-        return { ...r, status: 'error', reason: 'Número vacío o inválido (debe ser 0-99)', number: null }
-      }
-      const number = parseInt(r.numberRaw, 10)
-      const nn = normName(r.nombre), na = normName(r.apellido)
-      if (csv.identity[`${number}|${nn}|${na}`] > 1) {
-        return { ...r, status: 'error', reason: 'Jugador duplicado dentro del CSV', number }
-      }
-      if (csv.nameless[number] && (!nn && !na)) {
-        return { ...r, status: 'error', reason: 'Número repetido en el CSV con un jugador sin nombre', number }
-      }
-      const same = (nn || na) && roster.find(p => p.number === number && normName(p.nombre) === nn && normName(p.apellido) === na)
-      if (same) {
-        return {
-          ...r, status: 'update', number, id: same.id,
-          old: { nombre: same.nombre, apellido: same.apellido, position: same.position },
-        }
-      }
-      const dup = rosterDuplicate({ number, nombre: r.nombre, apellido: r.apellido }, roster)
-      if (dup) return { ...r, status: 'error', reason: dup.message, number }
-      return { ...r, status: 'new', number }
+    // The import year is typed by the operator; there is no default. Rows are
+    // classified against that season only (classifyRosterImport in stats-lib).
+    function importYear() {
+      const v = document.getElementById('roster-import-year').value.trim()
+      return /^\d{4}$/.test(v) ? v : null
     }
 
     function buildImportRows(text) {
@@ -921,18 +907,9 @@
         apellido:  idx.apellido >= 0 ? (cols[idx.apellido] ?? '').trim() : '',
         position:  idx.position >= 0 ? (cols[idx.position] ?? '').trim() : '',
       }))
-
-      // Within-file counts: identity (number+names) and numbers that have a nameless row.
-      const csv = { identity: {}, nameless: {} }
-      parsed.forEach(r => {
-        if (!/^\d{1,2}$/.test(r.numberRaw)) return
-        const n = parseInt(r.numberRaw, 10)
-        const k = `${n}|${normName(r.nombre)}|${normName(r.apellido)}`
-        csv.identity[k] = (csv.identity[k] || 0) + 1
-        if (!normName(r.nombre) && !normName(r.apellido)) csv.nameless[n] = true
-      })
-
-      return { rows: parsed.map(r => classifyImportRow(r, csv)) }
+      const year = importYear()
+      if (!year) return { error: 'Indica el año de la temporada antes de importar.' }
+      return { rows: classifyRosterImport(parsed, rosterAll, year) }
     }
 
     function diffCell(oldVal, newVal) {
@@ -950,6 +927,7 @@
       const updateCount = importRows.filter(r => r.status === 'update').length
       const errorCount  = importRows.filter(r => r.status === 'error').length
       const validCount  = newCount + updateCount
+      const year = importYear()
 
       const rowsHtml = importRows.map(r => {
         if (r.status === 'error') {
@@ -984,7 +962,8 @@
         </table>
         <div class="form-actions" style="margin-top:12px">
           <span class="import-summary">${newCount} nuevo${newCount !== 1 ? 's' : ''} · ${updateCount} actualizar · ${errorCount} error${errorCount !== 1 ? 'es' : ''}</span>
-          ${validCount > 0 ? `<button class="btn btn--primary" id="roster-import-confirm-btn">Confirmar Import</button>` : ''}
+          ${validCount > 0 && year ? `<span class="import-summary">${validCount} jugador${validCount !== 1 ? 'es' : ''} se guardar${validCount !== 1 ? 'án' : 'á'} en temporada ${year}</span>
+          <button class="btn btn--primary" id="roster-import-confirm-btn">Confirmar Import</button>` : ''}
         </div>`
 
       const confirmBtn = document.getElementById('roster-import-confirm-btn')
@@ -993,21 +972,26 @@
 
     async function confirmImport() {
       const btn = document.getElementById('roster-import-confirm-btn')
+      const year = importYear()
       const validRows = importRows.filter(r => r.status === 'new' || r.status === 'update')
-      if (!validRows.length) return
+      if (!validRows.length || !year) return
 
       const toInsert = validRows.filter(r => r.status === 'new').map(r => ({
         team_id: rosterTeamId,
-        ...seasonField(),
+        temporada: year,
         number: r.number,
         nombre: r.nombre || null,
         apellido: r.apellido || null,
         position: r.position || null,
       }))
-      const toUpdate = validRows.filter(r => r.status === 'update')
+      // Never update a row outside the import season, even if an id were stale.
+      const toUpdate = validRows.filter(r => r.status === 'update' &&
+        rosterAll.some(p => p.id === r.id && String(p.temporada) === year))
       const insertedCount = validRows.filter(r => r.status === 'new').length
       const updatedCount  = validRows.filter(r => r.status === 'update').length
       const errorCount    = importRows.length - validRows.length
+
+      if (!confirm(`${validRows.length} jugador${validRows.length !== 1 ? 'es' : ''} se guardarán en temporada ${year} (${insertedCount} nuevo${insertedCount !== 1 ? 's' : ''}, ${updatedCount} actualizado${updatedCount !== 1 ? 's' : ''}). ¿Continuar?`)) return
 
       btn.disabled = true
       btn.textContent = 'Importando…'
@@ -1030,13 +1014,25 @@
       }
     }
 
+    document.getElementById('roster-import-year').addEventListener('input', () => {
+      if (!importText) return
+      const result = buildImportRows(importText)
+      importRows = result.error ? [] : result.rows
+      const previewEl = document.getElementById('roster-import-preview')
+      if (result.error) {
+        previewEl.innerHTML = `<div class="form-error form-error--visible">${esc(result.error)}</div>`
+        return
+      }
+      renderImportPreview()
+    })
+
     document.getElementById('roster-csv-input').addEventListener('change', async e => {
       const file = e.target.files[0]
       const previewEl = document.getElementById('roster-import-preview')
       if (!file) return
       try {
-        const text = await file.text()
-        const result = buildImportRows(text)
+        importText = await file.text()
+        const result = buildImportRows(importText)
         if (result.error) {
           importRows = []
           previewEl.innerHTML = `<div class="form-error form-error--visible">${esc(result.error)}</div>`
