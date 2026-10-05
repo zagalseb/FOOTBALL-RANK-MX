@@ -394,6 +394,11 @@
         </select>
       </div>
 
+      <div class="card">
+        <div class="card__title">Temporada</div>
+        <select class="input" id="roster-season-select" style="max-width:200px"></select>
+      </div>
+
       <div class="card" id="roster-import-card" style="display:none">
         <div class="card__title">Importar roster desde CSV</div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:10px">
@@ -505,7 +510,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
-    import { rosterDuplicate, normName, seasonField, filterRosterBySeason, TEMPORADA_ACTIVA } from '../../shared/stats-lib.js'
+    import { rosterDuplicate, normName, seasonField, TEMPORADA_ACTIVA, TEMPORADAS_DISPONIBLES } from '../../shared/stats-lib.js'
     // getAuthHeaders() carries the signed-in operator's session token — used
     // for all writes below (games/players/teams INSERT/UPDATE/DELETE now
     // require role=authenticated). Reads (sbGet) stay on the static anon
@@ -517,7 +522,9 @@
 
     let teams   = []
     let games   = []
-    let roster  = []
+    let roster  = []           // players of rosterTeamId in rosterSeason (what the screen shows)
+    let rosterAll = []         // every season of rosterTeamId
+    let rosterSeason = TEMPORADA_ACTIVA
     let rosterTeamId  = null
     let editingGameId = null
     let editingPlayerId = null
@@ -594,6 +601,7 @@
         .map(t => `<option value="${t.id}">${esc(t.nombre_corto)} (${esc(t.abreviatura)})</option>`)
         .join('')
 
+      populateSeasonSelect()
       document.getElementById('roster-team-select').innerHTML =
         '<option value="">Selecciona un equipo…</option>' + opts
       document.getElementById('team-select').innerHTML =
@@ -607,6 +615,7 @@
       editingPlayerId = null
       resetImportState()
       document.getElementById('roster-import-card').style.display = rosterTeamId ? 'block' : 'none'
+      populateSeasonSelect()
       if (!rosterTeamId) {
         document.getElementById('roster-content').innerHTML = ''
         return
@@ -614,9 +623,30 @@
       await loadRoster()
     })
 
+    // Season selector: default is the active season; everything listed, edited,
+    // added or imported on this screen belongs to the selected season.
+    function populateSeasonSelect() {
+      const seasons = [...new Set([TEMPORADA_ACTIVA, ...TEMPORADAS_DISPONIBLES])].sort()
+      const sel = document.getElementById('roster-season-select')
+      sel.innerHTML = seasons.map(t => `<option value="${t}"${t === rosterSeason ? ' selected' : ''}>${t}</option>`).join('')
+    }
+
+    function applyRosterSeason() {
+      roster = rosterAll.filter(p => String(p.temporada) === String(rosterSeason))
+    }
+
+    document.getElementById('roster-season-select').addEventListener('change', e => {
+      rosterSeason = e.target.value
+      editingPlayerId = null
+      resetImportState()
+      applyRosterSeason()
+      if (rosterTeamId) renderRoster()
+    })
+
     async function loadRoster() {
       try {
-        roster = filterRosterBySeason(await sbGet(`players?team_id=eq.${encodeURIComponent(rosterTeamId)}&order=number.asc`), TEMPORADA_ACTIVA)
+        rosterAll = await sbGet(`players?team_id=eq.${encodeURIComponent(rosterTeamId)}&order=number.asc`)
+        applyRosterSeason()
         renderRoster()
       } catch (err) {
         console.error(err)
@@ -660,7 +690,7 @@
             <tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Posición</th><th></th></tr>
           </thead>
           <tbody>
-            ${rows || `<tr><td colspan="5"><div class="empty-state">Sin jugadores registrados para este equipo.</div></td></tr>`}
+            ${rows || `<tr><td colspan="5"><div class="empty-state">sin roster ${rosterSeason}</div></td></tr>`}
           </tbody>
         </table>
 
@@ -715,7 +745,7 @@
       }
 
       // Duplicate rule by identity (B4): numbers may repeat with different names.
-      const dup = rosterDuplicate({ number, nombre, apellido }, roster)
+      const dup = rosterDuplicate({ number, nombre, apellido, temporada: rosterSeason }, roster)
       if (dup) {
         errorEl.textContent = dup.message
         errorEl.classList.add('form-error--visible')
@@ -725,14 +755,14 @@
       try {
         const created = await sbWrite('POST', 'players', {
           team_id: rosterTeamId,
-          ...seasonField(),
+          temporada: rosterSeason,
           number,
           nombre: nombre || null,
           apellido: apellido || null,
           position: position || null,
         })
-        roster.push(created)
-        roster.sort((a, b) => a.number - b.number)
+        rosterAll.push(created)
+        applyRosterSeason()
         renderRoster()
         showToast(`Jugador #${number} agregado`)
       } catch (err) {
@@ -767,7 +797,7 @@
           showToast('Número de jugador inválido', 'error')
           return
         }
-        const dupEdit = rosterDuplicate({ id, number, nombre, apellido }, roster)
+        const dupEdit = rosterDuplicate({ id, number, nombre, apellido, temporada: rosterSeason }, roster)
         if (dupEdit) {
           showToast(dupEdit.message, 'error')
           return
@@ -777,7 +807,8 @@
           const updated = await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(id)}`, {
             number, nombre: nombre || null, apellido: apellido || null, position: position || null,
           })
-          roster = roster.map(p => p.id === id ? updated : p).sort((a, b) => a.number - b.number)
+          rosterAll = rosterAll.map(p => p.id === id ? updated : p)
+          applyRosterSeason()
           editingPlayerId = null
           renderRoster()
           showToast('Jugador actualizado')
@@ -792,7 +823,8 @@
         if (!confirm(`¿Eliminar al jugador #${player?.number}${fullName ? ' ' + fullName : ''}?`)) return
         try {
           await sbWrite('DELETE', `players?id=eq.${encodeURIComponent(id)}`)
-          roster = roster.filter(p => p.id !== id)
+          rosterAll = rosterAll.filter(p => p.id !== id)
+          applyRosterSeason()
           renderRoster()
           showToast('Jugador eliminado')
         } catch (err) {
