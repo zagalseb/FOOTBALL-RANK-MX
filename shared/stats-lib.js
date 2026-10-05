@@ -2623,3 +2623,100 @@ export function _manualReceivingRows(playerManualStats, teamId) {
       return [playerShortLabel(r.player), rec, yds, rec ? (yds / rec).toFixed(1) : '0.0', r.rec_td || 0, '—']
     })
 }
+
+// ── Player identity (C1/C2 of the duplicate-number refactor, 2026-10-05) ──────
+// A player's canonical key is the players.id of its roster row. Plays store a
+// reference {number, nombre, apellido, position} (newer) or {name, number,...}
+// (older) with NO player_id, so historical references are resolved against the
+// roster of the team they belong to. Pure: the caller builds one index per team
+// per game and passes it in.
+
+export const ORPHAN_PREFIX = 'orphan:'
+
+// lower + trim + no accents. Used to compare names, never displayed.
+export function normName(s) {
+  return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+}
+
+// players: rows of the `players` table for ONE team (teamId = their team_id).
+export function buildRosterIndex(teamId, players) {
+  const byNumber = new Map()
+  const byId = new Map()
+  for (const p of players || []) {
+    byId.set(p.id, p)
+    const k = Number(p.number)
+    if (!byNumber.has(k)) byNumber.set(k, [])
+    byNumber.get(k).push(p)
+  }
+  return { teamId, byNumber, byId }
+}
+
+// Name parts of a play reference. Newer refs carry nombre/apellido; older ones
+// carry only `name`, split on the first space (nombre = first word).
+function _refNames(ref) {
+  let nombre = ref.nombre, apellido = ref.apellido
+  if (!nombre && !apellido && ref.name) {
+    const parts = String(ref.name).trim().split(/\s+/)
+    nombre = parts.shift() || ''
+    apellido = parts.join(' ')
+  }
+  return { nombre: normName(nombre), apellido: normName(apellido) }
+}
+
+// Returns the canonical key (players.id) for a play reference, or an
+// `orphan:` key when it cannot be matched. Resolution order:
+//   1. ref.player_id (newer captures) — used as-is.
+//   2. roster players with the same number. Exactly one → it.
+//   3. several (only possible if UNIQUE(team_id, number) is relaxed) → the one
+//      whose normalized nombre+apellido matches, if exactly one does.
+//   4. otherwise → orphan:<team>:<number>:<nombre>:<apellido>.
+export function resolvePlayerKey(ref, index) {
+  if (!ref) return null
+  if (ref.player_id) return ref.player_id
+  const num = Number(ref.number)
+  const cands = index.byNumber.get(num) || []
+  if (cands.length === 1) return cands[0].id
+  const n = _refNames(ref)
+  if (cands.length > 1) {
+    const matches = cands.filter(p => normName(p.nombre) === n.nombre && normName(p.apellido) === n.apellido)
+    if (matches.length === 1) return matches[0].id
+  }
+  return `${ORPHAN_PREFIX}${index.teamId}:${num}:${n.nombre}:${n.apellido}`
+}
+
+export const isOrphanKey = k => typeof k === 'string' && k.startsWith(ORPHAN_PREFIX)
+
+// Display label per roster player (C2). Same as playerShortLabel() unless two
+// players of the team would print the same label, then the full name is
+// appended so they can be told apart in tables.
+export function buildDisplayLabels(index) {
+  const groups = new Map()
+  for (const p of index.byId.values()) {
+    const base = playerShortLabel(p)
+    if (!groups.has(base)) groups.set(base, [])
+    groups.get(base).push(p)
+  }
+  const out = new Map()
+  for (const [base, members] of groups) {
+    for (const p of members) {
+      if (members.length === 1) { out.set(p.id, base); continue }
+      const full = [p.nombre, p.apellido].filter(Boolean).join(' ').trim() || 'sin nombre'
+      out.set(p.id, `#${p.number} ${full}`)
+    }
+  }
+  return out
+}
+
+// Label for any key: a roster player's display label, or for orphans/unknown
+// keys the plain playerShortLabel of the reference (display only).
+export function labelForKey(key, index, labels, ref) {
+  if (labels && labels.has(key)) return labels.get(key)
+  return playerShortLabel(ref || {})
+}
+
+// Counts orphan keys in a list of resolved keys, for the debug report.
+export function countOrphans(keys) {
+  let n = 0
+  for (const k of keys) if (isOrphanKey(k)) n++
+  return n
+}
