@@ -874,9 +874,9 @@ function OffenseTeamCard({ abbr, label, color, passers, rushers, receivers, qbIn
         <span style={{ width:10, height:10, borderRadius:'50%', background:color, display:'inline-block' }} />
         <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)', letterSpacing:0.3 }}>{label || abbr}</span>
       </div>
-      <SimpleStatTable title="PASSING"   cols={['Uni','Comp','Att','Pct','Yds','TD','Int','Long','Sk','Rtg']} rows={passRows} empty="Sin pases todavía."       dense col0MaxWidth={92} />
-      <SimpleStatTable title="RUSHING"   cols={['Uni','Att','Gn','Net','Avg','TD','Long']}                     rows={rushRows} empty="Sin corridas todavía."    dense col0MaxWidth={92} />
-      <SimpleStatTable title="RECEIVING" cols={['Uni','Rec','Yds','Avg','TD','Long']}                          rows={recRows}  empty="Sin recepciones todavía." dense col0MaxWidth={92} />
+      <SimpleStatTable title="PASSING"   cols={['Jugador','Comp','Att','Pct','Yds','TD','Int','Long','Sk','Rtg']} rows={passRows} empty="Sin pases todavía."       dense col0MaxWidth={92} />
+      <SimpleStatTable title="RUSHING"   cols={['Jugador','Att','Gn','Net','Avg','TD','Long']}                     rows={rushRows} empty="Sin corridas todavía."    dense col0MaxWidth={92} />
+      <SimpleStatTable title="RECEIVING" cols={['Jugador','Rec','Yds','Avg','TD','Long']}                          rows={recRows}  empty="Sin recepciones todavía." dense col0MaxWidth={92} />
     </div>
   );
 }
@@ -926,10 +926,10 @@ function DefenseTeamCard({ abbr, label, color, defenseStats, interceptions, fumb
         <span style={{ width:10, height:10, borderRadius:'50%', background:color, display:'inline-block' }} />
         <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)', letterSpacing:0.3 }}>{label || abbr}</span>
       </div>
-      <SimpleStatTable title="SACKS"          cols={['Uni','Sacks','Sack Yds','QBH']}       rows={sacksRows}   empty="No players with these stats." dense col0MaxWidth={92} />
-      <SimpleStatTable title="PASS DEFENSE"   cols={['Uni','PBU','Int','Int Yds']}           rows={passDefRows} empty="No players with these stats." dense col0MaxWidth={92} />
-      <SimpleStatTable title="FUMBLE RETURNS" cols={['Uni','Returns','Yards','TD','Long']}   rows={fumRows}     empty="No players with these stats." dense col0MaxWidth={92} />
-      <SimpleStatTable title="INTERCEPTIONS"  cols={['Uni','Returns','Yards','TD','Long']}   rows={intRows}     empty="No players with these stats." dense col0MaxWidth={92} />
+      <SimpleStatTable title="SACKS"          cols={['Jugador','Sacks','Sack Yds','QBH']}       rows={sacksRows}   empty="No players with these stats." dense col0MaxWidth={92} />
+      <SimpleStatTable title="PASS DEFENSE"   cols={['Jugador','PBU','Int','Int Yds']}           rows={passDefRows} empty="No players with these stats." dense col0MaxWidth={92} />
+      <SimpleStatTable title="FUMBLE RETURNS" cols={['Jugador','Returns','Yards','TD','Long']}   rows={fumRows}     empty="No players with these stats." dense col0MaxWidth={92} />
+      <SimpleStatTable title="INTERCEPTIONS"  cols={['Jugador','Returns','Yards','TD','Long']}   rows={intRows}     empty="No players with these stats." dense col0MaxWidth={92} />
     </div>
   );
 }
@@ -1040,9 +1040,9 @@ function ManualOffenseTeamCard({ abbr, label, color, teamId, playerManualStats }
         <span style={{ width:10, height:10, borderRadius:'50%', background:color, display:'inline-block' }} />
         <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)', letterSpacing:0.3 }}>{label || abbr}</span>
       </div>
-      <SimpleStatTable title="PASSING"   cols={['Uni','Comp','Att','Pct','Yds','TD','Int','Long','Sk','Rtg']} rows={passRows} empty="Sin pases todavía."       dense col0MaxWidth={92} />
-      <SimpleStatTable title="RUSHING"   cols={['Uni','Att','Gn','Net','Avg','TD','Long']}                     rows={rushRows} empty="Sin corridas todavía."    dense col0MaxWidth={92} />
-      <SimpleStatTable title="RECEIVING" cols={['Uni','Rec','Yds','Avg','TD','Long']}                          rows={recRows}  empty="Sin recepciones todavía." dense col0MaxWidth={92} />
+      <SimpleStatTable title="PASSING"   cols={['Jugador','Comp','Att','Pct','Yds','TD','Int','Long','Sk','Rtg']} rows={passRows} empty="Sin pases todavía."       dense col0MaxWidth={92} />
+      <SimpleStatTable title="RUSHING"   cols={['Jugador','Att','Gn','Net','Avg','TD','Long']}                     rows={rushRows} empty="Sin corridas todavía."    dense col0MaxWidth={92} />
+      <SimpleStatTable title="RECEIVING" cols={['Jugador','Rec','Yds','Avg','TD','Long']}                          rows={recRows}  empty="Sin recepciones todavía." dense col0MaxWidth={92} />
     </div>
   );
 }
