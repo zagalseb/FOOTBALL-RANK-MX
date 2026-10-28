@@ -2762,6 +2762,58 @@ function _keyLabelOr(ref, index, fallback) {
   return _playerKeyLabel(ref, index) ?? { key: playerShortLabel(ref), label: playerShortLabel(ref) }
 }
 
+// ── Matching de nombres de los PDFs de Tableau ──────────────────────────────
+// Full name as printed in the Tableau PDFs ("APELLIDOS NOMBRES"). Uses
+// players.nombre_completo when set; otherwise falls back to apellido + nombre.
+export function rosterFullName(player) {
+  const own = (player.nombre_completo || '').trim()
+  if (own) return own
+  return `${player.apellido ?? ''} ${player.nombre ?? ''}`.trim()
+}
+
+// Canonical form used on BOTH sides of a PDF↔roster match: upper case, no
+// diacritics (NFD; ñ → N), no punctuation, collapsed spaces. Distinct from
+// normName(), which other code relies on.
+export function normalizeName(s) {
+  return String(s ?? '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/['’`´]/g, '')          // D'ANGELO → DANGELO
+    .replace(/[^A-Z0-9]+/g, ' ')      // other punctuation → separator
+    .trim()
+}
+
+// Matches one PDF name ("APELLIDOS NOMBRES") against the roster of ONE team and
+// season (the caller filters). Never picks among several candidates.
+//   exact     same SET of words (normalized, sorted) as rosterFullName(p), in any
+//             order, so "Fernando Tonda Urias" == "TONDA URIAS FERNANDO"; one player
+//   approx    (only without any exact) every word of the roster's apellido+nombre
+//             is among the PDF's words AND the PDF's first word equals the first
+//             word of the roster's apellido, one player
+//   ambiguous 2+ players satisfy the same level; `candidates` lists them
+//   none      nobody
+export function matchStatName(pdfName, rosterPlayers) {
+  const target = normalizeName(pdfName)
+  const players = rosterPlayers || []
+  if (!target) return { level: 'none' }
+
+  const wordKey = x => normalizeName(x).split(' ').filter(Boolean).sort().join(' ')
+  const targetKey = wordKey(target)
+  const exact = players.filter(p => wordKey(rosterFullName(p)) === targetKey)
+  if (exact.length === 1) return { level: 'exact', player: exact[0] }
+  if (exact.length > 1) return { level: 'ambiguous', candidates: exact }
+
+  const pdfWords = target.split(' ')
+  const approx = players.filter(p => {
+    const apWords = normalizeName(p.apellido).split(' ').filter(Boolean)
+    const words = normalizeName(`${p.apellido ?? ''} ${p.nombre ?? ''}`).split(' ').filter(Boolean)
+    return apWords.length > 0 && pdfWords[0] === apWords[0] && words.every(w => pdfWords.includes(w))
+  })
+  if (approx.length === 1) return { level: 'approx', player: approx[0] }
+  if (approx.length > 1) return { level: 'ambiguous', candidates: approx }
+  return { level: 'none' }
+}
+
 // ── Roster duplicate rule (B4, 2026-10-05) ──────────────────────────────────
 // Numbers may repeat within a team, so the check is by identity, not by number:
 //   - same number + same normalized nombre and apellido → exact duplicate (blocked)
@@ -2770,14 +2822,6 @@ function _keyLabelOr(ref, index, fallback) {
 // When both rows carry a `temporada`, only rows of the same season are compared;
 // without the field nothing is filtered by season.
 const _fullName = p => [p.nombre, p.apellido].filter(Boolean).join(' ').trim()
-
-// Full name as printed in the Tableau PDFs ("APELLIDOS NOMBRES"). Uses
-// players.nombre_completo when set; otherwise falls back to apellido + nombre.
-export function rosterFullName(player) {
-  const own = (player.nombre_completo || '').trim()
-  if (own) return own
-  return `${player.apellido ?? ''} ${player.nombre ?? ''}`.trim()
-}
 export function rosterDuplicate(candidate, roster) {
   const cn = normName(candidate.nombre), ca = normName(candidate.apellido)
   const cNameless = !cn && !ca
