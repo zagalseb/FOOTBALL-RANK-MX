@@ -770,8 +770,8 @@
           team_id: rosterTeamId,
           temporada: rosterSeason,
           number,
-          nombre: nombre || null,
-          apellido: apellido || null,
+          nombre: nombre,
+          apellido: apellido,
           nombre_completo: nombreCompleto || null,
           position: position || null,
         })
@@ -820,7 +820,7 @@
 
         try {
           const updated = await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(id)}`, {
-            number, nombre: nombre || null, apellido: apellido || null, nombre_completo: nombreCompleto || null, position: position || null,
+            number, nombre, apellido, nombre_completo: nombreCompleto || null, position: position || null,
           })
           rosterAll = rosterAll.map(p => p.id === id ? updated : p)
           applyRosterSeason()
@@ -993,8 +993,8 @@
         team_id: rosterTeamId,
         temporada: year,
         number: r.number,
-        nombre: r.nombre || null,
-        apellido: r.apellido || null,
+        nombre: r.nombre,
+        apellido: r.apellido,
         nombre_completo: r.nombre_completo || null,
         position: r.position || null,
       }))
@@ -1017,7 +1017,7 @@
           // nombre_completo only when the CSV has the column AND the cell is non-empty,
           // so an import without it (or with blanks) never wipes an existing value.
           await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(r.id)}`, {
-            nombre: r.nombre || null, apellido: r.apellido || null, position: r.position || null,
+            nombre: r.nombre, apellido: r.apellido, position: r.position || null,
             ...(r.nombre_completo ? { nombre_completo: r.nombre_completo } : {}),
           })
         }
