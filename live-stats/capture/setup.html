@@ -402,7 +402,7 @@
       <div class="card" id="roster-import-card" style="display:none">
         <div class="card__title">Importar roster desde CSV</div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:10px">
-          Formato: <code>number,nombre,apellido,position</code> (con fila de encabezado)
+          Formato: <code>number,nombre,apellido,position</code> (con fila de encabezado). Columna opcional: <code>nombre_completo</code>
         </div>
         <div class="field" style="max-width:320px;margin-bottom:10px">
           <label class="field-label" for="roster-import-year">Año de la temporada (obligatorio)</label>
@@ -670,6 +670,7 @@
               <td><input class="input" type="number" min="0" max="99" value="${p.number}" id="edit-number" style="width:64px"></td>
               <td><input class="input" type="text" value="${esc(p.nombre || '')}" id="edit-nombre"></td>
               <td><input class="input" type="text" value="${esc(p.apellido || '')}" id="edit-apellido"></td>
+              <td><input class="input" type="text" value="${esc(p.nombre_completo || '')}" id="edit-nombre-completo" placeholder="APELLIDOS NOMBRES"></td>
               <td><input class="input" type="text" value="${esc(p.position || '')}" id="edit-position" style="width:100px"></td>
               <td class="actions-cell">
                 <button class="btn btn--primary btn--sm" data-action="save-player" data-id="${p.id}">Guardar</button>
@@ -682,6 +683,7 @@
             <td class="num-cell">#${p.number}</td>
             <td>${esc(p.nombre || '—')}</td>
             <td>${esc(p.apellido || '—')}</td>
+            <td>${esc(p.nombre_completo || '—')}</td>
             <td>${esc(p.position || '—')}</td>
             <td class="actions-cell">
               <button class="btn btn--ghost btn--sm" data-action="edit-player" data-id="${p.id}">Editar</button>
@@ -693,10 +695,10 @@
       container.innerHTML = `
         <table class="setup-table">
           <thead>
-            <tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Posición</th><th></th></tr>
+            <tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Nombre completo</th><th>Posición</th><th></th></tr>
           </thead>
           <tbody>
-            ${rows || `<tr><td colspan="5"><div class="empty-state">sin roster ${rosterSeason}</div></td></tr>`}
+            ${rows || `<tr><td colspan="6"><div class="empty-state">sin roster ${rosterSeason}</div></td></tr>`}
           </tbody>
         </table>
 
@@ -715,6 +717,10 @@
             <div class="field">
               <label class="field-label">Apellido</label>
               <input class="input" type="text" id="new-player-apellido">
+            </div>
+            <div class="field">
+              <label class="field-label">Nombre completo (opcional, como sale en el PDF: APELLIDOS NOMBRES)</label>
+              <input class="input" type="text" id="new-player-nombre-completo">
             </div>
             <div class="field">
               <label class="field-label">Posición</label>
@@ -742,6 +748,7 @@
       const number   = parseInt(numberInput.value, 10)
       const nombre   = nombreInput.value.trim()
       const apellido = apellidoInput.value.trim()
+      const nombreCompleto = document.getElementById('new-player-nombre-completo').value.trim()
       const position = posInput.value.trim()
 
       if (isNaN(number) || number < 0 || number > 99) {
@@ -765,6 +772,7 @@
           number,
           nombre: nombre || null,
           apellido: apellido || null,
+          nombre_completo: nombreCompleto || null,
           position: position || null,
         })
         rosterAll.push(created)
@@ -797,6 +805,7 @@
         const number   = parseInt(document.getElementById('edit-number').value, 10)
         const nombre   = document.getElementById('edit-nombre').value.trim()
         const apellido = document.getElementById('edit-apellido').value.trim()
+        const nombreCompleto = document.getElementById('edit-nombre-completo').value.trim()
         const position = document.getElementById('edit-position').value.trim()
 
         if (isNaN(number) || number < 0 || number > 99) {
@@ -811,7 +820,7 @@
 
         try {
           const updated = await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(id)}`, {
-            number, nombre: nombre || null, apellido: apellido || null, position: position || null,
+            number, nombre: nombre || null, apellido: apellido || null, nombre_completo: nombreCompleto || null, position: position || null,
           })
           rosterAll = rosterAll.map(p => p.id === id ? updated : p)
           applyRosterSeason()
@@ -894,6 +903,7 @@
         number:   header.indexOf('number'),
         nombre:   header.indexOf('nombre'),
         apellido: header.indexOf('apellido'),
+        nombre_completo: header.indexOf('nombre_completo'),
         position: header.indexOf('position'),
       }
       if (idx.number === -1) return { error: 'El CSV debe tener una columna "number" en el encabezado.' }
@@ -905,7 +915,8 @@
         numberRaw: (cols[idx.number] ?? '').trim(),
         nombre:    idx.nombre   >= 0 ? (cols[idx.nombre]   ?? '').trim() : '',
         apellido:  idx.apellido >= 0 ? (cols[idx.apellido] ?? '').trim() : '',
-        position:  idx.position >= 0 ? (cols[idx.position] ?? '').trim() : '',
+        nombre_completo: idx.nombre_completo >= 0 ? (cols[idx.nombre_completo] ?? '').trim() : '',
+        position: idx.position >= 0 ? (cols[idx.position] ?? '').trim() : '',
       }))
       const year = importYear()
       if (!year) return { error: 'Indica el año de la temporada antes de importar.' }
@@ -933,7 +944,7 @@
         if (r.status === 'error') {
           return `<tr>
             <td class="num-cell">${esc(r.numberRaw || '—')}</td>
-            <td colspan="3" style="color:var(--text3)">${esc(r.reason)}</td>
+            <td colspan="4" style="color:var(--text3)">${esc(r.reason)}</td>
             <td><span class="import-badge import-badge--error">Error</span></td>
           </tr>`
         }
@@ -942,6 +953,7 @@
             <td class="num-cell">#${r.number}</td>
             <td>${diffCell(r.old.nombre, r.nombre)}</td>
             <td>${diffCell(r.old.apellido, r.apellido)}</td>
+            <td>${r.nombre_completo ? diffCell(r.old.nombre_completo, r.nombre_completo) : esc(r.old.nombre_completo || '—')}</td>
             <td>${diffCell(r.old.position, r.position)}</td>
             <td><span class="import-badge import-badge--update">Actualizar</span></td>
           </tr>`
@@ -950,6 +962,7 @@
           <td class="num-cell">#${r.number}</td>
           <td>${esc(r.nombre || '—')}</td>
           <td>${esc(r.apellido || '—')}</td>
+          <td>${esc(r.nombre_completo || '—')}</td>
           <td>${esc(r.position || '—')}</td>
           <td><span class="import-badge import-badge--new">Nuevo</span></td>
         </tr>`
@@ -957,7 +970,7 @@
 
       el.innerHTML = `
         <table class="setup-table">
-          <thead><tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Posición</th><th>Status</th></tr></thead>
+          <thead><tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Nombre completo</th><th>Posición</th><th>Status</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
         <div class="form-actions" style="margin-top:12px">
@@ -982,6 +995,7 @@
         number: r.number,
         nombre: r.nombre || null,
         apellido: r.apellido || null,
+        nombre_completo: r.nombre_completo || null,
         position: r.position || null,
       }))
       // Never update a row outside the import season, even if an id were stale.
@@ -1000,8 +1014,11 @@
         // updated by their players.id (the team_id,number unique key is not relied on).
         if (toInsert.length) await sbWrite('POST', 'players', toInsert)
         for (const r of toUpdate) {
+          // nombre_completo only when the CSV has the column AND the cell is non-empty,
+          // so an import without it (or with blanks) never wipes an existing value.
           await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(r.id)}`, {
             nombre: r.nombre || null, apellido: r.apellido || null, position: r.position || null,
+            ...(r.nombre_completo ? { nombre_completo: r.nombre_completo } : {}),
           })
         }
         showToast(`${insertedCount} insertados, ${updatedCount} actualizados, ${errorCount} con error (no importados)`)

@@ -2770,6 +2770,14 @@ function _keyLabelOr(ref, index, fallback) {
 // When both rows carry a `temporada`, only rows of the same season are compared;
 // without the field nothing is filtered by season.
 const _fullName = p => [p.nombre, p.apellido].filter(Boolean).join(' ').trim()
+
+// Full name as printed in the Tableau PDFs ("APELLIDOS NOMBRES"). Uses
+// players.nombre_completo when set; otherwise falls back to apellido + nombre.
+export function rosterFullName(player) {
+  const own = (player.nombre_completo || '').trim()
+  if (own) return own
+  return `${player.apellido ?? ''} ${player.nombre ?? ''}`.trim()
+}
 export function rosterDuplicate(candidate, roster) {
   const cn = normName(candidate.nombre), ca = normName(candidate.apellido)
   const cNameless = !cn && !ca
@@ -2846,7 +2854,7 @@ export function classifyRosterImport(rows, rosterAll, season) {
     if (same) {
       return {
         ...r, status: 'update', number, id: same.id,
-        old: { nombre: same.nombre, apellido: same.apellido, position: same.position },
+        old: { nombre: same.nombre, apellido: same.apellido, nombre_completo: same.nombre_completo, position: same.position },
       }
     }
     const dup = rosterDuplicate({ number, nombre: r.nombre, apellido: r.apellido, temporada: season }, roster)
