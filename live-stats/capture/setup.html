@@ -670,7 +670,7 @@
               <td><input class="input" type="number" min="0" max="99" value="${p.number}" id="edit-number" style="width:64px"></td>
               <td><input class="input" type="text" value="${esc(p.nombre || '')}" id="edit-nombre"></td>
               <td><input class="input" type="text" value="${esc(p.apellido || '')}" id="edit-apellido"></td>
-              <td><input class="input" type="text" value="${esc(p.nombre_completo || '')}" id="edit-nombre-completo" placeholder="APELLIDOS NOMBRES"></td>
+              <td><input class="input" type="text" value="${esc(p.nombre_completo || '')}" id="edit-nombre-completo" placeholder="en cualquier orden"></td>
               <td><input class="input" type="text" value="${esc(p.position || '')}" id="edit-position" style="width:100px"></td>
               <td class="actions-cell">
                 <button class="btn btn--primary btn--sm" data-action="save-player" data-id="${p.id}">Guardar</button>
@@ -719,7 +719,7 @@
               <input class="input" type="text" id="new-player-apellido">
             </div>
             <div class="field">
-              <label class="field-label">Nombre completo (opcional, como sale en el PDF: APELLIDOS NOMBRES)</label>
+              <label class="field-label">Nombre completo (opcional, en cualquier orden)</label>
               <input class="input" type="text" id="new-player-nombre-completo">
             </div>
             <div class="field">
