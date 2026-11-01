@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Pronostica los juegos pendientes de la Liga Mayor ONEFA 2026 y mira cómo queda la tabla general con el reglamento de desempate.">
+  <title>Simulador ONEFA 2026</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body data-tab="pronosticos" data-mode="simple">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Liga Mayor ONEFA 2026</h1>
+      <p>Simulador de la tabla general</p>
+    </div>
+    <div class="toolbar">
+      <div class="segmented" role="radiogroup" aria-label="Modo de pronóstico">
+        <button type="button" role="radio" data-mode="simple" aria-checked="true">Simple</button>
+        <button type="button" role="radio" data-mode="completo" aria-checked="false">Completo</button>
+      </div>
+      <button type="button" class="btn" id="share-btn">Compartir</button>
+      <button type="button" class="btn btn-ghost" id="reset-btn">Reiniciar todo</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div id="share-panel" class="share-panel" hidden>
+      <label for="share-url">Link de este escenario</label>
+      <div class="share-row">
+        <input id="share-url" type="text" readonly>
+        <button type="button" class="btn" id="copy-btn">Copiar</button>
+      </div>
+      <p class="hint" id="share-status" aria-live="polite"></p>
+    </div>
+
+    <div id="notices" aria-live="polite"></div>
+
+    <div id="simple-banner" class="banner banner-warn" role="note">
+      En modo simple los empates que se resuelven por puntos en contra no se pueden calcular sin marcadores.
+      El orden de esos equipos es provisional y puede cambiar.
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Vistas">
+      <button type="button" role="tab" data-tab="pronosticos" aria-selected="true"><span class="lbl-m">Pronósticos <span class="count" id="tab-count"></span></span><span class="lbl-d">Tabla y pronósticos</span></button>
+      <button type="button" role="tab" data-tab="tabla" aria-selected="false">Tabla</button>
+      <button type="button" role="tab" data-tab="equipos" aria-selected="false">Equipos</button>
+    </nav>
+
+    <main class="layout">
+      <section class="panel panel-table" id="view-tabla" aria-labelledby="table-title">
+        <div class="panel-head">
+          <h2 id="table-title">Tabla general</h2>
+          <p class="hint">Toca un equipo para ver su desempate.</p>
+        </div>
+        <div id="uncertain-notice"></div>
+        <div class="table-wrap">
+          <table class="standings">
+            <thead>
+              <tr>
+                <th scope="col" class="c-pos">#</th>
+                <th scope="col" class="c-mov" title="Lugares vs tabla real (solo juegos jugados)">±</th>
+                <th scope="col" class="c-team">Equipo</th>
+                <th scope="col" title="Ganados">G</th>
+                <th scope="col" title="Perdidos">P</th>
+                <th scope="col" title="Puntos">Pts</th>
+                <th scope="col" title="Puntos a favor">PF</th>
+                <th scope="col" title="Puntos en contra">PC</th>
+              </tr>
+            </thead>
+            <tbody id="standings-body">
+              <tr><td colspan="8" class="loading">Cargando calendario…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="legend">
+          <li><span class="swatch swatch-playoff"></span>Los 8 primeros clasifican a playoffs</li>
+          <li><span class="mov up">▲</span><span class="mov down">▼</span> lugares contra la tabla real</li>
+          <li><span class="prov">≈</span> posición provisional</li>
+          <li><span class="unres">A–Z</span> empate sin resolver (orden alfabético)</li>
+        </ul>
+        <details class="rules">
+          <summary>Reglas de desempate</summary>
+          <ol>
+            <li>Victoria = 2 puntos, derrota = 0. Se ordena por puntos.</li>
+            <li>Empate de 2: juego entre sí; si no jugaron, menos puntos en contra (PC).</li>
+            <li>Empate de 3 o más: si uno le ganó a todos los demás, queda arriba. De los restantes, si quedan 2 se usa la regla de 2; si quedan 3 o más, menos PC. Un ciclo (A&gt;B, B&gt;C, C&gt;A) se resuelve por PC.</li>
+            <li>Si persiste: goal average = PF ÷ PC (mayor es mejor; con PC = 0 es infinito).</li>
+            <li>Si aún persiste: orden alfabético, marcado como empate sin resolver.</li>
+          </ol>
+          <p>PF y PC son de toda la temporada.</p>
+        </details>
+      </section>
+
+      <section class="panel panel-preds" id="view-pronosticos" aria-labelledby="preds-title">
+        <div class="panel-head">
+          <h2 id="preds-title">Pronósticos</h2>
+          <p class="hint" id="preds-summary"></p>
+          <label class="toggle"><input type="checkbox" id="show-played"> Mostrar juegos jugados</label>
+        </div>
+        <div id="weeks"></div>
+      </section>
+
+      <section class="panel panel-team" id="view-equipos" aria-labelledby="team-title">
+        <div class="panel-head">
+          <h2 id="team-title">Calendario por equipo</h2>
+          <select id="team-select" class="team-select" aria-label="Elegir equipo"></select>
+        </div>
+        <div id="team-view"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Datos: <code>Calendario_2026.xlsx</code>. Los pronósticos se guardan solo en este navegador.</p>
+    </footer>
+  </div>
+</body>
+</html>

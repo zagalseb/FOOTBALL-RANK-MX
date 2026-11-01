@@ -2841,6 +2841,27 @@ export function rosterDuplicate(candidate, roster) {
   return null
 }
 
+// Roster players of the same team/season with the SAME number and a SIMILAR name (they
+// share a word of 3+ letters across nombre/apellido/nombre_completo). rosterDuplicate only
+// stops identical identities, so "Omar Vega #3" could be added next to "Omar Rios #3"
+// (the same person written differently) and later split his stats in two roster rows
+// (a real case, 2026-10-28). Only a warning: the caller asks the operator before adding.
+// Same season filter as rosterDuplicate. Returns [{ player, shared: [words] }].
+export function similarRosterPlayers(candidate, roster) {
+  const words = p => new Set(normalizeName([p.nombre_completo, p.nombre, p.apellido].filter(Boolean).join(' ')).split(' ').filter(w => w.length > 2))
+  const cw = words(candidate)
+  const out = []
+  for (const p of roster || []) {
+    if (candidate.id != null && p.id === candidate.id) continue
+    if (candidate.temporada != null && p.temporada != null && p.temporada !== candidate.temporada) continue
+    if (Number(p.number) !== Number(candidate.number)) continue
+    const pw = words(p)
+    const shared = [...cw].filter(w => pw.has(w))
+    if (shared.length) out.push({ player: p, shared })
+  }
+  return out
+}
+
 // ── Temporada (preparación, 2026-10-05) ─────────────────────────────────────
 // TEMPORADA_ACTIVA: season new roster rows are written to.
 // PLAYERS_HAS_TEMPORADA: writes send players.temporada only once that column
@@ -2912,4 +2933,194 @@ export function countOrphans(keys) {
   let n = 0
   for (const k of keys) if (isOrphanKey(k)) n++
   return n
+}
+
+// ── Season leaders (viewer/leaders.html, 2026-10-28) ────────────────────────
+// Pure aggregation of player_game_stats_manual over a season's final games.
+// games: rows of `games`. rows: player_game_stats_manual rows joined with
+// `player` ({ id, number, nombre, apellido, team_id }), as viewer.html loads them.
+
+// Minimum attempts for averages/rating, per game of the player's TEAM that has
+// stats in the current filter (not per game of the player). Totals have none.
+export const LEADER_MIN_PER_TEAM_GAME = { pass: 10, rush: 5, rec: 1.5 }
+
+// Keys that are averages/rating: rankLeaders hides non-qualifying players for them.
+export const LEADER_AVG_KEYS = new Set(['pct', 'ypa', 'ypg', 'rating', 'ypc', 'ypr'])
+
+// Final games of one season, TEST excluded. Season = getGameTemporada (games.temporada,
+// else kickoff year). semana/teamId are optional filters (null = all).
+export function selectLeaderGames(games, { temporada, semana = null, teamId = null } = {}) {
+  return (games || []).filter(g =>
+    g.status === 'final' && g.semana !== 'TEST' &&
+    getGameTemporada(g) === String(temporada) &&
+    (semana == null || String(g.semana) === String(semana)) &&
+    (teamId == null || g.home_team_id === teamId || g.away_team_id === teamId))
+}
+
+// One row per (game_id, player_id). On a repeat the later updated_at wins, else the first.
+export function dedupStatRows(rows) {
+  const byKey = new Map()
+  let duplicates = 0
+  for (const r of rows || []) {
+    const k = `${r.game_id}|${r.player_id}`
+    const prev = byKey.get(k)
+    if (!prev) { byKey.set(k, r); continue }
+    duplicates++
+    if (String(r.updated_at ?? '') > String(prev.updated_at ?? '')) byKey.set(k, r)
+  }
+  return { rows: [...byKey.values()], duplicates }
+}
+
+// A row counts toward a category (and its GP) only if the player did something in it.
+const LEADER_ACTIVE = {
+  pass: r => (r.pass_att || 0) > 0 || (r.pass_yds || 0) !== 0,
+  rush: r => (r.rush_att || 0) > 0 || (r.rush_yds || 0) !== 0,
+  rec:  r => (r.rec || 0) > 0 || (r.rec_yds || 0) !== 0,
+}
+
+// teams (optional): Map or object id -> { abreviatura }, only used to build `label`.
+// Returns { games: { total, withData }, teamGames, players: { pass, rush, rec },
+//           excluded, duplicates }.
+//   - games.total: games that match the filters; withData: those with at least one
+//     valid player row (with teamId, only that team's rows count).
+//   - teamGames: { [teamId]: games of that team with stats } — base of the minimums.
+//   - excluded: rows dropped for noPlayer / noTeam / teamNotInGame (never ranked).
+//   - suspected: same game + team + jersey under two player_ids (possible double count);
+//     the players involved carry dupSuspect: true. Reported, never merged.
+// Aggregates by player_id, never by name or number.
+export function buildLeaders(games, rows, { temporada, semana = null, teamId = null, teams = null } = {}) {
+  const sel = selectLeaderGames(games, { temporada, semana, teamId })
+  const gameById = new Map(sel.map(g => [g.id, g]))
+  const { rows: uniq, duplicates } = dedupStatRows((rows || []).filter(r => gameById.has(r.game_id)))
+
+  const excluded = { noPlayer: 0, noTeam: 0, teamNotInGame: 0 }
+  const valid = []
+  for (const r of uniq) {
+    const p = r.player
+    if (!p) { excluded.noPlayer++; continue }
+    if (!p.team_id) { excluded.noTeam++; continue }
+    const g = gameById.get(r.game_id)
+    if (p.team_id !== g.home_team_id && p.team_id !== g.away_team_id) { excluded.teamNotInGame++; continue }
+    if (teamId != null && p.team_id !== teamId) continue
+    valid.push(r)
+  }
+
+  // Same game + team + jersey under two player_ids: probably one person on two roster rows
+  // (e.g. a 2025 and a 2026 row). Never merged or dropped here, only reported.
+  const byNumber = new Map()
+  for (const r of valid) {
+    const k = `${r.game_id}|${r.player.team_id}|${Number(r.player.number)}`
+    if (!byNumber.has(k)) byNumber.set(k, [])
+    byNumber.get(k).push(r)
+  }
+  const suspected = []
+  const suspectIds = new Set()
+  for (const rs of byNumber.values()) {
+    if (rs.length < 2) continue
+    const g = gameById.get(rs[0].game_id)
+    suspected.push({
+      gameId: g.id, semana: g.semana, teamId: rs[0].player.team_id, number: Number(rs[0].player.number),
+      players: rs.map(r => ({ playerId: r.player_id, nombre: r.player.nombre, apellido: r.player.apellido, temporada: r.player.temporada ?? null })),
+    })
+    for (const r of rs) suspectIds.add(r.player_id)
+  }
+
+  const teamGameSets = new Map()
+  const withData = new Set()
+  const byPlayer = new Map()
+  for (const r of valid) {
+    withData.add(r.game_id)
+    const tid = r.player.team_id
+    if (!teamGameSets.has(tid)) teamGameSets.set(tid, new Set())
+    teamGameSets.get(tid).add(r.game_id)
+    if (!byPlayer.has(r.player_id)) byPlayer.set(r.player_id, [])
+    byPlayer.get(r.player_id).push(r)
+  }
+
+  const abbrOf = id => (teams instanceof Map ? teams.get(id) : teams?.[id])?.abreviatura
+  const players = { pass: [], rush: [], rec: [] }
+  for (const [pid, prs] of byPlayer) {
+    const p = prs[0].player
+    const tg = teamGameSets.get(p.team_id).size
+    const abbr = abbrOf(p.team_id)
+    const base = {
+      playerId: pid, teamId: p.team_id, number: p.number, nombre: p.nombre, apellido: p.apellido,
+      label: abbr ? `${playerShortLabel(p)} · ${abbr}` : playerShortLabel(p), teamGames: tg,
+      dupSuspect: suspectIds.has(pid),
+    }
+    const sum = (act, f) => act.reduce((a, r) => a + (Number(r[f]) || 0), 0)
+
+    const ap = prs.filter(LEADER_ACTIVE.pass)
+    if (ap.length) {
+      const att = sum(ap, 'pass_att'), comp = sum(ap, 'pass_comp'), yds = sum(ap, 'pass_yds')
+      const td = sum(ap, 'pass_td'), int = sum(ap, 'pass_int'), gp = ap.length
+      players.pass.push({ ...base, gp, att, comp, yds, td, int,
+        pct: att ? (comp / att) * 100 : null, ypa: att ? yds / att : null, ypg: yds / gp,
+        rating: _passerRating(comp, att, yds, td, int),
+        minAtt: LEADER_MIN_PER_TEAM_GAME.pass * tg, qualifies: att >= LEADER_MIN_PER_TEAM_GAME.pass * tg })
+    }
+    const ar = prs.filter(LEADER_ACTIVE.rush)
+    if (ar.length) {
+      const att = sum(ar, 'rush_att'), yds = sum(ar, 'rush_yds'), td = sum(ar, 'rush_td')
+      const fum = sum(ar, 'rush_fum'), gp = ar.length
+      players.rush.push({ ...base, gp, att, yds, td, fum,
+        ypc: att ? yds / att : null, ypg: yds / gp,
+        minAtt: LEADER_MIN_PER_TEAM_GAME.rush * tg, qualifies: att >= LEADER_MIN_PER_TEAM_GAME.rush * tg })
+    }
+    const ac = prs.filter(LEADER_ACTIVE.rec)
+    if (ac.length) {
+      const rec = sum(ac, 'rec'), yds = sum(ac, 'rec_yds'), td = sum(ac, 'rec_td')
+      const fum = sum(ac, 'rec_fum'), gp = ac.length
+      players.rec.push({ ...base, gp, rec, yds, td, fum,
+        ypr: rec ? yds / rec : null, ypg: yds / gp,
+        minRec: LEADER_MIN_PER_TEAM_GAME.rec * tg, qualifies: rec >= LEADER_MIN_PER_TEAM_GAME.rec * tg })
+    }
+  }
+
+  return {
+    games: { total: sel.length, withData: withData.size },
+    teamGames: Object.fromEntries([...teamGameSets].map(([id, s]) => [id, s.size])),
+    players, excluded, duplicates, suspected,
+  }
+}
+
+// Sorted copy of `list` by `key` descending, with `rank` (ties share a rank). Averages
+// (LEADER_AVG_KEYS) only rank players that qualify, unless showAll. Totals always rank everyone.
+export function rankLeaders(list, key, { showAll = false, limit = null } = {}) {
+  let xs = list.filter(r => r[key] != null)
+  if (LEADER_AVG_KEYS.has(key) && !showAll) xs = xs.filter(r => r.qualifies)
+  xs = xs.slice().sort((a, b) => b[key] - a[key] || b.yds - a.yds || a.label.localeCompare(b.label))
+  let rank = 0
+  xs = xs.map((r, i) => ({ ...r, rank: i > 0 && r[key] === xs[i - 1][key] ? rank : (rank = i + 1) }))
+  return limit ? xs.slice(0, limit) : xs
+}
+
+// Reads EVERY row of a paged endpoint and checks the count against the DB's.
+// fetchPage(offset, limit) -> { rows, total } with total = exact count (Content-Range
+// with Prefer: count=exact). Always paged, even when the first page is not full. The
+// next offset is rows read so far, so a server cap below `limit` loses nothing. Throws
+// if rows read != total, if total changes while reading, or if keyOf(row) repeats
+// (rows shifted between pages).
+export async function fetchAllRows(fetchPage, { pageSize = 1000, keyOf = null } = {}) {
+  const all = []
+  let total = null
+  while (total == null || all.length < total) {
+    const page = await fetchPage(all.length, pageSize)
+    if (!page || !Array.isArray(page.rows)) throw new Error('Respuesta de página inválida')
+    if (!Number.isInteger(page.total)) throw new Error('La respuesta no trae el conteo total de filas')
+    if (total == null) total = page.total
+    else if (page.total !== total) throw new Error(`El total cambió durante la lectura (${total} → ${page.total}); recarga la página`)
+    if (!page.rows.length) break
+    all.push(...page.rows)
+  }
+  if (all.length !== total) throw new Error(`Filas leídas (${all.length}) distintas al conteo de la base (${total})`)
+  if (keyOf) {
+    const seen = new Set()
+    for (const r of all) {
+      const k = keyOf(r)
+      if (seen.has(k)) throw new Error(`Fila repetida al paginar (${k}); los datos cambiaron durante la lectura`)
+      seen.add(k)
+    }
+  }
+  return all
 }

@@ -514,7 +514,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
-    import { rosterDuplicate, normName, TEMPORADA_ACTIVA, TEMPORADAS_DISPONIBLES, classifyRosterImport } from '../../shared/stats-lib.js'
+    import { rosterDuplicate, similarRosterPlayers, normName, TEMPORADA_ACTIVA, TEMPORADAS_DISPONIBLES, classifyRosterImport } from '../../shared/stats-lib.js'
     // getAuthHeaders() carries the signed-in operator's session token — used
     // for all writes below (games/players/teams INSERT/UPDATE/DELETE now
     // require role=authenticated). Reads (sbGet) stay on the static anon
@@ -765,6 +765,11 @@
         return
       }
 
+      // rosterDuplicate only stops an identical identity. Same number + a similar name is probably
+      // the same person written differently: a second roster row would split (or double) his stats.
+      const similar = similarRosterPlayers({ number, nombre, apellido, nombre_completo: nombreCompleto, temporada: rosterSeason }, roster)
+      if (similar.length && !confirm(`Ya hay en este equipo (temporada ${rosterSeason}) un jugador con ese número y un nombre parecido: ${similar.map(similarTag).join(', ')}.\n\nSi es la misma persona, edita ese jugador en lugar de crear otro: dos filas de la misma persona duplican sus stats.\n\n¿Crear de todos modos como un jugador distinto?`)) return
+
       try {
         const created = await sbWrite('POST', 'players', {
           team_id: rosterTeamId,
@@ -930,6 +935,9 @@
       return `<span style="color:var(--text3);text-decoration:line-through">${esc(o)}</span> → ${esc(n)}`
     }
 
+    // "#3 Omar Rios" for the same-number / similar-name warnings.
+    const similarTag = s => `#${s.player.number} ${[s.player.nombre, s.player.apellido].filter(Boolean).join(' ')}`
+
     function renderImportPreview() {
       const el = document.getElementById('roster-import-preview')
       if (!importRows.length) { el.innerHTML = ''; return }
@@ -958,13 +966,14 @@
             <td><span class="import-badge import-badge--update">Actualizar</span></td>
           </tr>`
         }
+        const similar = similarRosterPlayers({ number: r.number, nombre: r.nombre, apellido: r.apellido, nombre_completo: r.nombre_completo, temporada: year }, rosterAll)
         return `<tr>
           <td class="num-cell">#${r.number}</td>
           <td>${esc(r.nombre || '—')}</td>
           <td>${esc(r.apellido || '—')}</td>
           <td>${esc(r.nombre_completo || '—')}</td>
           <td>${esc(r.position || '—')}</td>
-          <td><span class="import-badge import-badge--new">Nuevo</span></td>
+          <td><span class="import-badge import-badge--new">Nuevo</span>${similar.length ? `<div class="form-error form-error--visible" style="margin-top:4px">Mismo número y nombre parecido a ${similar.map(x => esc(similarTag(x))).join(', ')}: ¿es la misma persona?</div>` : ''}</td>
         </tr>`
       }).join('')
 
@@ -1005,7 +1014,16 @@
       const updatedCount  = validRows.filter(r => r.status === 'update').length
       const errorCount    = importRows.length - validRows.length
 
-      if (!confirm(`${validRows.length} jugador${validRows.length !== 1 ? 'es' : ''} se guardarán en temporada ${year} (${insertedCount} nuevo${insertedCount !== 1 ? 's' : ''}, ${updatedCount} actualizado${updatedCount !== 1 ? 's' : ''}). ¿Continuar?`)) return
+      // New rows that share a number and part of a name with someone already in the roster.
+      const similarNew = validRows.filter(r => r.status === 'new').map(r => ({
+        r, hits: similarRosterPlayers({ number: r.number, nombre: r.nombre, apellido: r.apellido, nombre_completo: r.nombre_completo, temporada: year }, rosterAll),
+      })).filter(x => x.hits.length)
+      const similarNote = similarNew.length
+        ? `\n\nOJO: ${similarNew.length} jugador${similarNew.length !== 1 ? 'es' : ''} nuevo${similarNew.length !== 1 ? 's' : ''} comparte${similarNew.length !== 1 ? 'n' : ''} número y parte del nombre con alguien del roster (¿la misma persona?):\n` +
+          similarNew.slice(0, 8).map(x => `• #${x.r.number} ${[x.r.nombre, x.r.apellido].filter(Boolean).join(' ')} ≈ ${x.hits.map(similarTag).join(', ')}`).join('\n') + (similarNew.length > 8 ? '\n…' : '')
+        : ''
+
+      if (!confirm(`${validRows.length} jugador${validRows.length !== 1 ? 'es' : ''} se guardarán en temporada ${year} (${insertedCount} nuevo${insertedCount !== 1 ? 's' : ''}, ${updatedCount} actualizado${updatedCount !== 1 ? 's' : ''}).${similarNote}\n\n¿Continuar?`)) return
 
       btn.disabled = true
       btn.textContent = 'Importando…'

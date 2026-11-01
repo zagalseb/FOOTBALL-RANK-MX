@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Líderes — Cover Cero ONEFA 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent:    #e63329;
+      --text:      #111827;
+      --text2:     #6b7280;
+      --text3:     #9ca3af;
+      --border:    #e5e7eb;
+      --border2:   #d1d5db;
+      --bg:        #f9fafb;
+      --card-bg:   #ffffff;
+      --warn-bg:   #fffbeb;
+      --warn-bd:   #fcd34d;
+      --warn-tx:   #92400e;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER (same as index.html) ── */
+    .site-header { background: #fff; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+    .site-header__inner {
+      max-width: 1200px; margin: 0 auto; padding: 0 20px; height: 60px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .brand { text-decoration: none; display: flex; align-items: center; gap: 10px; }
+    .wordmark { display: flex; flex-direction: column; line-height: 1; }
+    .wordmark__line { display: flex; align-items: baseline; font-size: 20px; font-weight: 800; line-height: 1; }
+    .wordmark__cover {
+      color: #fff; -webkit-text-stroke: 1px #000;
+      text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+      letter-spacing: 0.035em; margin-right: 0.06em;
+    }
+    .wordmark__cero { color: #000; }
+    .wordmark__stats { font-size: 8px; font-weight: 700; letter-spacing: 0.15em; color: #000; margin-top: 1px; }
+    .brand__league { font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; }
+    .site-nav { display: flex; gap: 4px; }
+    .site-nav a {
+      text-decoration: none; font-size: 13px; font-weight: 600; color: var(--text2);
+      padding: 6px 12px; border-radius: 8px;
+    }
+    .site-nav a:hover { color: var(--text); background: #f3f4f6; }
+    .site-nav a[aria-current="page"] { color: var(--text); background: #f3f4f6; }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+    .page-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
+    .page-sub { font-size: 13px; color: var(--text3); margin-bottom: 18px; }
+
+    /* ── FILTERS ── */
+    .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-bottom: 12px; }
+    .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .field label { font-size: 11px; font-weight: 700; color: var(--text2); letter-spacing: 0.06em; text-transform: uppercase; }
+    .field select {
+      font: inherit; font-size: 14px; font-weight: 500; color: var(--text);
+      background: #fff; border: 1px solid var(--border2); border-radius: 8px;
+      padding: 8px 32px 8px 12px; min-width: 150px; max-width: 100%; height: 38px;
+    }
+    .coverage {
+      display: inline-flex; align-items: center; height: 38px; padding: 0 12px;
+      background: #fff; border: 1px solid var(--border2); border-radius: 8px;
+      font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap;
+    }
+    .coverage--partial { border-color: var(--warn-bd); background: var(--warn-bg); color: var(--warn-tx); }
+
+    .notice {
+      background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-tx);
+      border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
+    }
+    .notice strong { font-weight: 700; }
+    .dupflag { color: var(--warn-tx); cursor: help; font-size: 12px; }
+    .notice details { margin-top: 6px; }
+    .notice summary { cursor: pointer; font-weight: 600; }
+    .notice ul { margin: 6px 0 0 18px; }
+    .footnote { font-size: 12px; color: var(--text3); margin-top: 18px; }
+
+    /* ── TOP-5 CARDS ── */
+    .section-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; margin: 26px 0 12px; }
+    .cards { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 600px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 960px) { .cards { grid-template-columns: repeat(3, 1fr); } }
+    .lcard { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow-sm); min-width: 0; }
+    .lcard__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+    .lcard__title { font-size: 12px; font-weight: 700; color: var(--text2); letter-spacing: 0.06em; text-transform: uppercase; }
+    .lcard__tag { font-size: 10px; font-weight: 600; color: var(--text3); white-space: nowrap; }
+    .lrow { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); min-width: 0; }
+    .lrow__rank { width: 18px; text-align: center; font-size: 12px; font-weight: 700; color: var(--text3); flex-shrink: 0; }
+    .lrow__who { flex: 1; min-width: 0; }
+    .lrow__name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lrow__detail { font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lrow__val { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; flex-shrink: 0; }
+    .lrow--first .lrow__val { color: var(--accent); }
+    .lcard__empty { padding: 18px 0 8px; text-align: center; color: var(--text3); font-size: 13px; }
+
+    /* ── LOGO ── */
+    .logo-wrap { position: relative; width: 28px; height: 28px; flex-shrink: 0; }
+    .logo-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .logo-fallback {
+      display: none; width: 28px; height: 28px; border-radius: 50%;
+      align-items: center; justify-content: center; font-size: 9px; font-weight: 800;
+    }
+    .logo-wrap.img-error img { display: none; }
+    .logo-wrap.img-error .logo-fallback { display: flex; }
+
+    /* ── TABLES ── */
+    .tcard { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-sm); margin-bottom: 18px; overflow: hidden; }
+    .tcard__head { padding: 14px 16px 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .tcard__title { font-size: 16px; font-weight: 700; }
+    .tcard__count { font-size: 12px; color: var(--text3); }
+    .tscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.lt { width: 100%; border-collapse: collapse; }
+    .lt th {
+      font-size: 10px; font-weight: 700; color: var(--text3); letter-spacing: 0.05em; text-transform: uppercase;
+      text-align: center; padding: 8px 10px; white-space: nowrap; background: #fff; border-bottom: 1px solid var(--border);
+    }
+    .lt th button {
+      font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; background: none; border: none;
+      cursor: pointer; padding: 0; display: inline-flex; align-items: center; gap: 3px;
+    }
+    .lt th button:hover { color: var(--text); }
+    .lt th[aria-sort="ascending"], .lt th[aria-sort="descending"] { color: var(--text); }
+    .lt th:first-child, .lt td:first-child { text-align: left; position: sticky; left: 0; background: #fff; z-index: 1; }
+    .lt td { font-size: 13px; padding: 7px 10px; text-align: center; white-space: nowrap; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    .lt td.dim { color: var(--text3); }
+    .lt td.sorted { font-weight: 700; }
+    .who { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 170px; }
+    .tfoot { padding: 10px 16px 14px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text2); display: flex; flex-direction: column; gap: 6px; }
+    .tfoot__min { color: var(--text); font-weight: 600; }
+    .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; width: fit-content; }
+    .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .tempty { padding: 28px 16px; text-align: center; color: var(--text3); font-size: 13px; }
+
+    /* ── STATES ── */
+    .state-box { padding: 56px 20px; text-align: center; color: var(--text3); }
+    .state-box__icon  { font-size: 40px; margin-bottom: 14px; }
+    .state-box__title { font-size: 17px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+    .state-box__msg   { font-size: 13px; color: var(--text3); margin: 0 auto 20px; max-width: 520px; }
+    .btn-retry {
+      display: inline-block; background: var(--text); color: #fff; border: none; border-radius: 8px;
+      font-family: inherit; font-size: 13px; font-weight: 600; padding: 10px 22px; cursor: pointer;
+    }
+    .btn-retry:hover { opacity: 0.82; }
+    .skel {
+      background: linear-gradient(90deg, #f3f4f6 25%, #e9eaec 50%, #f3f4f6 75%);
+      background-size: 200% 100%; border-radius: 12px; animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    @media (max-width: 480px) {
+      .container { padding: 18px 14px 48px; }
+      .site-header__inner { padding: 0 14px; }
+      .brand__league { display: none; }
+      .field { flex: 1 1 140px; }
+      .field select { width: 100%; min-width: 0; }
+      .coverage { white-space: normal; height: auto; min-height: 38px; padding: 6px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="index.html">
+        <div class="wordmark">
+          <div class="wordmark__line"><span class="wordmark__cover">COVER</span><span class="wordmark__cero">CERO</span></div>
+          <div class="wordmark__stats">STATS</div>
+        </div>
+        <span class="brand__league">ONEFA 2026</span>
+      </a>
+      <nav class="site-nav" aria-label="Secciones">
+        <a href="index.html">Partidos</a>
+        <a href="leaders.html" aria-current="page">Líderes</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <h1 class="page-title">Líderes estadísticos</h1>
+    <p class="page-sub">Pase, carrera y recepción · temporada 2026 · solo partidos finalizados</p>
+
+    <div id="filters"></div>
+    <div id="notices"></div>
+    <div id="results" aria-live="polite"></div>
+  </main>
+
+  <script type="module">
+    import { SUPABASE_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import {
+      TEMPORADA_ACTIVA, LEADER_MIN_PER_TEAM_GAME,
+      selectLeaderGames, buildLeaders, rankLeaders, fetchAllRows,
+    } from '../../shared/stats-lib.js'
+
+    const PAGE_SIZE = 1000
+    const WEEK_ORDER = ['1','2','3','4','5','6','7','8','9','10','QF','SF','F']
+    const WEEK_LABEL = { QF: 'Cuartos de Final', SF: 'Semifinales', F: 'Final' }
+    const weekLabel = w => (w == null ? 'Sin semana' : WEEK_LABEL[w] ?? `Semana ${w}`)
+
+    // ── State ────────────────────────────────────────────────────────────────
+    const state = {
+      status: 'loading',          // 'loading' | 'error' | 'ready'
+      error: null,                // { title, msg }
+      games: [], stats: [], teams: new Map(),
+      teamId: '', semana: '',
+      showAll: { pass: false, rush: false, rec: false },
+      sort: { pass: { key: 'yds', dir: 'desc' }, rush: { key: 'yds', dir: 'desc' }, rec: { key: 'yds', dir: 'desc' } },
+      view: null,
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function esc(s) {
+      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    }
+    const int = n => Math.round(n).toLocaleString('es-MX')
+    const d1 = n => Number(n).toFixed(1)
+    const pct = n => `${Number(n).toFixed(1)}%`
+    const num = n => (Number.isInteger(n) ? String(n) : Number(n).toFixed(1))
+
+    class LoadError extends Error {
+      constructor(title, msg) { super(msg); this.title = title }
+    }
+
+    // ── Data: every read is paged and its row count checked against the DB's ──
+    // The count comes from Content-Range (Prefer: count=exact). If the browser
+    // can't read it, or rows read != count, nothing is shown.
+    async function fetchPage(path, offset, limit) {
+      let res
+      try {
+        res = await fetch(`${SUPABASE_URL}/rest/v1/${path}&limit=${limit}&offset=${offset}`, {
+          headers: { ...SB_HEADERS, Prefer: 'count=exact' },
+        })
+      } catch {
+        throw new LoadError('Sin conexión', 'No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.')
+      }
+      if (!res.ok) throw new LoadError('Error del servidor', `El servidor respondió HTTP ${res.status}.`)
+      const m = /\/(\d+)$/.exec(res.headers.get('Content-Range') ?? '')
+      if (!m) {
+        throw new LoadError('No se pudo verificar el conteo',
+          'El navegador no pudo leer el conteo de filas (encabezado Content-Range). Sin ese conteo no se puede comprobar que los datos estén completos.')
+      }
+      return { rows: await res.json(), total: Number(m[1]) }
+    }
+
+    async function readAll(path, what) {
+      try {
+        return await fetchAllRows((o, l) => fetchPage(path, o, l), { pageSize: PAGE_SIZE, keyOf: r => r.id })
+      } catch (e) {
+        if (e instanceof LoadError) throw e
+        throw new LoadError('Los datos no están completos', `${e.message} (${what}).`)
+      }
+    }
+
+    const q = o => new URLSearchParams(o).toString()
+    async function loadAll() {
+      const statCols = 'id,game_id,player_id,pass_att,pass_comp,pass_yds,pass_td,pass_int,rush_att,rush_yds,rush_td,rush_fum,rec,rec_yds,rec_td,rec_fum,updated_at,player:player_id(id,number,nombre,apellido,team_id,temporada)'
+      const [games, stats, teams] = await Promise.all([
+        readAll('games?' + q({ select: 'id,semana,status,temporada,kickoff,home_team_id,away_team_id', status: 'eq.final', or: '(semana.neq.TEST,semana.is.null)', order: 'id.asc' }), 'partidos'),
+        readAll('player_game_stats_manual?' + q({ select: statCols, order: 'id.asc' }), 'estadísticas de jugadores'),
+        readAll('teams?' + q({ select: 'id,nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url', order: 'id.asc' }), 'equipos'),
+      ])
+      return { games, stats, teams: new Map(teams.map(t => [t.id, t])) }
+    }
+
+    // ── Derived data ─────────────────────────────────────────────────────────
+    function computeView() {
+      const f = { temporada: TEMPORADA_ACTIVA, semana: state.semana || null, teamId: state.teamId || null }
+      const res = buildLeaders(state.games, state.stats, { ...f, teams: state.teams })
+      // Games in the filter that have no valid player row (for the "partial data" detail).
+      const sel = selectLeaderGames(state.games, f)
+      const withRows = new Set()
+      for (const r of state.stats) {
+        const g = r.player && sel.find(x => x.id === r.game_id)
+        if (!g) continue
+        const t = r.player.team_id
+        if ((t === g.home_team_id || t === g.away_team_id) && (!f.teamId || t === f.teamId)) withRows.add(g.id)
+      }
+      res.missing = sel.filter(g => !withRows.has(g.id))
+      return res
+    }
+
+    // ── Rendering ────────────────────────────────────────────────────────────
+    function logo(team) {
+      const abbr = esc(team?.abreviatura || '?')
+      const bg = esc(team?.color_principal || '#e5e7eb'), tx = esc(team?.color_texto || '#6b7280')
+      const img = team?.logo_url
+        ? `<img src="${esc(team.logo_url)}" alt="" loading="lazy" onerror="this.closest('.logo-wrap').classList.add('img-error')">` : ''
+      return `<span class="logo-wrap${team?.logo_url ? '' : ' img-error'}">${img}<span class="logo-fallback" style="background:${bg};color:${tx}">${abbr}</span></span>`
+    }
+
+    const DUP_TIP = 'Posible jugador duplicado: hay dos filas del mismo equipo y número en un mismo partido. Sus cifras pueden estar repetidas o repartidas entre dos jugadores.'
+    const dupFlag = p => (p.dupSuspect ? ` <span class="dupflag" title="${esc(DUP_TIP)}" aria-label="Posible duplicado">⚠</span>` : '')
+
+    const CARDS = [
+      { id: 'pass-yds', title: 'Yardas de pase', cat: 'pass', key: 'yds', fmt: int, unit: 'yds', detail: p => `${p.gp} GP · ${p.comp}/${p.att} · ${p.td} TD` },
+      { id: 'pass-rtg', title: 'Rating de pasador', cat: 'pass', key: 'rating', fmt: d1, avg: true, detail: p => `${p.att} intentos · ${int(p.yds)} yds` },
+      { id: 'rush-yds', title: 'Yardas de carrera', cat: 'rush', key: 'yds', fmt: int, unit: 'yds', detail: p => `${p.gp} GP · ${p.att} acarreos · ${p.td} TD` },
+      { id: 'rush-ypg', title: 'Yardas por juego (carrera)', cat: 'rush', key: 'ypg', fmt: d1, avg: true, detail: p => `${int(p.yds)} yds en ${p.gp} GP` },
+      { id: 'rec-rec', title: 'Recepciones', cat: 'rec', key: 'rec', fmt: int, unit: 'rec', detail: p => `${p.gp} GP · ${int(p.yds)} yds` },
+      { id: 'rec-yds', title: 'Yardas de recepción', cat: 'rec', key: 'yds', fmt: int, unit: 'yds', detail: p => `${p.gp} GP · ${p.rec} rec · ${p.td} TD` },
+    ]
+
+    const COLS = {
+      pass: [
+        { k: 'label', t: 'Jugador' },
+        { k: 'gp', t: 'GP', tip: 'Partidos con intentos de pase' },
+        { k: 'comp', t: 'Comp' }, { k: 'att', t: 'Att' },
+        { k: 'pct', t: 'Pct', f: pct, avg: true, tip: '% de pases completos' },
+        { k: 'yds', t: 'Yds' }, { k: 'td', t: 'TD' }, { k: 'int', t: 'Int' },
+        { k: 'ypa', t: 'Y/I', f: d1, avg: true, tip: 'Yardas por intento' },
+        { k: 'ypg', t: 'Y/J', f: d1, avg: true, tip: 'Yardas por juego' },
+        { k: 'rating', t: 'Rtg', f: d1, avg: true, tip: 'Rating de pasador (fórmula clásica NCAA/NFL, 0–158.3)' },
+      ],
+      rush: [
+        { k: 'label', t: 'Jugador' },
+        { k: 'gp', t: 'GP', tip: 'Partidos con acarreos' },
+        { k: 'att', t: 'Att' }, { k: 'yds', t: 'Yds' }, { k: 'td', t: 'TD' }, { k: 'fum', t: 'Fum' },
+        { k: 'ypc', t: 'Y/A', f: d1, avg: true, tip: 'Yardas por acarreo' },
+        { k: 'ypg', t: 'Y/J', f: d1, avg: true, tip: 'Yardas por juego' },
+      ],
+      rec: [
+        { k: 'label', t: 'Jugador' },
+        { k: 'gp', t: 'GP', tip: 'Partidos con recepciones' },
+        { k: 'rec', t: 'Rec' }, { k: 'yds', t: 'Yds' }, { k: 'td', t: 'TD' }, { k: 'fum', t: 'Fum' },
+        { k: 'ypr', t: 'Y/R', f: d1, avg: true, tip: 'Yardas por recepción' },
+        { k: 'ypg', t: 'Y/J', f: d1, avg: true, tip: 'Yardas por juego' },
+      ],
+    }
+    const TABLE_TITLE = { pass: 'Pase', rush: 'Carrera', rec: 'Recepción' }
+    const EMPTY_TEXT = { pass: 'Sin pases en este filtro.', rush: 'Sin acarreos en este filtro.', rec: 'Sin recepciones en este filtro.' }
+    const MIN_UNIT = { pass: 'intentos', rush: 'acarreos', rec: 'recepciones' }
+
+    function renderCard(c) {
+      const list = state.view.players[c.cat]
+      const rows = rankLeaders(list, c.key, { showAll: state.showAll[c.cat], limit: 5 })
+      const tag = c.avg ? (state.showAll[c.cat] ? 'sin mínimo' : 'con mínimo') : ''
+      const body = rows.length
+        ? rows.map(p => `
+            <div class="lrow${p.rank === 1 ? ' lrow--first' : ''}">
+              <span class="lrow__rank">${p.rank}</span>
+              ${logo(state.teams.get(p.teamId))}
+              <div class="lrow__who">
+                <div class="lrow__name" title="${esc(p.label)}">${esc(p.label)}${dupFlag(p)}</div>
+                <div class="lrow__detail">${esc(c.detail(p))}</div>
+              </div>
+              <span class="lrow__val">${c.fmt(p[c.key])}</span>
+            </div>`).join('')
+        : `<div class="lcard__empty">${c.avg && list.length && !state.showAll[c.cat] ? 'Nadie califica con el mínimo' : 'Sin datos'}</div>`
+      return `<section class="lcard"><div class="lcard__head"><h3 class="lcard__title">${esc(c.title)}</h3><span class="lcard__tag">${tag}</span></div>${body}</section>`
+    }
+
+    function sortedRows(cat) {
+      const list = state.view.players[cat]
+      const { key, dir } = state.sort[cat]
+      if (key === 'label') {
+        const by = (x, y, f) => String(x[f] ?? '').localeCompare(String(y[f] ?? ''), 'es', { sensitivity: 'base' })
+        const rows = list.slice().sort((x, y) => by(x, y, 'apellido') || by(x, y, 'nombre') || x.number - y.number)
+        return dir === 'desc' ? rows.reverse() : rows
+      }
+      const rows = rankLeaders(list, key, { showAll: state.showAll[cat] })   // always descending
+      return dir === 'asc' ? rows.reverse() : rows
+    }
+
+    function minimumLine(cat, list) {
+      const factor = LEADER_MIN_PER_TEAM_GAME[cat], unit = MIN_UNIT[cat]
+      const tgs = state.view.teamGames
+      const games = state.teamId ? [tgs[state.teamId]].filter(Boolean) : [...new Set(list.map(p => p.teamGames))].sort((a, b) => a - b)
+      if (!games.length) return ''
+      if (games.length === 1) return `Mínimo: ${num(factor)} ${unit} × ${games[0]} ${games[0] === 1 ? 'partido' : 'partidos'} = ${num(factor * games[0])}`
+      const lo = games[0], hi = games[games.length - 1]
+      return `Mínimo: ${num(factor)} ${unit} × partidos del equipo con datos (de ${lo} a ${hi} según el equipo = de ${num(factor * lo)} a ${num(factor * hi)})`
+    }
+
+    function renderTable(cat) {
+      const list = state.view.players[cat]
+      const cols = COLS[cat]
+      const { key, dir } = state.sort[cat]
+      const rows = sortedRows(cat)
+      const qualified = list.filter(p => p.qualifies).length
+      const hidden = list.length - rows.length
+
+      let body
+      if (!list.length) {
+        body = `<div class="tempty">${EMPTY_TEXT[cat]}</div>`
+      } else if (!rows.length) {
+        body = `<div class="tempty">Nadie califica con el mínimo para ordenar por un promedio. Activa “Mostrar todos” u ordena por un total.</div>`
+      } else {
+        const head = cols.map(c => {
+          const active = c.k === key
+          const aria = active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'
+          const arrow = active ? (dir === 'asc' ? '▲' : '▼') : ''
+          return `<th scope="col" aria-sort="${aria}"${c.tip ? ` title="${esc(c.tip)}"` : ''}><button type="button" data-sort="${cat}:${c.k}">${esc(c.t)}${arrow ? ` <span aria-hidden="true">${arrow}</span>` : ''}</button></th>`
+        }).join('')
+        const trs = rows.map(p => `<tr>${cols.map(c => {
+          if (c.k === 'label') return `<td><span class="who">${logo(state.teams.get(p.teamId))}<span>${esc(p.label)}${dupFlag(p)}</span></span></td>`
+          const v = p[c.k]
+          const cls = [c.avg && !p.qualifies ? 'dim' : '', c.k === key ? 'sorted' : ''].filter(Boolean).join(' ')
+          return `<td${cls ? ` class="${cls}"` : ''}>${v == null ? '—' : (c.f ?? int)(v)}</td>`
+        }).join('')}</tr>`).join('')
+        body = `<div class="tscroll"><table class="lt"><thead><tr>${head}</tr></thead><tbody>${trs}</tbody></table></div>`
+      }
+
+      const notes = []
+      if (list.length) {
+        notes.push(`<div class="tfoot__min">${esc(minimumLine(cat, list))}</div>`)
+        notes.push(`<div>El mínimo aplica a ${cols.filter(c => c.avg).map(c => esc(c.t)).join(', ')}; los totales no tienen mínimo. ${qualified} de ${list.length} jugadores califican${state.showAll[cat] ? '' : ' (los demás salen en gris)'}.</div>`)
+        if (hidden > 0) notes.push(`<div>Ordenando por un promedio se ocultan ${hidden} jugadores que no califican.</div>`)
+        notes.push(`<label class="toggle"><input type="checkbox" data-showall="${cat}"${state.showAll[cat] ? ' checked' : ''}> Mostrar todos</label>`)
+      }
+      return `<section class="tcard" aria-label="Tabla de ${TABLE_TITLE[cat].toLowerCase()}">
+        <div class="tcard__head"><h3 class="tcard__title">${TABLE_TITLE[cat]}</h3><span class="tcard__count">${list.length} jugadores</span></div>
+        ${body}${notes.length ? `<div class="tfoot">${notes.join('')}</div>` : ''}</section>`
+    }
+
+    function renderFilters() {
+      const f = { temporada: TEMPORADA_ACTIVA }
+      const all = selectLeaderGames(state.games, f)
+      const weeks = WEEK_ORDER.filter(w => all.some(g => String(g.semana) === w))
+      const teamIds = new Set(all.flatMap(g => [g.home_team_id, g.away_team_id]))
+      const teams = [...teamIds].map(id => state.teams.get(id)).filter(Boolean).sort((a, b) => a.abreviatura.localeCompare(b.abreviatura))
+      document.getElementById('filters').innerHTML = `
+        <div class="filters">
+          <div class="field"><label for="f-team">Equipo</label>
+            <select id="f-team"><option value="">Todos los equipos</option>
+              ${teams.map(t => `<option value="${esc(t.id)}"${t.id === state.teamId ? ' selected' : ''}>${esc(t.abreviatura)} · ${esc(t.Apodo || t.nombre_corto)}</option>`).join('')}
+            </select></div>
+          <div class="field"><label for="f-semana">Semana</label>
+            <select id="f-semana"><option value="">Todas</option>
+              ${weeks.map(w => `<option value="${esc(w)}"${w === state.semana ? ' selected' : ''}>${esc(weekLabel(w))}</option>`).join('')}
+            </select></div>
+          <span class="coverage" id="coverage" role="status"></span>
+        </div>`
+      document.getElementById('f-team').addEventListener('change', e => { state.teamId = e.target.value; update() })
+      document.getElementById('f-semana').addEventListener('change', e => { state.semana = e.target.value; update() })
+    }
+
+    function renderCoverage() {
+      const { total, withData } = state.view.games
+      const partial = withData < total
+      const el = document.getElementById('coverage')
+      el.className = 'coverage' + (partial ? ' coverage--partial' : '')
+      el.textContent = `${withData} de ${total} partidos con datos`
+
+      const v = state.view
+      const parts = []
+      if (partial) {
+        const gl = g => `${weekLabel(g.semana)}: ${state.teams.get(g.home_team_id)?.abreviatura ?? '?'} vs ${state.teams.get(g.away_team_id)?.abreviatura ?? '?'}`
+        parts.push(`<div class="notice"><strong>Datos parciales.</strong> Solo ${withData} de ${total} partidos tienen estadísticas capturadas; los totales y promedios incluyen únicamente esos partidos.
+          <details><summary>Ver los ${v.missing.length} partidos sin datos</summary><ul>${v.missing.map(g => `<li>${esc(gl(g))}</li>`).join('')}</ul></details></div>`)
+      }
+      if (v.suspected.length) {
+        console.warn('[Cover Cero] leaders: posibles jugadores duplicados', v.suspected)
+        const abbr = id => state.teams.get(id)?.abreviatura ?? '?'
+        const line = s => {
+          const g = state.games.find(x => x.id === s.gameId)
+          const who = s.players.map(p => `${p.apellido} ${p.nombre} (temporada ${p.temporada ?? '?'})`).join(' y ')
+          return `${abbr(s.teamId)} #${s.number}: ${who} — ${weekLabel(s.semana)}${g ? `, ${abbr(g.home_team_id)} vs ${abbr(g.away_team_id)}` : ''}`
+        }
+        parts.push(`<div class="notice"><strong>Posibles jugadores duplicados.</strong> En ${v.suspected.length === 1 ? 'este partido hay' : `estos ${v.suspected.length} partidos hay`} dos filas de estadísticas del mismo equipo y número; puede ser la misma persona registrada dos veces. Sus cifras pueden estar repetidas o repartidas (marcadas con ⚠). No se corrigieron automáticamente.
+          <ul>${v.suspected.map(x => `<li>${esc(line(x))}</li>`).join('')}</ul></div>`)
+      }
+      const ex = v.excluded.noPlayer + v.excluded.noTeam + v.excluded.teamNotInGame
+      if (ex || v.duplicates) {
+        console.warn('[Cover Cero] leaders: filas descartadas', v.excluded, 'duplicadas', v.duplicates)
+        const bits = []
+        if (ex) bits.push(`${ex} fila${ex === 1 ? '' : 's'} sin jugador o equipo válido (no se contaron)`)
+        if (v.duplicates) bits.push(`${v.duplicates} fila${v.duplicates === 1 ? '' : 's'} repetida${v.duplicates === 1 ? '' : 's'} (se contó una)`)
+        parts.push(`<div class="notice"><strong>Aviso de datos:</strong> ${bits.join('; ')}.</div>`)
+      }
+      document.getElementById('notices').innerHTML = parts.join('')
+    }
+
+    function renderResults() {
+      const v = state.view
+      const el = document.getElementById('results')
+      if (!v.games.total) {
+        const why = state.teamId && state.semana ? 'Ese equipo no tuvo partido finalizado en esa semana.'
+          : state.semana ? 'No hay partidos finalizados en esa semana.' : 'Aún no hay partidos finalizados en la temporada.'
+        el.innerHTML = `<div class="state-box"><div class="state-box__icon">🏈</div><div class="state-box__title">Sin partidos</div><div class="state-box__msg">${why}</div></div>`
+        return
+      }
+      if (!v.games.withData) {
+        el.innerHTML = `<div class="state-box"><div class="state-box__icon">📊</div><div class="state-box__title">Sin estadísticas capturadas</div><div class="state-box__msg">Los partidos de este filtro todavía no tienen estadísticas de jugadores.</div></div>`
+        return
+      }
+      el.innerHTML = `
+        <h2 class="section-title">Top 5</h2>
+        <div class="cards">${CARDS.map(renderCard).join('')}</div>
+        <h2 class="section-title">Tablas completas</h2>
+        ${['pass', 'rush', 'rec'].map(renderTable).join('')}
+        <p class="footnote">GP = partidos con actividad en esa categoría. Rating de pasador calculado sobre los totales acumulados. El mínimo se calcula con los partidos del equipo que tienen estadísticas en el filtro actual.</p>`
+    }
+
+    function update() {
+      state.view = computeView()
+      renderCoverage()
+      renderResults()
+    }
+
+    function renderLoading() {
+      document.getElementById('filters').innerHTML = ''
+      document.getElementById('notices').innerHTML = ''
+      document.getElementById('results').innerHTML = `
+        <div class="cards" aria-busy="true" aria-label="Cargando">
+          ${Array.from({ length: 6 }, () => '<div class="skel" style="height:230px"></div>').join('')}
+        </div>
+        <div class="skel" style="height:260px;margin-top:24px"></div>`
+    }
+
+    function renderError(e) {
+      document.getElementById('filters').innerHTML = ''
+      document.getElementById('notices').innerHTML = ''
+      document.getElementById('results').innerHTML = `
+        <div class="state-box" role="alert">
+          <div class="state-box__icon">⚠️</div>
+          <div class="state-box__title">${esc(e.title || 'No se pudieron cargar los líderes')}</div>
+          <div class="state-box__msg">${esc(e.msg)}<br><br>No se muestran cifras para evitar totales incompletos.</div>
+          <button class="btn-retry" id="btn-retry" type="button">↺ Reintentar</button>
+        </div>`
+      document.getElementById('btn-retry').addEventListener('click', init)
+    }
+
+    // ── Events (results are re-rendered, so listeners are delegated) ─────────
+    document.getElementById('results').addEventListener('click', e => {
+      const btn = e.target.closest('[data-sort]')
+      if (!btn) return
+      const [cat, key] = btn.dataset.sort.split(':')
+      const cur = state.sort[cat]
+      state.sort[cat] = cur.key === key ? { key, dir: cur.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'label' ? 'asc' : 'desc' }
+      renderResults()
+    })
+    document.getElementById('results').addEventListener('change', e => {
+      const cb = e.target.closest('[data-showall]')
+      if (!cb) return
+      state.showAll[cb.dataset.showall] = cb.checked
+      renderResults()
+    })
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    async function init() {
+      state.status = 'loading'
+      renderLoading()
+      try {
+        Object.assign(state, await loadAll())
+      } catch (e) {
+        console.error('[Cover Cero] leaders:', e)
+        state.status = 'error'
+        renderError({ title: e.title, msg: e.message })
+        return
+      }
+      state.status = 'ready'
+      state.teamId = ''; state.semana = ''
+      renderFilters()
+      update()
+    }
+
+    init()
+  </script>
+</body>
+</html>

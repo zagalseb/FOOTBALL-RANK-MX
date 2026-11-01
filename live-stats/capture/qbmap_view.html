@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — QB Map Visor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12; --bg2: #13161b; --bg3: #1a1e25; --border: #252a33; --border2: #2e3540;
+      --text: #e8eaed; --text2: #8a95a3; --text3: #4a5568;
+      --accent: #3b82f6; --accent-bg: rgba(59,130,246,0.12);
+      --green: #22c55e; --gray: #8a95a3; --red: #ef4444; --red-bg: rgba(239,68,68,0.12); --yellow: #facc15;
+      --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; line-height: 1.4; }
+
+    .topbar { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 10; }
+    .topbar__brand { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: 0.04em; white-space: nowrap; }
+    .topbar__brand span { color: var(--accent); }
+    .topbar__sub { font-family: var(--mono); font-size: 11px; color: var(--text2); letter-spacing: 0.08em; text-transform: uppercase; }
+    .topbar__divider { width: 1px; height: 20px; background: var(--border2); }
+    .topbar__back { font-family: var(--mono); font-size: 12px; color: var(--text2); text-decoration: none; white-space: nowrap; }
+    .topbar__back:hover { color: var(--text); }
+
+    .content { max-width: 1040px; margin: 0 auto; padding: 20px 20px 60px; }
+    .pickers { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; margin-bottom: 16px; }
+    .input { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-family: var(--sans); font-size: 13px; padding: 8px 10px; outline: none; flex: 1 1 320px; }
+    .input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+    .seg { display: flex; gap: 8px; }
+    .seg button { background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text2); font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 8px 16px; cursor: pointer; }
+    .seg button:hover { color: var(--text); border-color: var(--text3); }
+    .seg button.active { background: var(--accent-bg); border-color: var(--accent); color: var(--text); }
+
+    .meta { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; font-family: var(--mono); font-size: 11px; color: var(--text2); margin-bottom: 10px; min-height: 18px; }
+    .ring { display: inline-block; vertical-align: -1px; margin-right: 6px; }
+    .msg { font-family: var(--mono); font-size: 12px; color: var(--text3); padding: 40px 0; text-align: center; }
+    .error { font-family: var(--mono); font-size: 12px; color: var(--red); background: var(--red-bg); border-radius: 6px; padding: 8px 12px; }
+
+    .stage { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 8px; }
+    svg#chart { display: block; width: 100%; height: auto; max-height: calc(100vh - 210px); background: #0a0c0f; border-radius: 6px; }
+    .v-plane { fill: #14181d; }
+    .v-band { fill: #4b5159; }
+    .v-yl { stroke: rgba(255,255,255,.28); stroke-width: 1.5; }
+    .v-yl5 { stroke: rgba(255,255,255,.13); stroke-width: 1; }
+    .v-lat { stroke: rgba(255,255,255,.05); stroke-width: 1; }
+    .v-edge { stroke: rgba(255,255,255,.45); stroke-width: 1; }
+    .v-hash { stroke: rgba(255,255,255,.4); stroke-width: 1.4; }
+    .v-los { stroke: var(--yellow); stroke-width: 3.5; }
+    .v-num { fill: #9fb0c3; font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+    .v-lbl { fill: var(--yellow); font-family: 'IBM Plex Mono', monospace; font-weight: 700; }
+    .v-arc { fill: none; stroke-width: 2.4; stroke-linecap: round; opacity: .6; }
+  </style>
+</head>
+<body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
+
+  <header class="topbar">
+    <span class="topbar__brand">COVER<span>CERO</span></span>
+    <span class="topbar__sub">QB Map · Visor</span>
+    <div class="topbar__divider"></div>
+    <a class="topbar__back" href="advanced.html">← Advanced Stats</a>
+  </header>
+
+  <main class="content">
+    <div class="pickers">
+      <select class="input" id="game-select"><option value="">Cargando partidos…</option></select>
+      <div class="seg" id="team-seg" hidden></div>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div id="out"><div class="msg">Selecciona un partido y un equipo.</div></div>
+  </main>
+
+  <script type="module">
+    import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { driveDir, toAbs, relFromAbs, FIELD_WIDTH } from './qbmap_geometry.js'
+    import { CFG, u, project, arcPath, markerRadii } from './qbmap_projection.js'
+    import { mountSettingsPanel } from '../../shared/settings-panel.js'
+    import { visualizationSection, loadViewSettings, VIEW_SETTINGS_CHANGED_EVENT } from '../../shared/settings-visualization.js'
+
+    const WEEK_LABEL = { QF: 'Cuartos de Final', SF: 'Semifinales', F: 'Final', TEST: 'TEST' }
+    const COLOR = { green: '#39d353', gray: '#f1f5f9', red: '#ef4444' }
+    const NEUTRAL = '#c5ccd6'
+    const SIZE_MULT = { sm: 0.7, md: 1, lg: 1.35 }   // scales the marker rx/ry
+
+    // Operator display preferences (localStorage, not game data); edited from the gear panel.
+    const VIEW_SETTINGS = {
+      storageKey: 'qbmap_view_settings',
+      options: [
+        { id: 'flightLines',   label: 'Mostrar líneas de vuelo',      type: 'toggle', default: true },
+        { id: 'colorByResult', label: 'Color por resultado',          type: 'toggle', default: true },
+        { id: 'dotSize',       label: 'Tamaño de los puntos',         type: 'choice', default: 'md',
+          choices: [{ value: 'sm', label: 'Chico' }, { value: 'md', label: 'Mediano' }, { value: 'lg', label: 'Grande' }] },
+        { id: 'showSummary',   label: 'Mostrar resumen de conteo',    type: 'toggle', default: true },
+      ],
+    }
+    let view = loadViewSettings(localStorage, VIEW_SETTINGS)
+
+    const colorOf = r => !view.colorByResult ? NEUTRAL : r === 'complete' ? COLOR.green : r === 'intercepted' ? COLOR.red : COLOR.gray
+    const KNOWN = new Set(['complete', 'incomplete', 'dropped', 'broken_up', 'intercepted'])
+    const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    const $ = id => document.getElementById(id)
+    const SVG_NS = 'http://www.w3.org/2000/svg'
+
+    let games = [], game = null, side = null, rows = null   // rows: PASS plays of `game`
+
+    async function sbGet(path) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    }
+
+    function gameLabel(g) {
+      const home = g.home?.abreviatura || '?', away = g.away?.abreviatura || '?'
+      const semana = WEEK_LABEL[g.semana] || (g.semana ? `Sem. ${g.semana}` : 'Sin semana')
+      const score = (g.status === 'final' || g.score_home || g.score_away) ? ` (${g.score_away ?? 0}-${g.score_home ?? 0})` : ''
+      return `${away} @ ${home} — ${semana}${score}`
+    }
+
+    async function loadGames() {
+      try {
+        games = await sbGet('games?select=*,home:home_team_id(id,nombre_corto,abreviatura),away:away_team_id(id,nombre_corto,abreviatura)&order=kickoff.desc.nullslast')
+        $('game-select').innerHTML = '<option value="">Selecciona un partido…</option>' +
+          games.map(g => `<option value="${g.id}">${esc(gameLabel(g))}</option>`).join('')
+        const pre = new URLSearchParams(location.search).get('game')   // from advanced.html
+        if (pre && games.some(g => g.id === pre)) { $('game-select').value = pre; $('game-select').dispatchEvent(new Event('change')) }
+      } catch (err) {
+        console.error(err)
+        $('meta').innerHTML = `<div class="error">Error al cargar partidos: ${esc(err.message)}</div>`
+      }
+    }
+
+    function renderTeamSeg() {
+      const seg = $('team-seg')
+      seg.hidden = !game
+      if (!game) return
+      seg.innerHTML = [['home', game.home], ['away', game.away]].map(([s, t]) =>
+        `<button data-side="${s}" class="${side === s ? 'active' : ''}">${esc(t?.abreviatura || '?')} · ${s === 'home' ? 'Local' : 'Visitante'}</button>`).join('')
+      seg.querySelectorAll('button').forEach(b => b.onclick = () => { side = b.dataset.side; renderTeamSeg(); draw() })
+    }
+
+    // Captured passes of `side` -> [{ launch:{lat,depth}, target:{lat,depth}, result }]
+    function collect() {
+      const teams = rows.map(r => r.play_data?.teams).find(Boolean)
+      if (!teams) return { teams: null, passes: [] }
+      const teamName = teams[side].name
+      const passes = []
+      for (const r of rows) {
+        const pd = r.play_data
+        if (r.possession !== teamName || !pd?.teams || !r.field_pos) continue
+        if (pd.qbmap_status !== 'captured' || !pd.qbmap_launch || !pd.qbmap_target) continue
+        if (!KNOWN.has(pd.pass_result)) continue
+        const t = pd.teams, dir = driveDir(t, r.possession)
+        const los = toAbs(t, r.field_pos.team, r.field_pos.yard)
+        const depth = pt => relFromAbs(pt.abs, los, dir)
+        passes.push({
+          launch: { lat: pd.qbmap_launch.lat, depth: depth(pd.qbmap_launch) },
+          target: { lat: pd.qbmap_target.lat, depth: depth(pd.qbmap_target) },
+          result: pd.pass_result,
+        })
+      }
+      return { teams, passes }
+    }
+
+    function el(name, attrs, text) {
+      const e = document.createElementNS(SVG_NS, name)
+      for (const k in attrs) e.setAttribute(k, attrs[k])
+      if (text != null) e.textContent = text
+      return e
+    }
+
+    const PLANE_BG = '#0a0c0f'
+    const SIDE_BAND = 3          // yards of sideline band outside the field
+    const HASH_L = [19.2, 33]    // lateral start of each hash column (end = start + 0.8)
+
+    // Ring marker: outer ellipse in the result colour, dark rim, dark centre.
+    function ringEllipse(cx, cy, d, color, size, dashed) {
+      const { rx, ry } = markerRadii(d, size)
+      const g = el('g', {})
+      g.appendChild(el('ellipse', { cx, cy, rx, ry, fill: color, stroke: PLANE_BG, 'stroke-width': 1,
+        ...(dashed ? { 'stroke-dasharray': '3 2' } : {}) }))
+      g.appendChild(el('ellipse', { cx, cy, rx: rx * 0.5, ry: ry * 0.5, fill: PLANE_BG, stroke: PLANE_BG, 'stroke-width': 1 }))
+      return g
+    }
+
+    function buildSvg(passes) {
+      const svg = el('svg', { id: 'chart', viewBox: `0 0 ${CFG.VIEW_W} ${CFG.VIEW_H}` })
+      svg.appendChild(el('rect', { x: 0, y: 0, width: CFG.VIEW_W, height: CFG.VIEW_H, fill: PLANE_BG }))
+
+      const P = (lat, d) => project(lat, d)
+      const dMin = CFG.D_MIN, dMax = CFG.D_MAX
+      // field plane (lateral 0..53), one polygon, no zebra
+      const plane = [P(0, dMin), P(53, dMin), P(53, dMax), P(0, dMax)]
+      svg.appendChild(el('polygon', { class: 'v-plane', points: plane.map(q => `${q.x},${q.y}`).join(' ') }))
+
+      // sideline bands, 3 yd wide outside the field on both sides
+      for (const [l0, l1] of [[-SIDE_BAND, 0], [53, 53 + SIDE_BAND]]) {
+        const q = [P(l0, dMin), P(l1, dMin), P(l1, dMax), P(l0, dMax)]
+        svg.appendChild(el('polygon', { class: 'v-band', points: q.map(z => `${z.x},${z.y}`).join(' ') }))
+      }
+
+      // faint lateral lines every 5 yd for depth
+      for (let lat = 5; lat <= 50; lat += 5) {
+        const a = P(lat, dMin), b = P(lat, dMax)
+        svg.appendChild(el('line', { class: 'v-lat', x1: a.x, y1: a.y, x2: b.x, y2: b.y }))
+      }
+      // white edges at lat 0 and 53
+      for (const lat of [0, 53]) {
+        const a = P(lat, dMin), b = P(lat, dMax)
+        svg.appendChild(el('line', { class: 'v-edge', x1: a.x, y1: a.y, x2: b.x, y2: b.y }))
+      }
+
+      // yard lines: tens solid, fives faint; the LOS is drawn separately below
+      for (let d = dMin; d <= dMax; d += 5) {
+        if (d === 0) continue
+        const a = P(0, d), b = P(53, d)
+        svg.appendChild(el('line', { class: d % 10 === 0 ? 'v-yl' : 'v-yl5', x1: a.x, y1: a.y, x2: b.x, y2: b.y }))
+      }
+
+      // hash marks: one 0.8-yd tick per yard in each hash column plus the
+      // sideline ticks, all in a single path, each point projected on its own
+      let hd = ''
+      const tick = (lat0, lat1, d) => {
+        const a = P(lat0, d), b = P(lat1, d)
+        hd += `M${a.x.toFixed(1)} ${a.y.toFixed(1)}L${b.x.toFixed(1)} ${b.y.toFixed(1)}`
+      }
+      for (let d = dMin; d <= dMax; d++) {
+        for (const h of HASH_L) tick(h, h + 0.8, d)
+        tick(0.4, 1.3, d)
+        tick(51.7, 52.6, d)
+      }
+      svg.appendChild(el('path', { class: 'v-hash', d: hd }))
+
+      // LOS: amber, extended over the bands, labelled on both sides
+      const losA = P(-SIDE_BAND, 0), losB = P(53 + SIDE_BAND, 0)
+      svg.appendChild(el('line', { class: 'v-los', x1: losA.x, y1: losA.y, x2: losB.x, y2: losB.y }))
+
+      // depth numbers outside the bands, size scales with u(d)
+      for (let d = 10; d <= dMax; d += 10) {
+        const fs = 17 * u(d)
+        const left = P(-SIDE_BAND, d), right = P(53 + SIDE_BAND, d)
+        svg.appendChild(el('text', { class: 'v-num', x: left.x - 8, y: left.y + fs * 0.35, 'font-size': fs, 'text-anchor': 'end' }, `+${d}`))
+        svg.appendChild(el('text', { class: 'v-num', x: right.x + 8, y: right.y + fs * 0.35, 'font-size': fs, 'text-anchor': 'start' }, `+${d}`))
+      }
+      const fsL = 15
+      const lb = P(-SIDE_BAND, 0), rb = P(53 + SIDE_BAND, 0)
+      svg.appendChild(el('text', { class: 'v-lbl', x: lb.x - 8, y: lb.y + fsL * 0.35, 'font-size': fsL, 'text-anchor': 'end' }, 'LOS'))
+      svg.appendChild(el('text', { class: 'v-lbl', x: rb.x + 8, y: rb.y + fsL * 0.35, 'font-size': fsL, 'text-anchor': 'start' }, 'LOS'))
+
+      // arcs under the markers
+      const size = SIZE_MULT[view.dotSize] || 1
+      const ordered = [...passes].sort((p, q) => q.target.depth - p.target.depth)  // far first
+      const marks = []
+      for (const p of ordered) {
+        const a = project(p.launch.lat, p.launch.depth), b = project(p.target.lat, p.target.depth)
+        const c = colorOf(p.result)
+        if (view.flightLines) svg.appendChild(el('path', { class: 'v-arc', d: arcPath(a, b, p.target.depth - p.launch.depth), stroke: c }))
+        marks.push({ b, c, dd: b.clamped ? CFG.D_MAX : p.target.depth, clamped: b.clamped })
+      }
+      // markers: far to near, so near ones end up on top
+      for (const m of marks) {
+        const d = Math.min(CFG.D_MAX, Math.max(CFG.D_MIN, m.dd))
+        svg.appendChild(ringEllipse(m.b.x, m.b.y, d, m.c, size, false))
+        if (m.clamped) {
+          const { rx, ry } = markerRadii(d, size)
+          svg.appendChild(el('ellipse', { cx: m.b.x, cy: m.b.y, rx: rx + 3, ry: ry + 2, fill: 'none', stroke: m.c, 'stroke-width': 1.5, 'stroke-dasharray': '3 2' }))
+        }
+      }
+      return svg
+    }
+
+    function draw() {
+      const out = $('out'), meta = $('meta')
+      if (!game || !side) { meta.innerHTML = ''; out.innerHTML = '<div class="msg">Selecciona un partido y un equipo.</div>'; return }
+      if (!rows) { out.innerHTML = '<div class="msg">Cargando…</div>'; return }
+      const { teams, passes } = collect()
+      if (!teams) { meta.innerHTML = ''; out.innerHTML = '<div class="msg">Este partido no tiene jugadas de pase.</div>'; return }
+      if (!passes.length) {
+        meta.innerHTML = ''
+        out.innerHTML = `<div class="msg">Sin pases capturados con QB Map para ${esc(teams[side].name)} en este partido.</div>`
+        return
+      }
+      const n = k => passes.filter(p => (k === 'complete' ? p.result === 'complete' : k === 'intercepted' ? p.result === 'intercepted' : p.result !== 'complete' && p.result !== 'intercepted')).length
+      const deep = passes.filter(p => p.target.depth > CFG.D_MAX).length
+      // the "beyond +40" note is a warning about the drawing, so it stays even
+      // when the count summary is hidden
+      const dotColor = k => view.colorByResult ? COLOR[k] : NEUTRAL
+      const ring = c => `<svg class="ring" width="14" height="10" viewBox="0 0 14 10" aria-hidden="true"><ellipse cx="7" cy="5" rx="6.5" ry="3.8" fill="${c}" stroke="#0a0c0f" stroke-width="1"/><ellipse cx="7" cy="5" rx="3.2" ry="1.9" fill="#0a0c0f"/></svg>`
+      meta.innerHTML =
+        (view.showSummary
+          ? `<span><b>${passes.length}</b> pases · ${esc(teams[side].name)}</span>` +
+            `<span>${ring(dotColor('green'))}Completo ${n('complete')}</span>` +
+            `<span>${ring(dotColor('gray'))}Incompleto ${n('other')}</span>` +
+            `<span>${ring(dotColor('red'))}INT ${n('intercepted')}</span>`
+          : '') +
+        (deep ? `<span>◌ ${deep} ${deep === 1 ? 'pase más profundo' : 'pases más profundos'} que +${CFG.D_MAX} (halo punteado: dibujados en el borde)</span>` : '')
+      out.innerHTML = ''
+      const stage = document.createElement('div')
+      stage.className = 'stage'
+      stage.appendChild(buildSvg(passes))
+      out.appendChild(stage)
+    }
+
+    $('game-select').addEventListener('change', async e => {
+      game = games.find(g => g.id === e.target.value) || null
+      side = null; rows = null
+      renderTeamSeg(); draw()
+      if (!game) return
+      const id = game.id
+      try {
+        const r = await sbGet(`plays?game_id=eq.${encodeURIComponent(id)}&play_type=eq.PASS&select=id,seq,possession,field_pos,play_data&order=seq.asc`)
+        if (game?.id !== id) return   // user switched games meanwhile
+        rows = r
+      } catch (err) {
+        console.error(err)
+        $('out').innerHTML = `<div class="error">Error al cargar jugadas: ${esc(err.message)}</div>`
+        return
+      }
+      draw()
+    })
+
+    // Repaint on any settings change (this tab via the panel's event, other tabs via `storage`).
+    function reloadView() { view = loadViewSettings(localStorage, VIEW_SETTINGS); draw() }
+    window.addEventListener(VIEW_SETTINGS_CHANGED_EVENT, e => { if (e.detail?.storageKey === VIEW_SETTINGS.storageKey) reloadView() })
+    window.addEventListener('storage', e => { if (e.key === VIEW_SETTINGS.storageKey) reloadView() })
+    mountSettingsPanel({ sections: [visualizationSection(VIEW_SETTINGS)] })
+
+    loadGames()
+  </script>
+</body>
+</html>

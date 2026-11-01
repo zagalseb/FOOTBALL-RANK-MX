@@ -1,0 +1,2826 @@
+{
+  "meta": {
+    "descripcion": "Casos de prueba derivados de los A.R. del NCAA Football Statisticians Manual 2011. Generados y EJECUTADOS en modo solo lectura contra shared/stats-lib.js (el arnés vive fuera del repo; no se modificó código).",
+    "convenciones": {
+      "equipos": "AAA = local (ataca hacia yard 100 absoluto), BBB = visitante. pos {team,yard} = yardas desde la goal line propia de ese equipo (BBB 40 = la 40 de BBB).",
+      "jugadores": "Adams=#12, Allen=#22, Archer=#81 (equipo A); Brown=#50, Benton=#99, Baker=#31 (equipo B).",
+      "net_yards_touchdown_stats_count": "Las jugadas fueron pasadas por una réplica de wizard.js (_renderSubmit/_confirmSubmit): net_yards y touchdown se derivan sólo de `at`; un flag aceptado con down_result y timing != dead anula la jugada (net_yards=0, stats_count=false).",
+      "grupos": "a = corregible con datos que ya se capturan; b = requiere capturar datos nuevos (segunda pasada con video); a+b = parte corregible y parte no."
+    },
+    "total": 41,
+    "cumplen_hoy": 1,
+    "no_cumplen_hoy": 40
+  },
+  "casos": [
+    {
+      "id": "TC-01",
+      "regla_ncaa": "Pass efficiency (B.I. 16)",
+      "fuente_manual": "Manual p.5 muestra: 166 att, 98 comp, 1567 yds, 16 TD, 7 INT => 161.71",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_passerRating",
+      "entrada": {
+        "descripcion": {
+          "comp": 98,
+          "att": 166,
+          "yds": 1567,
+          "td": 16,
+          "int": 7
+        },
+        "jugadas": []
+      },
+      "salida_esperada": {
+        "rating": 161.71
+      },
+      "resultado_actual_codigo": {
+        "rating": 105.17
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-02",
+      "regla_ncaa": "Sack solo = sack + tackle solo + TFL con todas las yardas (§16 Art.4, B.I.15)",
+      "fuente_manual": "Manual p.4 Ej.1 / p.17 A.R.1",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / computePlayerStats",
+      "entrada": {
+        "descripcion": "PASS sack, sack_by #99, 1&10 en BBB40, cae en BBB48 (-8). Sin tackle_by.",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "sack",
+            "sack_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 48
+            },
+            "yardline_100": 40,
+            "net_yards": -8,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "solo": 1,
+        "ast": 0,
+        "sacks": 1,
+        "tfl": 1,
+        "sackYds": 8
+      },
+      "resultado_actual_codigo": {
+        "solo": 1,
+        "ast": 0,
+        "sacks": 1,
+        "tfl": 0,
+        "sackYds": 8
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-03",
+      "regla_ncaa": "Un solo tackle solo por jugada (§16 Art.1)",
+      "fuente_manual": "Manual p.3 SOLO TACKLE (\"Not more than one solo tackle ... on any one play\")",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / computePlayerStats",
+      "entrada": {
+        "descripcion": "Igual que TC-02 pero el operador también captura tackle_by=[#99] (el wizard lo pide opcional tras el sack).",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "sack",
+            "sack_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 48
+            },
+            "tackle_by": [
+              {
+                "number": 99,
+                "nombre": "",
+                "apellido": ""
+              }
+            ],
+            "yardline_100": 40,
+            "net_yards": -8,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "solo": 1,
+        "ast": 0,
+        "sacks": 1,
+        "tfl": 1,
+        "sackYds": 8
+      },
+      "resultado_actual_codigo": {
+        "solo": 2,
+        "ast": 0,
+        "sacks": 1,
+        "tfl": 1,
+        "sackYds": 8
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-04",
+      "regla_ncaa": "Sack asistido: cada jugador asistido de sack/tackle/TFL y yardas partidas (§16 Art.4 A.R.2)",
+      "fuente_manual": "Manual p.4 Ej.2 / p.17 A.R.2",
+      "grupo": "b",
+      "severidad": "MEDIA",
+      "archivo": "live-stats/capture/engine.js (PASS_RESULT_BRANCHES.sack: sack_by multiple:false)",
+      "funcion": "computeDefenseStats",
+      "entrada": {
+        "descripcion": "Sack de -8 compartido por #99 y #31 (requiere captura de dos sackers). Se simula con sack_by=#99 y tackle_by=[#99,#31].",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "sack",
+            "sack_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 48
+            },
+            "tackle_by": [
+              {
+                "number": 99,
+                "nombre": "",
+                "apellido": ""
+              },
+              {
+                "number": 31,
+                "nombre": "",
+                "apellido": ""
+              }
+            ],
+            "yardline_100": 40,
+            "net_yards": -8,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "31": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1,
+          "sackYds": 4
+        },
+        "99": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1,
+          "sackYds": 4
+        }
+      },
+      "resultado_actual_codigo": {
+        "31": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 0,
+          "tfl": 1,
+          "sackYds": 0
+        },
+        "99": {
+          "solo": 1,
+          "ast": 1,
+          "sacks": 1,
+          "asstSacks": 0,
+          "tfl": 1,
+          "sackYds": 8
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-05",
+      "regla_ncaa": "Intentional grounding: rush negativo al pasador, sack+TFL al presionador, penalidad de 0 yardas, sin intento de pase (§3 Art.10 A.R.1, §16 Art.4)",
+      "fuente_manual": "Manual p.8 §3 Art.10 A.R.1 / p.17 A.R.5",
+      "grupo": "a+b",
+      "severidad": "ALTA",
+      "archivo": "live-stats/capture/wizard.js:1866 (_flagVoidsPlay) + shared/stats-lib.js (computePlayerStats, computePenalties, computeDefenseStats)",
+      "funcion": "_flagVoidsPlay / computePenalties",
+      "entrada": {
+        "descripcion": "A en BBB20 (1&10 => field_pos BBB20). Adams cae a BBB28 y tira IG presionado por #99. Flag IG aceptado, loss_of_down, spot BBB28.",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "incomplete",
+            "flag_1_infraction": {
+              "code": "IG",
+              "label": "IG"
+            },
+            "flag_1_team": "AAA",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "BBB",
+              "yard": 28
+            },
+            "flag_1_down_result": "loss_of_down",
+            "flag_1_timing": "live",
+            "yardline_100": 20,
+            "net_yards": 0,
+            "touchdown": false,
+            "stats_count": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "passAtt": 0,
+        "rushAtt": 1,
+        "rushYds": -8,
+        "penaltyYds": 0,
+        "benton": {
+          "sacks": 1,
+          "solo": 1,
+          "tfl": 1,
+          "sackYds": 8
+        }
+      },
+      "resultado_actual_codigo": {
+        "passAtt": 0,
+        "rushAtt": 0,
+        "rushYds": 0,
+        "penaltyYds": 8,
+        "benton": {
+          "sacks": 0,
+          "solo": 0,
+          "tfl": 0,
+          "sackYds": 0
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-06",
+      "regla_ncaa": "Intentional grounding en 3ª y 15 cuenta como intento de 3ª down (§8 A.R.5)",
+      "fuente_manual": "Manual p.2 §8 A.R.5",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeComparisonStats (rama stats_count===false)",
+      "entrada": {
+        "descripcion": "IG en 3ª y 15 desde mitad de cancha (BBB 50).",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 50
+            },
+            "down": 3,
+            "distance": 15,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "incomplete",
+            "flag_1_infraction": {
+              "code": "IG",
+              "label": "IG"
+            },
+            "flag_1_team": "AAA",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "BBB",
+              "yard": 28
+            },
+            "flag_1_down_result": "loss_of_down",
+            "flag_1_timing": "live",
+            "yardline_100": 50,
+            "net_yards": 0,
+            "touchdown": false,
+            "stats_count": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "thirdAtt": 1,
+        "thirdConv": 0
+      },
+      "resultado_actual_codigo": {
+        "thirdAtt": 0,
+        "thirdConv": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-07",
+      "regla_ncaa": "Strip-sack recuperado atrás de la LOS por el ofensivo: rush -8 al QB, FF+sack+solo+TFL(8) al defensor, fumble no perdido (§16 Art.4 A.R.7, §3 Art.10 A.R.5)",
+      "fuente_manual": "Manual p.4 Ej.7 / p.9 A.R.5 / p.18 A.R.7",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "live-stats/capture/wizard.js (net_yards sólo desde `at`) + shared/stats-lib.js",
+      "funcion": "_renderSubmit / computePlayerStats / computeDefenseStats",
+      "entrada": {
+        "descripcion": "Sack con result=fumble: fumble_at BBB45, recuperado por A (#22) en BBB48, LOS BBB40. net_yards queda null porque no hay `at`.",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "sack",
+            "sack_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 45
+            },
+            "fumble_forced_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovery_team": "AAA",
+            "fumble_recovered_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 48
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 48
+            },
+            "yardline_100": 40
+          }
+        ]
+      },
+      "salida_esperada": {
+        "qbRush": {
+          "att": 1,
+          "yds": -8
+        },
+        "benton": {
+          "ff": 1,
+          "sacks": 1,
+          "solo": 1,
+          "tfl": 1,
+          "sackYds": 8
+        },
+        "team": {
+          "fumbles": 1,
+          "fumblesLost": 0,
+          "sacksYds": 8
+        }
+      },
+      "resultado_actual_codigo": {
+        "qbRush": {
+          "att": 1,
+          "yds": 0
+        },
+        "benton": {
+          "ff": 1,
+          "sacks": 1,
+          "solo": 1,
+          "tfl": 0,
+          "sackYds": 0
+        },
+        "team": {
+          "fumbles": 1,
+          "fumblesLost": 0,
+          "sacksYds": 0
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-08",
+      "regla_ncaa": "Jugada terminada en fumble: yardas hasta el punto de recuperación se acreditan al que fumbleó (§13 Art.1)",
+      "fuente_manual": "Manual p.15 §13 Art.1 A.R.1 (rush de 6 yardas, fumble perdido)",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "live-stats/capture/wizard.js:1692 + shared/stats-lib.js:buildOffenseMaps",
+      "funcion": "net_yards nulo en fumbles",
+      "entrada": {
+        "descripcion": "A en BBB30 1&10; Adams corre a BBB25, fumble, Brown recupera en BBB24.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 25
+            },
+            "fumble_forced_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovery_team": "BBB",
+            "fumble_recovered_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 24
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 24
+            },
+            "yardline_100": 30
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adams": {
+          "att": 1,
+          "yds": 6
+        },
+        "teamRushYds": 6,
+        "fumbles": 1,
+        "fumblesLost": 1
+      },
+      "resultado_actual_codigo": {
+        "adams": {
+          "att": 1,
+          "yds": 0
+        },
+        "teamRushYds": 0,
+        "fumbles": 1,
+        "fumblesLost": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-09",
+      "regla_ncaa": "Fumble lost: no se cuenta primer down aunque la yarda alcance (§1 Art.4); si lo recupera A sí se acredita al rush (§1 Art.5)",
+      "fuente_manual": "Manual p.6 §1 Art.4 A.R. y Art.5 A.R. (2ª y 5 en BBB40, rush de 10 y fumble)",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_isFirstDownPlay",
+      "entrada": {
+        "descripcion": "Art.5: A en BBB40 2&5, Adams corre 10 y fumbla, Allen (A) recupera en BBB30 => rush 10 yds + 1 first down por rush.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 2,
+            "distance": 5,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "fumble_recovery_team": "AAA",
+            "fumble_recovered_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "yardline_100": 40
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adamsYds": 10,
+        "firstDowns": 1
+      },
+      "resultado_actual_codigo": {
+        "adamsYds": 0,
+        "firstDowns": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-10",
+      "regla_ncaa": "Recuperación sin retorno no se lista como fumble return (§5, §13 Art.4)",
+      "fuente_manual": "Manual p.2 §5 y p.15 §13 Art.4 (\"Do not list fumble returns in which the player just falls on the ball\")",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeTurnoverStatsByPlayer / computeTurnoverReturnYards",
+      "entrada": {
+        "descripcion": "Mismo play de TC-08: Brown recupera en BBB24 y no avanza (fumble_at_result == fumble_recovered_at).",
+        "jugadas": "Mismas jugadas que TC-08"
+      },
+      "salida_esperada": {
+        "fumbleReturnRows": 0
+      },
+      "resultado_actual_codigo": {
+        "fumbleReturnRows": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-11",
+      "regla_ncaa": "Cada fumble se carga (nivel 1 y nivel 2); fumble perdido si el rival termina con el balón (§13 Art.1,7; B.I.5)",
+      "fuente_manual": "Manual p.15 §13 Art.1-2 y A.R. de §13 Art.3 (cada pérdida de control es fumble)",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeComparisonStats / computeFumbleStats / _fumbleOccurred",
+      "entrada": {
+        "descripcion": "A fumbla (nivel 1), Allen (A) recupera y fumbla de nuevo (nivel 2, forzado por #50), B (#31) recupera: A=2 fumbles, 1 perdido.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 35
+            },
+            "fumble_recovery_team": "AAA",
+            "fumble_recovered_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 36
+            },
+            "fumble_result": "fumble",
+            "fumble_2_at": {
+              "team": "BBB",
+              "yard": 36
+            },
+            "fumble_2_forced_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_2_recovery_team": "BBB",
+            "fumble_2_recovered_by": {
+              "number": 31,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_2_recovered_at": {
+              "team": "BBB",
+              "yard": 37
+            },
+            "fumble_2_result": "eop",
+            "fumble_2_at_result": {
+              "team": "BBB",
+              "yard": 37
+            },
+            "yardline_100": 40
+          }
+        ]
+      },
+      "salida_esperada": {
+        "teamA": {
+          "fumbles": 2,
+          "fumblesLost": 1,
+          "turnovers": 1
+        },
+        "indiv": {
+          "adams": 1,
+          "allen": 1
+        }
+      },
+      "resultado_actual_codigo": {
+        "teamA": {
+          "fumbles": 1,
+          "fumblesLost": 0,
+          "turnovers": 0
+        },
+        "indiv": {
+          "adams": 1,
+          "allen": 0
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-12",
+      "regla_ncaa": "Fumble del regresador: se carga al equipo receptor (BBB) y es perdido si recupera el pateador; FF al equipo que lo forzó (§8 Art.2,7; §13)",
+      "fuente_manual": "Manual p.12 §8 Art.2 A.R. (muff de kickoff = fumble lost del receptor) y §13 Art.1",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeFumbleStats / computeComparisonStats / computeDefenseStats",
+      "entrada": {
+        "descripcion": "Kickoff de A regresado por #31 (B), fumble forzado por #40 (A), recupera A.",
+        "jugadas": [
+          {
+            "play_type": "KICK",
+            "kick_type": "kickoff",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 35
+            },
+            "down": 0,
+            "distance": 0,
+            "kicked_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "kickoff_result": "returned",
+            "kicked_to": {
+              "team": "BBB",
+              "yard": 5
+            },
+            "kick_returned_by": {
+              "number": 31,
+              "nombre": "",
+              "apellido": ""
+            },
+            "kick_return_result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 12
+            },
+            "fumble_forced_by": {
+              "number": 40,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovery_team": "AAA",
+            "fumble_recovered_by": {
+              "number": 40,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 12
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 12
+            },
+            "yardline_100": 65
+          }
+        ]
+      },
+      "salida_esperada": {
+        "fumbleRow": {
+          "team": "BBB",
+          "lost": 1
+        },
+        "teamB": {
+          "fumbles": 1,
+          "fumblesLost": 1
+        },
+        "ffAAA40": 1
+      },
+      "resultado_actual_codigo": {
+        "fumbleRow": {
+          "team": "AAA",
+          "lost": 0
+        },
+        "teamB": {
+          "fumbles": 0,
+          "fumblesLost": 0
+        },
+        "ffAAA40": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-13",
+      "regla_ncaa": "Fumble ofensivo recuperado por compañero en la end zone = TD por rushing (§13 Art.2 A.R.3,4)",
+      "fuente_manual": "Manual p.15 §13 Art.2 A.R.3: Adams rush 20 yds; Allen sin rush y TD; fumble no perdido",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:1943 (_advanceFumble) ",
+      "funcion": "_advanceFumble",
+      "entrada": {
+        "descripcion": "A en BBB20; Adams a BBB5, fumble, balón a la end zone y Allen (A) lo cae ahí.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 5
+            },
+            "fumble_recovery_team": "AAA",
+            "fumble_recovered_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "yardline_100": 20
+          }
+        ]
+      },
+      "salida_esperada": {
+        "scoreHome": 6,
+        "adamsRushYds": 20,
+        "allenTD": 1
+      },
+      "resultado_actual_codigo": {
+        "scoreHome": 0,
+        "adamsRushYds": 0,
+        "allenTD": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-14",
+      "regla_ncaa": "Safety en scrimmage: rush con pérdida hasta la goal line; 2 pts al rival; A patea libre desde su 20 (§12)",
+      "fuente_manual": "Manual p.14 §12 + §3 Art.10 A.R.3 (rush -5, free kick desde la 20)",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:1846-1854 (rama RUSH final) y 1575-1612",
+      "funcion": "advanceGameState",
+      "entrada": {
+        "descripcion": "A en su 5 (1&10), Adams es derribado en su propia end zone.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 5
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "safety",
+            "safety_time": "9:30",
+            "yardline_100": 95
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adamsRush": {
+          "att": 1,
+          "yds": -5
+        },
+        "scoreAway": 2,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "AAA",
+          "yard": 20
+        },
+        "down": 0
+      },
+      "resultado_actual_codigo": {
+        "adamsRush": {
+          "att": 1,
+          "yds": 0
+        },
+        "scoreAway": 2,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "AAA",
+          "yard": 5
+        },
+        "down": 2
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-15",
+      "regla_ncaa": "Sack/scramble que termina en safety anota 2 pts al rival (§12, §3 Art.10 A.R.3)",
+      "fuente_manual": "Manual p.14 §12 y p.8 §3 Art.10 A.R.3",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:1741-1770",
+      "funcion": "advanceGameState (rama PASS sack/scramble)",
+      "entrada": {
+        "descripcion": "A en su 5, QB sacado en su end zone (pass_result=sack, result=safety); idem scramble.",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 5
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "sack",
+            "sack_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "safety",
+            "yardline_100": 95
+          },
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 5
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "scramble",
+            "result": "safety",
+            "yardline_100": 95
+          }
+        ]
+      },
+      "salida_esperada": {
+        "sackScoreAway": 2,
+        "scrambleScoreAway": 2
+      },
+      "resultado_actual_codigo": {
+        "sackScoreAway": 0,
+        "scrambleScoreAway": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-16",
+      "regla_ncaa": "Safety en rama completa de pase y retornos: ídem transición (free kick del que cedió)",
+      "fuente_manual": "Manual p.8 §3 Art.10 A.R.3 / p.14 §12",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:1453-1459, 1594-1600, 1815-1820",
+      "funcion": "advanceGameState (punt_muff safety, SNAP_FUMBLE safety, PASS complete safety)",
+      "entrada": {
+        "descripcion": "Tres variantes: muff de punt con safety, snap fumble con safety, completo con safety. Se compara si possession/field_pos/down quedan listos para el free kick.",
+        "jugadas": [
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 5
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "muffed",
+            "punt_muff_at": {
+              "team": "BBB",
+              "yard": 3
+            },
+            "punt_muff_recovery_team": "BBB",
+            "punt_muff_recovered_at": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "punt_muff_result": "safety",
+            "yardline_100": 95
+          },
+          {
+            "play_type": "SNAP_FUMBLE",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 5
+            },
+            "down": 1,
+            "distance": 10,
+            "snap_fumble_at": {
+              "team": "AAA",
+              "yard": 2
+            },
+            "snap_fumble_recovery_team": "AAA",
+            "snap_fumble_recovered_at": {
+              "team": "AAA",
+              "yard": 0
+            },
+            "snap_fumble_result": "safety",
+            "yardline_100": 95
+          }
+        ]
+      },
+      "salida_esperada": {
+        "muffNext": {
+          "down": 0,
+          "possession": "BBB",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 20
+          }
+        },
+        "snapNext": {
+          "down": 0,
+          "possession": "AAA",
+          "field_pos": {
+            "team": "AAA",
+            "yard": 20
+          }
+        }
+      },
+      "resultado_actual_codigo": {
+        "muffNext": {
+          "down": 4,
+          "possession": "BBB",
+          "field_pos": {
+            "team": "AAA",
+            "yard": 5
+          }
+        },
+        "snapNext": {
+          "down": 1,
+          "possession": "AAA",
+          "field_pos": {
+            "team": "AAA",
+            "yard": 5
+          }
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-17",
+      "regla_ncaa": "Pérdida de posesión en 4ª down (§9 posesión; §13 Art.8)",
+      "fuente_manual": "Manual p.3 §9 (\"until a scoring play is made or loss of possession occurs\")",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:1731-1739 y 1985-1997",
+      "funcion": "advanceGameState / _advanceDownDistance",
+      "entrada": {
+        "descripcion": "4ª y 5 en BBB30, pase incompleto.",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "down": 4,
+            "distance": 5,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "incomplete",
+            "yardline_100": 30
+          }
+        ]
+      },
+      "salida_esperada": {
+        "possession": "BBB",
+        "down": 1,
+        "distance": 10
+      },
+      "resultado_actual_codigo": {
+        "possession": "AAA",
+        "down": 1,
+        "distance": 10
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-18",
+      "regla_ncaa": "Punt downed por el pateador se mide hasta el punto donde se detiene; cuenta \"inside 20\" (§6 Art.1, §14 B.I.14)",
+      "fuente_manual": "Manual p.10 §6 Art.1 y p.3 B.I.14",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:2096-2107",
+      "funcion": "computeSpecialTeamsStats",
+      "entrada": {
+        "descripcion": "Punt de AAA50 downed por A en BBB10 (punt_downed_at).",
+        "jugadas": [
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "downed",
+            "punt_downed_at": {
+              "team": "BBB",
+              "yard": 10
+            },
+            "yardline_100": 50
+          }
+        ]
+      },
+      "salida_esperada": {
+        "no": 1,
+        "yds": 40,
+        "in20": 1
+      },
+      "resultado_actual_codigo": {
+        "no": 1,
+        "yds": 0,
+        "in20": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-19",
+      "regla_ncaa": "Inside-20 se acredita donde TERMINA el retorno, el 20 exacto no cuenta (§14 B.I.14)",
+      "fuente_manual": "Manual p.3 B.I.14 (\"return ends inside the return team's 20\"; spot on the 20 is NOT inside)",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:2106",
+      "funcion": "computeSpecialTeamsStats",
+      "entrada": {
+        "descripcion": "Tres punts: (1) cae BBB35 y se regresa a BBB15 => in20=1; (2) cae BBB15 y se regresa a BBB30 => in20=0; (3) sale por la banda en BBB20 => in20=0.",
+        "jugadas": [
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "returned",
+            "punt_kicked_to": {
+              "team": "BBB",
+              "yard": 35
+            },
+            "punt_returned_by": {
+              "number": 31,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_return_result": "tackle",
+            "punt_return_at": {
+              "team": "BBB",
+              "yard": 15
+            },
+            "yardline_100": 50
+          },
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "returned",
+            "punt_kicked_to": {
+              "team": "BBB",
+              "yard": 15
+            },
+            "punt_returned_by": {
+              "number": 31,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_return_result": "tackle",
+            "punt_return_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "yardline_100": 50
+          },
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "oob",
+            "punt_oob_at": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "yardline_100": 50
+          }
+        ]
+      },
+      "salida_esperada": {
+        "ret_to_15": 1,
+        "ret_from_15_to_30": 0,
+        "oob_on_20": 0
+      },
+      "resultado_actual_codigo": {
+        "ret_to_15": 0,
+        "ret_from_15_to_30": 1,
+        "oob_on_20": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-20",
+      "regla_ncaa": "Punt bloqueado = entrada de \"Team\", no del pateador; 1 punt de 0 yardas en el total de equipo; bloqueador recibe punt return de lo avanzado (§7 Art.1)",
+      "fuente_manual": "Manual p.10-11 §7 Art.1 y A.R.1 (punt de AAA50 bloqueado por #50, recuperado por A en AAA40)",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:2089-2108",
+      "funcion": "computeSpecialTeamsStats",
+      "entrada": {
+        "descripcion": "PUNT blocked, punt_blocked_by #50, recovery A en AAA40.",
+        "jugadas": [
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "blocked",
+            "punt_blocked_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_recovery_team": "AAA",
+            "punt_recovered_at": {
+              "team": "AAA",
+              "yard": 40
+            },
+            "punt_block_return_result": "downed",
+            "yardline_100": 50
+          }
+        ]
+      },
+      "salida_esperada": {
+        "punterRows": 0,
+        "teamPuntsZeroYds": 1,
+        "blockerPuntReturnYds": 10
+      },
+      "resultado_actual_codigo": {
+        "punterRows": 1,
+        "teamPuntsZeroYds": 0,
+        "blockerPuntReturnYds": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-21",
+      "regla_ncaa": "Net punting = (yardas - retorno - 20×TB) / punts (B.I.16)",
+      "fuente_manual": "Manual p.5 TEAM NET PUNTING",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js / live-stats/viewer/viewer.html",
+      "funcion": "(no existe)",
+      "entrada": {
+        "descripcion": "3 punts: 45 yds (retorno 5), 50 yds touchback, 40 yds fair catch => (135-5-20)/3 = 36.67.",
+        "jugadas": [
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 45
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "returned",
+            "punt_kicked_to": {
+              "team": "BBB",
+              "yard": 10
+            },
+            "punt_returned_by": {
+              "number": 31,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_return_result": "tackle",
+            "punt_return_at": {
+              "team": "BBB",
+              "yard": 15
+            },
+            "yardline_100": 55
+          },
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "touchback",
+            "yardline_100": 50
+          },
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 40
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "fair_catch",
+            "punt_kicked_to": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "punt_fair_catch_by": {
+              "number": 31,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_fair_catch_at": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "yardline_100": 60
+          }
+        ]
+      },
+      "salida_esperada": {
+        "net": 36.67
+      },
+      "resultado_actual_codigo": {
+        "net": null,
+        "_exportsNetPunting": []
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-22",
+      "regla_ncaa": "Punt con muff: se mide hasta el punto del muff, el receptor carga return negativo y el equipo un fumble (§8 Art.7)",
+      "fuente_manual": "Manual p.12 §8 Art.7 A.R.1 (punt de AAA30, muff en BBB30, recupera A en BBB20 => punt 40, return -10, fumble lost B)",
+      "grupo": "a(equipo)+b(jugador)",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:2096-2125 y 343-349; live-stats/capture/engine.js:1142 (muffed no captura al muffer)",
+      "funcion": "computeSpecialTeamsStats / computeComparisonStats",
+      "entrada": {
+        "descripcion": "PUNT muffed, punt_muff_at BBB30, recupera A en BBB20.",
+        "jugadas": [
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 30
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "muffed",
+            "punt_muff_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "punt_muff_recovery_team": "AAA",
+            "punt_muff_recovered_at": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "punt_muff_result": "tackle",
+            "punt_muff_at_result": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "yardline_100": 70
+          }
+        ]
+      },
+      "salida_esperada": {
+        "puntYds": 40,
+        "teamB": {
+          "fumbles": 1,
+          "fumblesLost": 1
+        }
+      },
+      "resultado_actual_codigo": {
+        "puntYds": 0,
+        "teamB": {
+          "fumbles": 0,
+          "fumblesLost": 0
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-23",
+      "regla_ncaa": "Los tackles en cobertura de patadas cuentan como estadística defensiva (§15, §16 intro)",
+      "fuente_manual": "Manual p.3 B.I.15 y p.17 §16 (\"tackles in kick coverage\")",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:2029 y 149",
+      "funcion": "computeDefenseStats / computePlayerStats (tackleArrays)",
+      "entrada": {
+        "descripcion": "Kickoff regresado por #31, tackle de #40 (equipo AAA) en BBB30 (kick_return_tackle_by).",
+        "jugadas": [
+          {
+            "play_type": "KICK",
+            "kick_type": "kickoff",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 35
+            },
+            "down": 0,
+            "distance": 0,
+            "kicked_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "kickoff_result": "returned",
+            "kicked_to": {
+              "team": "BBB",
+              "yard": 5
+            },
+            "kick_returned_by": {
+              "number": 31,
+              "nombre": "",
+              "apellido": ""
+            },
+            "kick_return_result": "tackle",
+            "kick_return_tackle_by": [
+              {
+                "number": 40,
+                "nombre": "",
+                "apellido": ""
+              }
+            ],
+            "kick_return_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "yardline_100": 65
+          }
+        ]
+      },
+      "salida_esperada": {
+        "aaa40": {
+          "solo": 1
+        }
+      },
+      "resultado_actual_codigo": {
+        "aaa40": {
+          "solo": 0
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-24",
+      "regla_ncaa": "Tackle hecho por ofensivos tras turnover se acredita a su propio equipo (§15, §16 intro)",
+      "fuente_manual": "Manual p.3 B.I.15 (\"tackles made by offensive players after turnovers\")",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:2026-2037 (defTeam = no-posesión)",
+      "funcion": "computeDefenseStats / computePlayerStats",
+      "entrada": {
+        "descripcion": "INT de #50 (B), devuelta y tackleada por Adams #12 (A) (return_tackle_by).",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 2,
+            "distance": 8,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "intercepted",
+            "intercepted_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "intercepted_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "returned_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "return_result": "tackle",
+            "return_tackle_by": [
+              {
+                "number": 12,
+                "nombre": "",
+                "apellido": ""
+              }
+            ],
+            "return_at": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "yardline_100": 40
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adams12InAAA": 1,
+        "adams12InBBB": 0
+      },
+      "resultado_actual_codigo": {
+        "adams12InAAA": 0,
+        "adams12InBBB": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-25",
+      "regla_ncaa": "Jugada anulada por penalidad no genera estadística (tampoco defensiva) (§14 Art.3,5,6)",
+      "fuente_manual": "Manual p.16 §14 Art.5 A.R.1-4 (\"Play is nullified and is not recorded\")",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:2024-2058 y 351-359, 2039",
+      "funcion": "computeDefenseStats / computeComparisonStats / computePlayerStats",
+      "entrada": {
+        "descripcion": "Sack de #99 anulado por holding ofensivo (flag HO aceptado, repeat_down, live).",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "sack",
+            "sack_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 48
+            },
+            "flag_1_infraction": {
+              "code": "HO",
+              "label": "HO"
+            },
+            "flag_1_team": "AAA",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "AAA",
+              "yard": 30
+            },
+            "flag_1_down_result": "repeat_down",
+            "flag_1_timing": "live",
+            "yardline_100": 40,
+            "net_yards": 0,
+            "touchdown": false,
+            "stats_count": false
+          },
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "sack",
+            "sack_by": {
+              "number": 99,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 48
+            },
+            "flag_1_infraction": {
+              "code": "HO",
+              "label": "HO"
+            },
+            "flag_1_team": "AAA",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "AAA",
+              "yard": 30
+            },
+            "flag_1_down_result": "repeat_down",
+            "flag_1_timing": "live",
+            "yardline_100": 40,
+            "net_yards": 0,
+            "touchdown": false,
+            "stats_count": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "sacks": 0,
+        "solo": 0,
+        "teamSacksMade": 0
+      },
+      "resultado_actual_codigo": {
+        "sacks": 1,
+        "solo": 1,
+        "teamSacksMade": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-26",
+      "regla_ncaa": "Intento de 2 puntos / PAT no es jugada de scrimmage: sin rush, pase, INT ni tackle individual (§11 Art.4)",
+      "fuente_manual": "Manual p.14 §11 Art.4 y \"Defensive Extra Points\" (sólo se acredita attempt/made defensivo)",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:2024 (computeDefenseStats sin filtro PAT_TRY), 343, 361",
+      "funcion": "computeDefenseStats / computeComparisonStats",
+      "entrada": {
+        "descripcion": "PAT_TRY pase de 2 pts interceptado por #50; PAT_TRY run de 2 pts con fumble; PAT_TRY run bueno (touchdown=true).",
+        "jugadas": [
+          {
+            "play_type": "PAT_TRY",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 3
+            },
+            "down": 0,
+            "distance": 0,
+            "pat_type": "pass",
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "intercepted",
+            "intercepted_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "intercepted_at": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "return_result": "tackle",
+            "return_at": {
+              "team": "BBB",
+              "yard": 10
+            },
+            "yardline_100": 3
+          },
+          {
+            "play_type": "PAT_TRY",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 3
+            },
+            "down": 0,
+            "distance": 0,
+            "pat_type": "run",
+            "rush_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_recovery_team": "BBB",
+            "fumble_recovered_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 2
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 2
+            },
+            "yardline_100": 3
+          },
+          {
+            "play_type": "PAT_TRY",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "down": 0,
+            "distance": 0,
+            "pat_type": "run",
+            "rush_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "yardline_100": 0,
+            "net_yards": 0,
+            "touchdown": true
+          }
+        ]
+      },
+      "salida_esperada": {
+        "int50": 0,
+        "teamFumbles": 0,
+        "firstDownsOn2ptGood": 0
+      },
+      "resultado_actual_codigo": {
+        "int50": 1,
+        "teamFumbles": 1,
+        "firstDownsOn2ptGood": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-27",
+      "regla_ncaa": "Intervalos PAT: el kicker acumula intentos/convertidos; 2 pts se atribuyen al jugador (\"Scoring\"), sin rush (§11 Art.1-4)",
+      "fuente_manual": "Manual p.13-14 §11 OFFENSIVE EXTRA POINTS",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js:computeSpecialTeamsStats",
+      "funcion": "(no existe: sin PAT por pateador ni puntos por jugador)",
+      "entrada": {
+        "descripcion": "PAT_TRY kick good de #5.",
+        "jugadas": [
+          {
+            "play_type": "PAT_TRY",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 3
+            },
+            "down": 0,
+            "distance": 0,
+            "pat_type": "kick",
+            "kicked_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pat_kick_result": "good",
+            "yardline_100": 3
+          }
+        ]
+      },
+      "salida_esperada": {
+        "patRows": 1
+      },
+      "resultado_actual_codigo": {
+        "patRows": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-28",
+      "regla_ncaa": "Dos primeros downs: uno por rushing y otro por penalidad (§1 Art.2 A.R.1); la penalidad se carga con sus yardas (10), no con el desplazamiento (30)",
+      "fuente_manual": "Manual p.6 §1 Art.2 A.R.1",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:291-298 (_isFirstDownPlay booleano), 433-467 (computePenalties), 300-318 (_effectiveNetYards)",
+      "funcion": "_isFirstDownPlay / computePenalties / _effectiveNetYards",
+      "entrada": {
+        "descripcion": "A en BBB40 (1&10); Adams corre 20 a BBB20; B penalizado 10 yds desde ahí (flag dead, first_down) a BBB10.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "flag_1_infraction": {
+              "code": "PF",
+              "label": "PF"
+            },
+            "flag_1_team": "BBB",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "BBB",
+              "yard": 10
+            },
+            "flag_1_down_result": "first_down",
+            "flag_1_timing": "dead",
+            "yardline_100": 40,
+            "net_yards": 20,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "firstDowns": 2,
+        "penaltyYds": 10,
+        "teamRushYds": 20,
+        "adamsYds": 20
+      },
+      "resultado_actual_codigo": {
+        "firstDowns": 1,
+        "penaltyYds": 30,
+        "teamRushYds": 30,
+        "adamsYds": 20
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-29",
+      "regla_ncaa": "Penalidad defensiva en corrida que termina más allá de la LOS: la corrida cuenta (5 yds) y la penalidad (10) se carga aparte (§14 Art.2 A.R.1)",
+      "fuente_manual": "Manual p.16 §14 Art.2 A.R.1",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "live-stats/capture/wizard.js:1866-1880 (_flagVoidsPlay), shared/stats-lib.js:433",
+      "funcion": "_flagVoidsPlay / computePenalties",
+      "entrada": {
+        "descripcion": "A en AAA40; Adams corre a AAA45; Brown (B) agarra en AAA43; se aplica desde AAA45 => bola en AAA55. Flag HO, first_down, timing live (único valor que el wizard ofrece para \"durante la jugada\").",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "AAA",
+              "yard": 45
+            },
+            "flag_1_infraction": {
+              "code": "HO",
+              "label": "HO"
+            },
+            "flag_1_team": "BBB",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "AAA",
+              "yard": 55
+            },
+            "flag_1_down_result": "first_down",
+            "flag_1_timing": "live",
+            "yardline_100": 60,
+            "net_yards": 0,
+            "touchdown": false,
+            "stats_count": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adamsRush": {
+          "att": 1,
+          "yds": 5
+        },
+        "penaltyYds": 10
+      },
+      "resultado_actual_codigo": {
+        "adamsRush": {
+          "att": 0,
+          "yds": 0
+        },
+        "penaltyYds": 15
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-30",
+      "regla_ncaa": "Penalidad ofensiva (clipping) más allá de la LOS: rush 17, penalidad 15 (§14 Art.1 A.R.3)",
+      "fuente_manual": "Manual p.16 §14 Art.1 A.R.3",
+      "grupo": "b",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:437-455 (computePenalties) – falta el spot de aplicación",
+      "funcion": "computePenalties",
+      "entrada": {
+        "descripcion": "A en AAA30; Adams corre a AAA50; clipping A en AAA47; 15 yds desde AAA47 => AAA32. Requiere capturar spot del foul.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 30
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "flag_1_infraction": {
+              "code": "CL",
+              "label": "CL"
+            },
+            "flag_1_team": "AAA",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "AAA",
+              "yard": 32
+            },
+            "flag_1_down_result": "repeat_down",
+            "flag_1_timing": "live",
+            "yardline_100": 70,
+            "net_yards": 0,
+            "touchdown": false,
+            "stats_count": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adamsRush": {
+          "att": 1,
+          "yds": 17
+        },
+        "penaltyYds": 15
+      },
+      "resultado_actual_codigo": {
+        "adamsRush": {
+          "att": 0,
+          "yds": 0
+        },
+        "penaltyYds": 2
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-31",
+      "regla_ncaa": "Roughing the passer en pase completo (15 yds, 1D por penalidad y 1D por pase): yardas de pase 15, no 30 (§14 Art.4 A.R.1; §5 Art.2)",
+      "fuente_manual": "Manual p.16 §14 Art.4 A.R.1",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js:300-318 (_effectiveNetYards suma penalidad a passYds/rushYds de equipo)",
+      "funcion": "_effectiveNetYards / computeComparisonStats",
+      "entrada": {
+        "descripcion": "A en BBB45 (2&8); pase de Adams a Allen hasta BBB30 (15 yds); RP contra B => bola en BBB15 (flag dead, first_down).",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 45
+            },
+            "down": 2,
+            "distance": 8,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "complete",
+            "received_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "flag_1_infraction": {
+              "code": "RP",
+              "label": "RP"
+            },
+            "flag_1_team": "BBB",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "BBB",
+              "yard": 15
+            },
+            "flag_1_down_result": "first_down",
+            "flag_1_timing": "dead",
+            "yardline_100": 45,
+            "net_yards": 15,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "firstDowns": 2,
+        "teamPassYds": 15,
+        "penaltyYds": 15,
+        "allenYds": 15
+      },
+      "resultado_actual_codigo": {
+        "firstDowns": 1,
+        "teamPassYds": 30,
+        "penaltyYds": 30,
+        "allenYds": 15
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-32",
+      "regla_ncaa": "Primer down por TD sólo si la serie empezó a ≥10 yardas de la goal line (§1 Art.1)",
+      "fuente_manual": "Manual p.6 §1 Art.1",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js:292-293 (touchdown === true)",
+      "funcion": "_isFirstDownPlay",
+      "entrada": {
+        "descripcion": "1ª y goal en BBB5: Adams anota TD de 5 yds.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 5
+            },
+            "down": 1,
+            "distance": 5,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "yardline_100": 5,
+            "net_yards": 5,
+            "touchdown": true
+          }
+        ]
+      },
+      "salida_esperada": {
+        "firstDowns": 0
+      },
+      "resultado_actual_codigo": {
+        "firstDowns": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-33",
+      "regla_ncaa": "Yardas de intercepción pueden ser negativas (§3 Art.6 A.R.1)",
+      "fuente_manual": "Manual p.7 §3 Art.6 A.R.1 (intercepta en su 20, cae en su 10 => -10)",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js:2264, 2304, 2356 (Math.max(...,0))",
+      "funcion": "computeTurnoverStatsByPlayer / computeTurnoverReturnYards",
+      "entrada": {
+        "descripcion": "INT de #50 en BBB20; devuelto a BBB10.",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "intercepted",
+            "intercepted_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "intercepted_at": {
+              "team": "BBB",
+              "yard": 20
+            },
+            "returned_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "return_result": "tackle",
+            "return_at": {
+              "team": "BBB",
+              "yard": 10
+            },
+            "yardline_100": 40
+          }
+        ]
+      },
+      "salida_esperada": {
+        "yds": -10
+      },
+      "resultado_actual_codigo": {
+        "yds": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-34",
+      "regla_ncaa": "Snap malo (wild pass from center): la pérdida es de \"Center Pass\"/Team: team rush, pérdida y fumble; no del QB (§15)",
+      "fuente_manual": "Manual p.17 §15",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:343 (sólo result===fumble), 2189 (_fumbleOccurred) y live-stats/capture/wizard.js:1637",
+      "funcion": "computeComparisonStats / computeFumbleStats / buildOffenseMaps",
+      "entrada": {
+        "descripcion": "Caso 1: SNAP_FUMBLE recuperado por B en AAA22 (LOS AAA30). Caso 2: snap malo recuperado por Adams y RUSH retargeted (snap_fumble:true) con pérdida de 10.",
+        "jugadas": [
+          {
+            "play_type": "SNAP_FUMBLE",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 30
+            },
+            "down": 1,
+            "distance": 10,
+            "snap_fumble_at": {
+              "team": "AAA",
+              "yard": 25
+            },
+            "snap_fumble_recovery_team": "BBB",
+            "snap_fumble_recovered_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "snap_fumble_recovered_at": {
+              "team": "AAA",
+              "yard": 22
+            },
+            "snap_fumble_result": "eop",
+            "snap_fumble_at_result": {
+              "team": "AAA",
+              "yard": 22
+            },
+            "yardline_100": 70
+          },
+          {
+            "play_type": "RUSH",
+            "snap_fumble": true,
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 30
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "AAA",
+              "yard": 20
+            },
+            "snap_fumble_recovery_team": "AAA",
+            "yardline_100": 70,
+            "net_yards": -10,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "oppRecovers": {
+          "fumbles": 1,
+          "fumblesLost": 1,
+          "turnovers": 1
+        },
+        "ownRecover": {
+          "adamsRushAtt": 0,
+          "teamFumbles": 1
+        }
+      },
+      "resultado_actual_codigo": {
+        "oppRecovers": {
+          "fumbles": 0,
+          "fumblesLost": 0,
+          "turnovers": 0
+        },
+        "ownRecover": {
+          "adamsRushAtt": 1,
+          "teamFumbles": 0
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-35",
+      "regla_ncaa": "Rodillazo / spike: la jugada es del equipo, no del jugador (§12; §3 Art.10 A.R.8)",
+      "fuente_manual": "Manual p.3 §12 y p.8 §3 Art.10 A.R.8",
+      "grupo": "b",
+      "severidad": "MEDIA",
+      "archivo": "live-stats/capture/engine.js (no existe campo para marcar kneel/spike)",
+      "funcion": "computePlayerStats / buildOffenseMaps",
+      "entrada": {
+        "descripcion": "QB se hinca (RUSH, rush_by Adams, -1). No existe campo para marcarlo.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 41
+            },
+            "kneel": true,
+            "yardline_100": 40,
+            "net_yards": -1,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adamsRushAtt": 0,
+        "teamRushAtt": 1
+      },
+      "resultado_actual_codigo": {
+        "adamsRushAtt": 1,
+        "teamRushAtt": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-36",
+      "regla_ncaa": "Red Zone: se cuenta si el equipo alcanza la 20 en cualquier momento de la posesión (§13)",
+      "fuente_manual": "Manual p.3 §13",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:394-403",
+      "funcion": "computeComparisonStats (enteredRedZone usa yardline_100 al SNAP)",
+      "entrada": {
+        "descripcion": "Pase de TD de 35 yds desde BBB35 (la serie empezó fuera de la 20).",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 35
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "complete",
+            "received_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "yardline_100": 35,
+            "net_yards": 35,
+            "touchdown": true
+          }
+        ]
+      },
+      "salida_esperada": {
+        "redZoneTrips": 1,
+        "redZoneTDs": 1
+      },
+      "resultado_actual_codigo": {
+        "redZoneTrips": 0,
+        "redZoneTDs": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-37",
+      "regla_ncaa": "Ranking de pasadores: mínimo 15 intentos por juego JUGADO (§16 NOTE)",
+      "fuente_manual": "Manual p.5 NOTE (15 pass attempts per game played)",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js:2945 (LEADER_MIN_PER_TEAM_GAME.pass = 10 × juegos del equipo)",
+      "funcion": "buildLeaders",
+      "entrada": {
+        "descripcion": "Constante del mínimo de pase.",
+        "jugadas": []
+      },
+      "salida_esperada": {
+        "passMinPerGame": 15
+      },
+      "resultado_actual_codigo": {
+        "passMinPerGame": 10
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-38",
+      "regla_ncaa": "Tackle solo vs asistido, TFL asistido (§16 Art.1-3)",
+      "fuente_manual": "Manual p.3-4 SOLO/ASSISTED/TFL y Ej.3",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js:2029-2037",
+      "funcion": "computeDefenseStats",
+      "entrada": {
+        "descripcion": "Rush de -4: (1) tackle_by=[#99] ; (2) tackle_by=[#99,#31].",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "tackle_by": [
+              {
+                "number": 99,
+                "nombre": "",
+                "apellido": ""
+              }
+            ],
+            "at": {
+              "team": "BBB",
+              "yard": 44
+            },
+            "yardline_100": 40,
+            "net_yards": -4,
+            "touchdown": false
+          },
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "tackle_by": [
+              {
+                "number": 99,
+                "nombre": "",
+                "apellido": ""
+              },
+              {
+                "number": 31,
+                "nombre": "",
+                "apellido": ""
+              }
+            ],
+            "at": {
+              "team": "BBB",
+              "yard": 44
+            },
+            "yardline_100": 40,
+            "net_yards": -4,
+            "touchdown": false
+          },
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "tackle_by": [
+              {
+                "number": 99,
+                "nombre": "",
+                "apellido": ""
+              },
+              {
+                "number": 31,
+                "nombre": "",
+                "apellido": ""
+              }
+            ],
+            "at": {
+              "team": "BBB",
+              "yard": 44
+            },
+            "yardline_100": 40,
+            "net_yards": -4,
+            "touchdown": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "solo": {
+          "solo": 1,
+          "ast": 0,
+          "tfl": 1
+        },
+        "dos": {
+          "a99": {
+            "solo": 0,
+            "ast": 1,
+            "tfl": 1,
+            "tflYds": 2
+          },
+          "a31": {
+            "solo": 0,
+            "ast": 1,
+            "tfl": 1,
+            "tflYds": 2
+          }
+        }
+      },
+      "resultado_actual_codigo": {
+        "solo": {
+          "solo": 1,
+          "ast": 0,
+          "tfl": 1
+        },
+        "dos": {
+          "a99": {
+            "solo": 0,
+            "ast": 1,
+            "tfl": 1,
+            "tflYds": 0
+          },
+          "a31": {
+            "solo": 0,
+            "ast": 1,
+            "tfl": 1,
+            "tflYds": 0
+          }
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-39",
+      "regla_ncaa": "PBU: pase incompleto con contacto; un INT no recibe PBU (§16 Art.5)",
+      "fuente_manual": "Manual p.5 PASSES DEFENDED / p.18 Art.5",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js:2057",
+      "funcion": "computeDefenseStats",
+      "entrada": {
+        "descripcion": "PASS broken_up con broken_up_by #50 (con y sin INT del mismo defensor).",
+        "jugadas": [
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "broken_up",
+            "broken_up_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "yardline_100": 40
+          },
+          {
+            "play_type": "PASS",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 1,
+            "distance": 10,
+            "pass_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pass_result": "intercepted",
+            "intercepted_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "intercepted_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "return_result": "tackle",
+            "return_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "yardline_100": 40
+          }
+        ]
+      },
+      "salida_esperada": {
+        "pbu": 1,
+        "pbuOnInt": 0
+      },
+      "resultado_actual_codigo": {
+        "pbu": 1,
+        "pbuOnInt": 0
+      },
+      "cumple_hoy": true
+    },
+    {
+      "id": "TC-40",
+      "regla_ncaa": "El jugador que fuerza un fumble recibe además un tackle solo (§16 Art.6; B.I.15 FORCED FUMBLES)",
+      "fuente_manual": "Manual p.5 FORCED FUMBLES y p.18 Art.6 A.R.1 (Brown: solo tackle y forced fumble)",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:2045",
+      "funcion": "computeDefenseStats / computePlayerStats",
+      "entrada": {
+        "descripcion": "Rush de Adams con fumble forzado por #50 (sin tackle_by: el branch de fumble no lo pide).",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "down": 1,
+            "distance": 10,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 27
+            },
+            "fumble_forced_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovery_team": "AAA",
+            "fumble_recovered_by": {
+              "number": 22,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 27
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 27
+            },
+            "yardline_100": 30
+          }
+        ]
+      },
+      "salida_esperada": {
+        "ff": 1,
+        "solo": 1
+      },
+      "resultado_actual_codigo": {
+        "ff": 1,
+        "solo": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-41",
+      "regla_ncaa": "Punt anulado por falta personal en vuelo: no se acredita punt al pateador (§6 Art.5 A.R.)",
+      "fuente_manual": "Manual p.10 §6 Art.5 A.R. (\"Do not credit Adams with a punt\")",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js:2075-2126 (computeSpecialTeamsStats no revisa stats_count)",
+      "funcion": "computeSpecialTeamsStats",
+      "entrada": {
+        "descripcion": "Punt de AAA50 muerto en BBB5; Benton comete falta personal en vuelo; A acepta (first_down, live => stats_count=false).",
+        "jugadas": [
+          {
+            "play_type": "PUNT",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "down": 4,
+            "distance": 8,
+            "punted_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "punt_result": "downed",
+            "punt_downed_at": {
+              "team": "BBB",
+              "yard": 5
+            },
+            "flag_1_infraction": {
+              "code": "RK",
+              "label": "RK"
+            },
+            "flag_1_team": "BBB",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "BBB",
+              "yard": 35
+            },
+            "flag_1_down_result": "first_down",
+            "flag_1_timing": "live",
+            "yardline_100": 50,
+            "net_yards": 0,
+            "touchdown": false,
+            "stats_count": false
+          }
+        ]
+      },
+      "salida_esperada": {
+        "punterRows": 0
+      },
+      "resultado_actual_codigo": {
+        "punterRows": 1
+      },
+      "cumple_hoy": false
+    }
+  ]
+}

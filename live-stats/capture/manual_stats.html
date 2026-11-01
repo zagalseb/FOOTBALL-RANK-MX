@@ -147,9 +147,16 @@
     .stats-table tbody tr { background: var(--bg2); }
     .stats-table tbody tr:hover { background: var(--bg3); }
     .stats-table tbody tr:last-child td { border-bottom: none; }
-    .stats-table .player-cell { min-width: 190px; white-space: normal; }
+    .stats-table .player-cell {
+      min-width: 190px; white-space: normal;
+      position: sticky; left: 0; z-index: 2;
+      background: var(--bg2);
+    }
+    .stats-table thead th.player-cell { z-index: 3; }
+    .stats-table tbody tr:hover .player-cell { background: var(--bg3); }
     .stats-table .stat-input { width: 52px; text-align: center; padding: 6px 4px; }
     .stats-table .row-actions-cell { text-align: right; width: 1%; }
+    .stats-table .group-divider { border-left: 1px solid #fff; }
 
     .new-player-row td { background: var(--bg3); padding: 10px 9px; }
     .new-player-inline { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
@@ -265,18 +272,18 @@
         <table class="stats-table" id="player-table">
           <thead>
             <tr>
-              <th rowspan="2" style="text-align:left">Jugador</th>
+              <th rowspan="2" class="player-cell" style="text-align:left">Jugador</th>
               <th colspan="5">Pase</th>
-              <th colspan="3">Carrera</th>
-              <th colspan="3">Recepción</th>
-              <th colspan="4">Defensa</th>
+              <th colspan="3" class="group-divider">Carrera</th>
+              <th colspan="3" class="group-divider">Recepción</th>
+              <th colspan="4" class="group-divider">Defensa</th>
               <th rowspan="2"></th>
             </tr>
             <tr>
               <th>Att</th><th>Comp</th><th>Yds</th><th>TD</th><th>Int</th>
-              <th>Att</th><th>Yds</th><th>TD</th>
-              <th>Rec</th><th>Yds</th><th>TD</th>
-              <th>Sacks</th><th>TFL</th><th>Int</th><th>Tkl</th>
+              <th class="group-divider">Att</th><th>Yds</th><th>TD</th>
+              <th class="group-divider">Rec</th><th>Yds</th><th>TD</th>
+              <th class="group-divider">Sacks</th><th>TFL</th><th>Int</th><th>Tkl</th>
             </tr>
           </thead>
           <tbody id="player-table-body"></tbody>
@@ -647,8 +654,9 @@
       }
 
       tbody.innerHTML = playerRows.map(row => {
+        const GROUP_DIVIDER_FIELDS = new Set(['rush_att', 'rec', 'sacks'])
         const statCells = PLAYER_STAT_FIELDS.map(f => `
-          <td><input class="input stat-input" type="number" min="0" step="${f.step}"
+          <td${GROUP_DIVIDER_FIELDS.has(f.key) ? ' class="group-divider"' : ''}><input class="input stat-input" type="number" min="0" step="${f.step}"
             data-row="${row.rowId}" data-field="${f.key}" value="${row.values?.[f.key] ?? 0}"></td>
         `).join('')
 

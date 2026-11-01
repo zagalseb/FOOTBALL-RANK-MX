@@ -1,0 +1,8 @@
+{
+  "name": "onefa-2026-simulador",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

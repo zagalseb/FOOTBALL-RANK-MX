@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   parseStatsCsv, weekMismatches, findTeamGame, classifyStatsImport, computeTeamTotals,
-  buildPlayerPayload, buildTeamPayload, PDF_TEAM_LABELS,
+  buildPlayerPayload, buildTeamPayload, planPlayerWrites, uniformKeys, PDF_TEAM_LABELS,
 } from '../shared/stats-import.js'
 
 const MTY = PDF_TEAM_LABELS.MTY, CEM = PDF_TEAM_LABELS.CEM, PUE = PDF_TEAM_LABELS.PUE
@@ -181,4 +181,109 @@ test('totales de equipo: sin columnas de yardas no hay totales; total_yds exige 
   assert.deepEqual(computeTeamTotals(run(parse('semana,equipo,nombre,rec', '3,MTY,TONDA URIAS FERNANDO,4').rows).rows), [])
   const [t] = computeTeamTotals(run(parse('semana,equipo,nombre,rush_yds', '3,MTY,TONDA URIAS FERNANDO,7').rows).rows)
   assert.deepEqual(Object.keys(t.diff), ['rush_yds'])
+})
+
+test('classify: el operador puede omitir una fila con error o de equipo desconocido', () => {
+  const rows = parse('semana,equipo,nombre,rec', '3,MTY,X,abc', '3,XXX,Y,1').rows
+  assert.deepEqual(run(rows).rows.map(r => r.status), ['error', 'error'])
+  assert.deepEqual(run(rows, { choices: { players: { 2: 'skip', 3: 'skip' } } }).rows.map(r => r.status), ['skipped', 'skipped'])
+})
+
+// ── Peticiones: PostgREST rechaza (PGRST102) cuerpos con objetos de llaves distintas ──
+// CSV SINTÉTICO de una semana completa: 142 filas en 12 equipos (misma distribución que un import
+// real) con nombres inventados y el patrón real de celdas vacías (cada jugador solo trae las
+// columnas de lo que hizo: pase, carrera, recepción o mezclas). El roster también es sintético
+// (un jugador por fila, con el nombre del PDF como nombre_completo) y cada equipo juega su propio
+// partido; así se prueba el patrón de celdas vacías sin depender de datos reales ni de la BD.
+const WEEK_TEAMS = { LEONES: 17, LINCES: 15, ZORROS: 14, AZTECAS: 13, PUMAS: 12, GDL: 12, 'B BLANCOS': 12, PUE: 11, 'A BLANCAS': 11, CEM: 10, CCM: 8, CANCUN: 7 }   // 12 equipos, 142 filas
+const syntheticWeekCsv = () => {
+  const cols = ['pass_att', 'pass_comp', 'pass_yds', 'pass_td', 'pass_int', 'rush_att', 'rush_yds', 'rush_td', 'rush_fum', 'rec', 'rec_yds', 'rec_td', 'rec_fum']
+  // Qué columnas trae cada perfil (el resto va vacío).
+  const profiles = [
+    ['pass_att', 'pass_comp', 'pass_yds', 'pass_td', 'pass_int', 'rush_att', 'rush_yds'],            // pasador que también corre
+    ['rush_att', 'rush_yds', 'rush_td', 'rush_fum', 'rec', 'rec_yds'],                                  // corredor que también recibe
+    ['rec', 'rec_yds', 'rec_td', 'rec_fum'],                                                            // receptor
+    ['rush_att', 'rush_yds'],                                                                           // solo carrera
+    ['rec', 'rec_yds'],                                                                                 // solo recepción
+  ]
+  const lines = ['semana,equipo,nombre,' + cols.join(',')]
+  let n = 0
+  for (const [team, count] of Object.entries(WEEK_TEAMS)) {
+    for (let k = 0; k < count; k++, n++) {
+      const has = new Set(profiles[(k + n) % profiles.length])
+      lines.push(['3', team, `APELLIDO${String(n).padStart(3, '0')} NOMBRE${String(n).padStart(3, '0')}`, ...cols.map((c, j) => (has.has(c) ? String((n * 7 + j * 3) % 23 - (c.endsWith('yds') && n % 5 === 0 ? 25 : 0)) : ''))].join(','))
+    }
+  }
+  return lines.join('\n') + '\n'
+}
+const week3 = () => {
+  const parsed = parseStatsCsv(syntheticWeekCsv())
+  const rostersByTeam = {}, games = [], existing = { player: new Map(), team: new Map() }
+  parsed.rows.forEach((r, i) => {
+    const teamId = PDF_TEAM_LABELS[r.equipo]
+    const p = { id: `p${i}`, team_id: teamId, number: i % 100, apellido: 'X', nombre: `Y${i}`, nombre_completo: r.nombre }
+    ;(rostersByTeam[teamId] ??= []).push(p)
+    if (!games.some(g => g.id === `g-${teamId}`)) games.push(G(`g-${teamId}`, teamId, 'rival-' + teamId, '3'))
+    if (i % 3 === 0) existing.player.set(`g-${teamId}|${p.id}`, { rec: 1 })   // un tercio ya tiene stats → update
+  })
+  const { rows } = classifyStatsImport(parsed.rows, { semana: '3', temporada: '2026', games, rostersByTeam, existing, choices: {} })
+  return { parsed, rows, existing: existing.player, okRows: rows.filter(r => r.status === 'ok') }
+}
+// Lo que hace PostgREST con el cuerpo de un POST con on_conflict.
+const postgrest = body => { if (!uniformKeys(body)) throw new Error('PGRST102 All object keys must match') }
+
+test('semana 3: el CSV semanal tiene celdas vacías heterogéneas (el bug original)', () => {
+  const { okRows } = week3()
+  assert.equal(okRows.length, 142)
+  const byTeam = {}
+  for (const r of okRows) (byTeam[r.teamId] ??= []).push(buildPlayerPayload(r))
+  // Enviar un arreglo por equipo con buildPlayerPayload (lo que hacía la página) falla en TODOS los equipos.
+  for (const rows of Object.values(byTeam)) assert.throws(() => postgrest(rows), /PGRST102/)
+})
+
+test('semana 3: ningún cuerpo de petición tiene objetos con llaves heterogéneas', () => {
+  const { okRows, existing, parsed } = week3()
+  const plan = planPlayerWrites(okRows, existing, parsed.statColumns)
+  assert.ok(plan.length > 12, 'hay varios grupos por equipo')
+  for (const q of plan) assert.doesNotThrow(() => postgrest(q.rows), `${q.label} ${q.kind} ${q.columns}`)
+  assert.equal(plan.reduce((a, q) => a + q.rows.length, 0), 142)       // ninguna fila se pierde ni se repite
+  assert.equal(new Set(plan.flatMap(q => q.rows.map(r => r.player_id))).size, 142)
+})
+
+test('semana 3: filas NEW completan con 0 las columnas vacías; UPDATE solo manda celdas con valor', () => {
+  const { okRows, existing, parsed } = week3()
+  const plan = planPlayerWrites(okRows, existing, parsed.statColumns)
+  const ids = ['game_id', 'player_id']
+  for (const q of plan.filter(q => q.kind === 'new')) {
+    for (const row of q.rows) assert.deepEqual(Object.keys(row).sort(), [...ids, ...parsed.statColumns].sort())
+  }
+  const byPlayer = new Map(okRows.map(r => [r.player.id, r]))
+  for (const q of plan) for (const row of q.rows) {
+    const src = byPlayer.get(row.player_id)
+    for (const c of parsed.statColumns) {
+      if (q.kind === 'update') assert.equal(c in row, src.stats[c] !== undefined, `update ${c}: la celda vacía no se manda`)
+      else assert.equal(row[c], src.stats[c] ?? 0, `new ${c}: vacía → 0, con valor → el valor`)
+    }
+  }
+  assert.ok(plan.some(q => q.kind === 'update') && plan.some(q => q.kind === 'new'))
+})
+
+test('semana 3: una fila que apareció después de la vista previa se trata como update (no pisa con 0)', () => {
+  const { okRows, parsed } = week3()
+  const r = okRows.find(x => Object.keys(x.stats).length < parsed.statColumns.length)
+  const plan = planPlayerWrites([r], new Map([[`${r.gameId}|${r.player.id}`, { rec: 5 }]]), parsed.statColumns)
+  assert.equal(plan[0].kind, 'update')
+  assert.deepEqual(Object.keys(plan[0].rows[0]).sort(), ['game_id', 'player_id', ...Object.keys(r.stats)].sort())
+})
+
+test('semana 3: totales de equipo y demás cuerpos de un solo objeto son siempre uniformes', () => {
+  const { rows } = week3()
+  for (const t of computeTeamTotals(rows)) {
+    const body = [buildTeamPayload(t, ['pass_yds'])]
+    assert.doesNotThrow(() => postgrest(body))
+    assert.deepEqual(Object.keys(body[0]).sort(), ['game_id', 'pass_yds', 'team_id'])
+  }
+  assert.equal(uniformKeys([]), true)
+  assert.equal(uniformKeys([{ a: 1, b: 2 }, { b: 3, a: 4 }]), true)
+  assert.equal(uniformKeys([{ a: 1 }, { a: 1, b: 2 }]), false)
 })

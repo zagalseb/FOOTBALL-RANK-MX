@@ -21,3 +21,16 @@ export async function sbUpsert(path, body, onConflict) {
   if (!res.ok) throw new Error(await extractError(res))
   return res.json()
 }
+
+async function sbSend(method, path, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await extractError(res))
+  return res.json()
+}
+
+export const sbInsert = (path, body) => sbSend('POST', path, body)
+export const sbPatch = (path, body) => sbSend('PATCH', path, body)

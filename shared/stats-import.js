@@ -106,23 +106,46 @@ export function findTeamGame(teamId, games, semana, temporada) {
   return { status: 'multiple', games: found }
 }
 
+// ── Same-number conflicts ───────────────────────────────────────────────────
+// A team cannot have two players with the same jersey in one game. If the game
+// already has a stats row of ANOTHER player_id of the same team with the same
+// number, the matched roster player is probably the same person under another
+// roster row (previous season, duplicate roster entry): writing would double-count
+// them (two real cases, 2026-10-28). `existingPlayer` rows carry the joined
+// `player` ({ team_id, number, ... }). Returns the conflicting existing rows.
+export function findNumberConflicts(existingPlayer, gameId, teamId, player) {
+  const out = []
+  for (const r of existingPlayer.values()) {
+    const p = r.player
+    if (r.game_id !== gameId || !p || r.player_id === player.id) continue
+    if (p.team_id !== teamId || Number(p.number) !== Number(player.number)) continue
+    out.push({ playerId: r.player_id, player: p, row: r })
+  }
+  return out
+}
+
 // ── Classification ──────────────────────────────────────────────────────────
 // ctx: {
 //   semana, temporada, games,
 //   rostersByTeam: { [teamId]: players of that team AND season },
-//   existing: { player: Map('gameId|playerId' → row), team: Map('gameId|teamId' → row) },
-//   choices: { players: { [line]: playerId | 'skip' }, games: { [teamId]: gameId } },
+//   existing: { player: Map('gameId|playerId' → row WITH joined `player`), team: Map('gameId|teamId' → row) },
+//   choices: { players: { [line]: playerId | 'skip' }, games: { [teamId]: gameId },
+//              conflicts: { [line]: 'new' | 'existing:<playerId>' } },
 // }
 // Row statuses: ok | ambiguous | none | rest | pickgame | noroster | skipped |
-//               duplicate | error. Only `ok` rows are written.
+//               duplicate | conflict | error. Only `ok` rows are written.
+// `conflict`: same team + same number + another player_id already has stats in that
+// game; blocked until the operator picks 'existing:<id>' (update that row instead) or
+// 'new' (another person: create the row), or skips the line.
 export function classifyStatsImport(rows, ctx) {
   const choices = ctx.choices || {}
   const existingPlayer = ctx.existing?.player || new Map()
   const out = rows.map(row => {
     const base = { ...row, status: 'error', reason: null }
-    if (row.errors.length) return { ...base, reason: row.errors.join('; ') }
+    const skipped = choices.players?.[row.line] === 'skip'   // the operator may skip a bad row
+    if (row.errors.length) return { ...base, ...(skipped ? { status: 'skipped' } : {}), reason: skipped ? 'Omitida por el operador' : row.errors.join('; ') }
     const teamId = PDF_TEAM_LABELS[row.equipo]
-    if (!teamId) return { ...base, reason: `Equipo desconocido: "${row.equipo}"` }
+    if (!teamId) return { ...base, ...(skipped ? { status: 'skipped' } : {}), reason: skipped ? 'Omitida por el operador' : `Equipo desconocido: "${row.equipo}"` }
     const roster = ctx.rostersByTeam?.[teamId] || []
     if (!roster.length) return { ...base, status: 'noroster', teamId, reason: `${row.equipo} no tiene roster ${ctx.temporada}: fila rechazada` }
 
@@ -163,21 +186,34 @@ export function classifyStatsImport(rows, ctx) {
       }
     }
 
-    const prev = existingPlayer.get(`${game.id}|${player.id}`) || null
+    const conflicts = findNumberConflicts(existingPlayer, game.id, teamId, player)
+    let target = player, conflictChoice = null
+    if (conflicts.length) {
+      const pick = choices.conflicts?.[row.line]
+      const hit = pick?.startsWith('existing:') ? conflicts.find(c => c.playerId === pick.slice(9)) : null
+      if (pick !== 'new' && !hit) {
+        const who = conflicts.map(c => `#${c.player.number} ${rosterFullName(c.player)} (temporada ${c.player.temporada ?? '?'})`).join(' / ')
+        return { ...common, status: 'conflict', level, player, conflicts, reason: `Este partido ya tiene stats del mismo número en ${row.equipo}: ${who}. ¿Es la misma persona?` }
+      }
+      conflictChoice = pick
+      if (hit) { target = hit.player; level = 'existing' }
+    }
+
+    const prev = existingPlayer.get(`${game.id}|${target.id}`) || null
     const diff = {}
     for (const [c, v] of Object.entries(row.stats)) diff[c] = { old: prev ? prev[c] ?? null : null, new: v }
 
     // nombre_completo is offered when the PDF name taught us something. Never
     // overwritten silently: a different existing value is a conflict, off by default.
     let nameSave = { offer: false, default: false, conflict: false }
-    if (level !== 'exact') {
+    if (level !== 'exact' && target === player) {
       const hasOwn = !!(player.nombre_completo || '').trim()
       if (!hasOwn) nameSave = { offer: true, default: true, conflict: false }
       else if (wordKey(player.nombre_completo) !== wordKey(row.nombre)) nameSave = { offer: true, default: false, conflict: true }
     }
     return {
-      ...common, status: 'ok', level, player, kind: prev ? 'update' : 'new', diff, nameSave,
-      jerseyMismatch: row.jersey != null && row.jersey !== player.number ? { csv: row.jersey, roster: player.number } : null,
+      ...common, status: 'ok', level, player: target, rosterPlayer: player, conflictChoice, kind: prev ? 'update' : 'new', diff, nameSave,
+      jerseyMismatch: row.jersey != null && row.jersey !== target.number ? { csv: row.jersey, roster: target.number } : null,
       reason: null,
     }
   })
@@ -206,7 +242,7 @@ export function computeTeamTotals(classifiedRows, existingTeam = new Map()) {
     if (!r.teamId || !r.gameId) continue
     const t = byTeam.get(r.teamId) ?? byTeam.set(r.teamId, { teamId: r.teamId, gameId: r.gameId, label: r.equipo, ok: [], pending: 0 }).get(r.teamId)
     if (r.status === 'ok') t.ok.push(r)
-    else if (['ambiguous', 'none', 'skipped', 'duplicate'].includes(r.status)) t.pending++
+    else if (['ambiguous', 'none', 'skipped', 'duplicate', 'conflict'].includes(r.status)) t.pending++
   }
   const totals = []
   for (const t of byTeam.values()) {
@@ -241,4 +277,41 @@ export function buildTeamPayload(total, columns = TEAM_TOTAL_COLUMNS) {
   const body = { game_id: total.gameId, team_id: total.teamId }
   for (const c of columns) if (total.diff[c]) body[c] = total.diff[c].new
   return body
+}
+
+// ── Write planning ──────────────────────────────────────────────────────────
+// PostgREST rejects a bulk body whose objects have different keys (PGRST102,
+// "All object keys must match"), and "empty cell = do not touch" means rows carry
+// different keys. So rows are split into requests whose rows share ONE key set:
+//   new     → one request per game: every CSV stat column present, missing ones
+//             as 0 (the table default, so nothing is lost);
+//   update  → one request per identical key set, sending only the non-empty cells.
+// `existingPlayer` is the CURRENT state ('gameId|playerId' → row), read right
+// before writing, so a row created since the preview is treated as an update.
+export function uniformKeys(rows) {
+  if (!rows.length) return true
+  const sig = o => Object.keys(o).sort().join(',')
+  const first = sig(rows[0])
+  return rows.every(r => sig(r) === first)
+}
+
+export function planPlayerWrites(okRows, existingPlayer, statColumns) {
+  const requests = new Map()
+  for (const r of okRows) {
+    const exists = existingPlayer.has(`${r.gameId}|${r.player.id}`)
+    let payload, cols
+    if (!exists) {
+      cols = [...statColumns]
+      payload = { game_id: r.gameId, player_id: r.player.id, ...Object.fromEntries(statColumns.map(c => [c, r.stats[c] ?? 0])) }
+    } else {
+      cols = Object.keys(r.stats).sort()
+      payload = buildPlayerPayload(r)
+    }
+    const key = `${r.teamId}|${r.gameId}|${exists ? 'update' : 'new'}|${cols.join(',')}`
+    const req = requests.get(key) ?? requests.set(key, { teamId: r.teamId, label: r.equipo, gameId: r.gameId, kind: exists ? 'update' : 'new', columns: cols, rows: [], players: [] }).get(key)
+    req.rows.push(payload)
+    req.players.push({ line: r.line, nombre: r.nombre, player: r.player })
+  }
+  const order = { new: 0, update: 1 }
+  return [...requests.values()].sort((a, b) => a.teamId.localeCompare(b.teamId) || order[a.kind] - order[b.kind] || a.columns.join().localeCompare(b.columns.join()))
 }

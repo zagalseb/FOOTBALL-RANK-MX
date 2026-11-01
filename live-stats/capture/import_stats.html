@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — Importar Stats</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg2: #13161b;
+      --bg3: #1a1e25;
+      --border: #252a33;
+      --border2: #2e3540;
+      --text: #e8eaed;
+      --text2: #8a95a3;
+      --text3: #4a5568;
+      --accent: #3b82f6;
+      --accent-bg: rgba(59,130,246,0.12);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.12);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234,179,8,0.12);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.12);
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .topbar__brand { font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--text); letter-spacing: 0.04em; white-space: nowrap; }
+    .topbar__brand span { color: var(--accent); }
+    .topbar__sub { font-family: var(--mono); font-size: 11px; color: var(--text2); letter-spacing: 0.08em; text-transform: uppercase; }
+    .topbar__divider { width: 1px; height: 20px; background: var(--border2); }
+    .topbar__back { font-family: var(--mono); font-size: 12px; color: var(--text2); text-decoration: none; white-space: nowrap; transition: color 0.15s; }
+    .topbar__back:hover { color: var(--text); }
+
+    /* ── LAYOUT ── */
+    .content { max-width: 1080px; margin: 0 auto; padding: 28px 20px 80px; }
+
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 20px; }
+    .card__title { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+    .card--disabled { opacity: 0.45; pointer-events: none; }
+
+    /* ── FORM ── */
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field--wide { grid-column: 1 / -1; }
+    .field-label { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .input, select.input {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+
+    .form-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    .form-error {
+      font-family: var(--mono); font-size: 12px; color: var(--red);
+      background: var(--red-bg); border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: none;
+    }
+    .form-error--visible { display: block; }
+
+    .form-warning {
+      font-family: var(--mono); font-size: 12px; color: var(--yellow);
+      background: var(--yellow-bg); border: 1px solid rgba(234,179,8,0.3);
+      border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: none;
+    }
+    .form-warning--visible { display: block; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      font-family: var(--mono); font-size: 12px; font-weight: 700;
+      padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer;
+      letter-spacing: 0.03em; transition: opacity 0.15s, transform 0.1s; white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn--primary { background: var(--accent); color: #fff; }
+    .btn--primary:hover { opacity: 0.88; }
+    .btn--ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+    .btn--ghost:hover { color: var(--text); border-color: var(--text3); }
+    .btn--danger { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .btn--danger:hover { opacity: 0.85; }
+    .btn--sm { padding: 5px 11px; font-size: 11px; }
+
+    /* ── TEAM SIDE PICKER ── */
+    .side-picker { display: flex; gap: 10px; }
+    .side-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px;
+      color: var(--text2); font-family: var(--mono); font-weight: 700; font-size: 13px;
+      padding: 12px; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .side-btn:hover { color: var(--text); border-color: var(--text3); }
+    .side-btn--active { background: var(--accent-bg); border-color: var(--accent); color: var(--text); }
+    .side-btn__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── TABLE ── */
+    .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+    .stats-table { width: 100%; border-collapse: collapse; min-width: 920px; }
+    .stats-table th, .stats-table td { padding: 7px 9px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+    .stats-table thead tr:first-child th {
+      background: var(--bg3); font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; text-align: center;
+      border-bottom: 1px solid var(--border2);
+    }
+    .stats-table thead tr:last-child th {
+      background: var(--bg3); font-family: var(--mono); font-size: 10px; font-weight: 600;
+      color: var(--text3); text-align: center;
+    }
+    .stats-table tbody tr { background: var(--bg2); }
+    .stats-table tbody tr:hover { background: var(--bg3); }
+    .stats-table tbody tr:last-child td { border-bottom: none; }
+    .stats-table .player-cell {
+      min-width: 190px; white-space: normal;
+      position: sticky; left: 0; z-index: 2;
+      background: var(--bg2);
+    }
+    .stats-table thead th.player-cell { z-index: 3; }
+    .stats-table tbody tr:hover .player-cell { background: var(--bg3); }
+    .stats-table .stat-input { width: 52px; text-align: center; padding: 6px 4px; }
+    .stats-table .row-actions-cell { text-align: right; width: 1%; }
+    .stats-table .group-divider { border-left: 1px solid #fff; }
+
+    .new-player-row td { background: var(--bg3); padding: 10px 9px; }
+    .new-player-inline { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+    .new-player-inline .field { min-width: 90px; }
+    .new-player-inline .field--name { min-width: 130px; }
+
+    .empty-state { padding: 24px 16px; text-align: center; color: var(--text3); font-family: var(--mono); font-size: 12px; }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
+      font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 10px 18px;
+      border-radius: 8px; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+      z-index: 100; max-width: 90vw;
+    }
+    .toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast--success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .toast--error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* ── PREVIEW (mismo patrón visual del importador CSV en setup.html) ── */
+    .import-badge { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.05em; white-space: nowrap; }
+    .import-badge--new    { background: var(--green-bg);  color: var(--green); }
+    .import-badge--update { background: var(--yellow-bg); color: var(--yellow); }
+    .import-badge--error  { background: var(--red-bg);    color: var(--red); }
+    .import-summary { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+    .setup-table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .setup-table th { background: var(--bg3); font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    .setup-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13px; }
+    .setup-table tr:last-child td { border-bottom: none; }
+    .setup-table tbody tr { background: var(--bg2); }
+
+    /* ── IMPORT STATS ── */
+    .banner { border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; border: 1px solid var(--border2); background: var(--bg3); }
+    .banner--error { background: var(--red-bg); color: var(--red); border-color: rgba(239,68,68,0.3); }
+    .banner--warn { background: var(--yellow-bg); color: var(--yellow); border-color: rgba(234,179,8,0.3); }
+    .banner--ok { background: var(--green-bg); color: var(--green); border-color: rgba(34,197,94,0.3); }
+    .banner ul { margin: 6px 0 0 18px; }
+    .team-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .team-head__name { font-family: var(--mono); font-weight: 700; font-size: 14px; }
+    .team-head__game { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+    .import-badge--info { background: var(--accent-bg); color: var(--accent); }
+    .import-badge--muted { background: var(--bg3); color: var(--text2); }
+    .match-arrow { color: var(--text3); padding: 0 6px; }
+    .pdf-name { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+    .roster-pick { font-weight: 600; }
+    .roster-pick small { color: var(--text2); font-weight: 400; font-family: var(--mono); }
+    .chip { display: inline-block; font-family: var(--mono); font-size: 11px; padding: 1px 6px; margin: 1px 3px 1px 0; border-radius: 4px; background: var(--bg3); border: 1px solid var(--border); white-space: nowrap; }
+    .chip s { color: var(--text3); }
+    .chip--changed { border-color: rgba(234,179,8,0.45); }
+    .row-warn { color: var(--yellow); font-size: 12px; font-family: var(--mono); }
+    .row-issue td { background: rgba(234,179,8,0.05) !important; }
+    .row-bad td { background: rgba(239,68,68,0.06) !important; }
+    select.input--sm { padding: 4px 6px; font-size: 12px; max-width: 220px; }
+    .inline-alta { display: flex; gap: 6px; flex-wrap: wrap; align-items: end; margin-top: 6px; }
+    .inline-alta .input { width: 110px; padding: 4px 6px; font-size: 12px; }
+    .totals-line { font-family: var(--mono); font-size: 12px; margin: 4px 0; }
+    .totals-line.muted { color: var(--text3); }
+    .report-table td, .report-table th { font-size: 12px; }
+    .sticky-confirm { position: sticky; bottom: 0; background: var(--bg2); border-top: 1px solid var(--border2); padding: 12px 20px; margin: 0 -20px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; z-index: 5; }
+  </style>
+</head>
+<body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
+
+  <header class="topbar">
+    <span class="topbar__brand">COVER<span>CERO</span></span>
+    <span class="topbar__sub">Importar Stats</span>
+    <div class="topbar__divider"></div>
+    <a class="topbar__back" href="games.html">← Regresar a menú</a>
+  </header>
+
+  <main class="content">
+    <div class="card">
+      <div class="card__title">1. Temporada, semana y archivo</div>
+      <div class="form-grid">
+        <div class="field">
+          <label class="field-label" for="p-temporada">Temporada</label>
+          <input class="input" type="text" id="p-temporada" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="field-label" for="p-semana">Semana</label>
+          <select class="input" id="p-semana"></select>
+        </div>
+        <div class="field field--wide">
+          <label class="field-label" for="p-file">CSV de stats (semana, equipo, nombre, columnas de stats; jersey opcional)</label>
+          <input class="input" type="file" accept=".csv,text/csv" id="p-file">
+        </div>
+      </div>
+    </div>
+
+    <div id="app"></div>
+    <div id="report"></div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { sbUpsert, sbInsert, sbPatch } from '../../shared/supabase/rest_upsert.js'
+    import { TEMPORADA_ACTIVA, rosterDuplicate } from '../../shared/stats-lib.js'
+    import {
+      parseStatsCsv, weekMismatches, classifyStatsImport, computeTeamTotals,
+      buildTeamPayload, planPlayerWrites, uniformKeys, PDF_TEAM_LABELS,
+    } from '../../shared/stats-import.js'
+
+    const WEEKS = ['1','2','3','4','5','6','7','8','9','10','QF','SF','F']
+    const WEEK_LABEL = { QF: 'Cuartos de Final', SF: 'Semifinales', F: 'Final' }
+    const TEAM_TOTAL_WRITTEN = ['pass_yds']   // rush_yds / total_yds: informativos, no se escriben
+
+    const $ = id => document.getElementById(id)
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+
+    let toastTimer = null
+    function showToast(msg, type = 'success') {
+      const el = $('toast'); el.textContent = msg; el.className = `toast toast--visible toast--${type}`
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('toast--visible'), 3600)
+    }
+
+    async function sbGet(path) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status} en ${path.split('?')[0]}`)
+      return res.json()
+    }
+
+    // ── Estado ──────────────────────────────────────────────────────────────
+    const S = {
+      parsed: null,            // resultado de parseStatsCsv
+      fileName: '',
+      teams: new Map(),        // team_id → nombre_corto
+      games: [],               // partidos de la semana elegida
+      rostersByTeam: {},
+      existing: { player: new Map(), team: new Map() },
+      choices: { players: {}, games: {}, conflicts: {} },
+      nameChecks: {},          // line → boolean (anula el default)
+      totalChecks: {},         // teamId → boolean
+      altaOpen: {},            // line → boolean
+      loading: false,
+      busy: false,
+    }
+
+    $('p-temporada').value = TEMPORADA_ACTIVA
+    $('p-semana').innerHTML = WEEKS.map(w => `<option value="${w}">${WEEK_LABEL[w] || 'Semana ' + w}</option>`).join('')
+
+    const params = () => ({ temporada: $('p-temporada').value.trim(), semana: $('p-semana').value })
+
+    // ── Carga de datos (solo lectura) ───────────────────────────────────────
+    async function loadContext() {
+      const { temporada, semana } = params()
+      S.loading = true; render()
+      try {
+        if (!S.teams.size) (await sbGet('teams?select=id,nombre_corto')).forEach(t => S.teams.set(t.id, t.nombre_corto))
+        S.games = await sbGet(`games?semana=eq.${encodeURIComponent(semana)}&select=*&order=kickoff.asc`)
+        const teamIds = [...new Set(Object.values(PDF_TEAM_LABELS))]
+        const rosters = await Promise.all(teamIds.map(id =>
+          sbGet(`players?team_id=eq.${id}&temporada=eq.${encodeURIComponent(temporada)}&select=*&order=number.asc`)))
+        S.rostersByTeam = Object.fromEntries(teamIds.map((id, i) => [id, rosters[i]]))
+        await reloadExisting()
+      } catch (err) {
+        showToast(err.message, 'error')
+      } finally { S.loading = false; render() }
+    }
+
+    // The joined player lets the classifier detect another player_id with the same number in that game.
+    const EXISTING_SELECT = '*,player:player_id(id,team_id,number,nombre,apellido,nombre_completo,temporada,position)'
+
+    async function reloadExisting() {
+      S.existing = { player: new Map(), team: new Map() }
+      const ids = S.games.map(g => g.id)
+      if (!ids.length) return
+      const list = `(${ids.join(',')})`
+      const [ps, ts] = await Promise.all([
+        sbGet(`player_game_stats_manual?game_id=in.${list}&select=${EXISTING_SELECT}`),
+        sbGet(`team_game_stats_manual?game_id=in.${list}&select=*`),
+      ])
+      ps.forEach(r => S.existing.player.set(`${r.game_id}|${r.player_id}`, r))
+      ts.forEach(r => S.existing.team.set(`${r.game_id}|${r.team_id}`, r))
+    }
+
+    function resetChoices() { S.choices = { players: {}, games: {}, conflicts: {} }; S.nameChecks = {}; S.totalChecks = {}; S.altaOpen = {} }
+
+    $('p-file').addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return
+      S.fileName = file.name
+      S.parsed = parseStatsCsv(await file.text())
+      $('report').innerHTML = ''
+      resetChoices()
+      await loadContext()
+    })
+    $('p-semana').addEventListener('change', async () => { if (S.parsed) { resetChoices(); await loadContext() } })
+    $('p-temporada').addEventListener('change', async () => { if (S.parsed) { resetChoices(); await loadContext() } })
+
+    // ── Helpers de presentación ─────────────────────────────────────────────
+    const teamName = id => S.teams.get(id) || id
+    const fmtWhen = g => {
+      if (!g?.kickoff) return 'sin fecha'
+      return new Date(g.kickoff).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    }
+    const gameLabel = g => `${teamName(g.home_team_id)} vs ${teamName(g.away_team_id)}, ${fmtWhen(g)}`
+    const playerTag = p => `${esc(p.apellido)}, ${esc(p.nombre)} <small>#${p.number}</small>`
+    const plainTag = p => `${p.apellido}, ${p.nombre} #${p.number}`
+
+    function classify() {
+      return classifyStatsImport(S.parsed.rows, {
+        semana: params().semana, temporada: params().temporada, games: S.games,
+        rostersByTeam: S.rostersByTeam, existing: S.existing, choices: S.choices,
+      })
+    }
+
+    const BADGE = {
+      ok: ['import-badge--new', 'OK'], ambiguous: ['import-badge--update', 'Ambiguo'], none: ['import-badge--error', 'Sin match'],
+      rest: ['import-badge--muted', 'Descanso'], pickgame: ['import-badge--update', 'Elegir partido'],
+      noroster: ['import-badge--error', 'Sin roster'], skipped: ['import-badge--muted', 'Omitida'],
+      duplicate: ['import-badge--error', 'Duplicado'], conflict: ['import-badge--error', 'Mismo número'], error: ['import-badge--error', 'Error'],
+    }
+    const LEVEL_LABEL = { exact: 'exact', approx: 'approx', manual: 'manual' }
+
+    function diffChips(r) {
+      return Object.entries(r.diff).map(([c, d]) => {
+        const changed = d.old !== null && d.old !== d.new
+        return `<span class="chip ${changed ? 'chip--changed' : ''}">${c} ${d.old !== null && d.old !== d.new ? `<s>${d.old}</s>→` : ''}${d.new}</span>`
+      }).join('')
+    }
+
+    // Non-zero stats of an existing row, for the operator to compare with the CSV.
+    const existingChips = row => S.parsed.statColumns.filter(c => row[c]).map(c => `<span class="chip">${c} ${row[c]}</span>`).join('') || '<span class="chip">sin valores</span>'
+
+    function changeSelect(r, roster) {
+      const cur = S.choices.players[r.line] || ''
+      const opts = [...roster].sort((a, b) => (a.apellido + a.nombre).localeCompare(b.apellido + b.nombre))
+        .map(p => `<option value="${p.id}" ${cur === p.id ? 'selected' : ''}>${esc(plainTag(p))}</option>`).join('')
+      return `<select class="input input--sm" data-act="choose" data-line="${r.line}">
+        <option value="" ${!cur ? 'selected' : ''}>${r.status === 'ok' ? '(automático)' : '— elegir jugador —'}</option>
+        <option value="skip" ${cur === 'skip' ? 'selected' : ''}>Omitir esta fila</option>${opts}</select>`
+    }
+
+    // ── Render ──────────────────────────────────────────────────────────────
+    function render() {
+      const app = $('app')
+      if (!S.parsed) { app.innerHTML = ''; return }
+      if (S.parsed.error) { app.innerHTML = `<div class="banner banner--error">${esc(S.parsed.error)}</div>`; return }
+      if (S.loading) { app.innerHTML = '<div class="empty-state">Cargando partidos, rosters y stats existentes…</div>'; return }
+
+      const { semana, temporada } = params()
+      const p = S.parsed
+      const blockers = []
+      const mism = weekMismatches(p.rows, semana)
+      if (mism.length) blockers.push(`${mism.length} fila${mism.length > 1 ? 's' : ''} del CSV tiene${mism.length > 1 ? 'n' : ''} una semana distinta a la elegida (${semana}): ${mism.slice(0, 8).map(m => `línea ${m.line} = "${m.semana || 'vacía'}"`).join(', ')}${mism.length > 8 ? '…' : ''}. Corrige el CSV o la semana.`)
+
+      let html = ''
+      if (p.unknownColumns.length) html += `<div class="banner banner--warn">Columnas ignoradas (no son campos de stats): ${esc(p.unknownColumns.join(', '))}</div>`
+      html += `<div class="banner">Archivo <b>${esc(S.fileName)}</b> · ${p.rows.length} filas · columnas de stats: ${esc(p.statColumns.join(', '))}${p.hasJersey ? ' · con jersey (solo pista)' : ''}</div>`
+
+      const { rows, summary } = classify()
+      const pending = rows.filter(r => ['ambiguous', 'none', 'pickgame', 'duplicate', 'conflict', 'error'].includes(r.status))
+      if (pending.length) blockers.push(`${pending.length} fila${pending.length > 1 ? 's' : ''} sin resolver (ambiguo, sin match, partido por elegir, duplicado, mismo número que otro jugador con stats, o error): resuelve u omite cada una.`)
+      const okRows = rows.filter(r => r.status === 'ok')
+      if (!okRows.length) blockers.push('No hay filas listas para escribir.')
+
+      html += `<div class="card"><div class="card__title">2. Resumen</div><div class="totals-line">` +
+        Object.entries(summary).map(([k, n]) => `<span class="import-badge ${BADGE[k][0]}">${BADGE[k][1]}</span> ${n}`).join(' &nbsp; ') + `</div>`
+      const labels = [...new Set(rows.map(r => r.equipo))]
+      const noGame = labels.filter(l => rows.find(r => r.equipo === l)?.status === 'rest')
+      if (noGame.length) html += `<div class="banner banner--warn" style="margin-top:10px">Sin partido en la semana ${esc(semana)} (descanso): ${esc(noGame.join(', '))}. Sus filas se omiten.</div>`
+      const noRoster = labels.filter(l => rows.find(r => r.equipo === l)?.status === 'noroster')
+      if (noRoster.length) html += `<div class="banner banner--error" style="margin-top:10px">Sin roster ${esc(temporada)}: ${esc(noRoster.join(', '))}. Sus filas se rechazan.</div>`
+      html += `</div>`
+
+      const totals = computeTeamTotals(rows, S.existing.team)
+      for (const label of labels) {
+        const teamRows = rows.filter(r => r.equipo === label)
+        const first = teamRows[0]
+        const teamId = PDF_TEAM_LABELS[label]
+        const roster = S.rostersByTeam[teamId] || []
+        let gameInfo = ''
+        if (first.gameId) gameInfo = gameLabel(S.games.find(g => g.id === first.gameId))
+        else if (first.status === 'pickgame') {
+          gameInfo = `<select class="input input--sm" data-act="game" data-team="${teamId}"><option value="">— elegir partido —</option>` +
+            first.gameCandidates.map(g => `<option value="${g.id}">${esc(gameLabel(g))}</option>`).join('') + `</select>`
+        } else gameInfo = esc(first.reason || '')
+        const t = totals.find(x => x.teamId === teamId)
+
+        html += `<div class="card"><div class="team-head"><span class="team-head__name">${esc(label)} <span class="team-head__game">→ ${esc(teamId ? teamName(teamId) : 'equipo desconocido')}</span></span><span class="team-head__game">${gameInfo}</span></div>`
+        if (['rest', 'noroster', 'pickgame', 'error'].includes(first.status) && teamRows.every(r => r.status === first.status)) {
+          html += `<div class="banner banner--${first.status === 'rest' ? 'warn' : 'error'}">${esc(first.reason || '')}</div>`
+        }
+        html += `<table class="setup-table"><thead><tr><th>#CSV</th><th>PDF → roster</th><th>Stats</th><th>Estado</th><th>nombre_completo</th><th>Cambiar</th></tr></thead><tbody>`
+        for (const r of teamRows) html += rowHtml(r, roster)
+        html += `</tbody></table>`
+        if (t) html += totalsHtml(t)
+        html += `</div>`
+      }
+
+      const nameWrites = rows.filter(r => r.status === 'ok' && nameChecked(r))
+      html += `<div class="sticky-confirm">
+        <span class="import-summary">${okRows.length} jugador${okRows.length !== 1 ? 'es' : ''} · ${totals.filter(t => totalChecked(t)).length} total${totals.filter(t => totalChecked(t)).length !== 1 ? 'es' : ''} de equipo (pass_yds) · ${nameWrites.length} nombre_completo</span>`
+      html += blockers.length
+        ? `<div class="banner banner--error" style="margin:0;flex:1">${blockers.map(esc).join('<br>')}</div>`
+        : `<button class="btn btn--primary" id="confirm-btn" ${S.busy ? 'disabled' : ''}>Descargar respaldo y confirmar</button>`
+      html += `</div>`
+      app.innerHTML = html
+    }
+
+    const nameChecked = r => r.nameSave?.offer && (S.nameChecks[r.line] ?? r.nameSave.default)
+    const totalChecked = t => S.totalChecks[t.teamId] ?? t.warnings.length === 0
+
+    function rowHtml(r, roster) {
+      const [bc, bl] = BADGE[r.status]
+      const cls = r.status === 'ok' ? '' : (['ambiguous', 'none', 'pickgame', 'duplicate', 'conflict'].includes(r.status) ? 'row-issue' : (['error', 'noroster'].includes(r.status) ? 'row-bad' : ''))
+      let match = `<span class="pdf-name">${esc(r.nombre)}</span>`
+      let stats = '', nameCell = '—'
+      if (r.status === 'ok') {
+        match += `<span class="match-arrow">→</span><span class="roster-pick">${playerTag(r.player)}</span> <span class="import-badge ${r.level === 'exact' ? 'import-badge--new' : 'import-badge--update'}">${LEVEL_LABEL[r.level]}</span>`
+        if (r.jerseyMismatch) match += `<div class="row-warn">jersey del CSV ${r.jerseyMismatch.csv} ≠ #${r.jerseyMismatch.roster} del roster</div>`
+        if (r.conflictChoice) {
+          const what = r.conflictChoice === 'new' ? 'es otra persona: se crea la fila del jugador elegido' : `se actualiza la fila ya existente de ${esc(plainTag(r.player))} (temporada ${esc(r.player.temporada ?? '?')})`
+          match += `<div class="row-warn">Mismo número resuelto: ${what}. <button class="btn btn--ghost btn--sm" data-act="conflict-clear" data-line="${r.line}">deshacer</button></div>`
+        }
+        stats = `${diffChips(r)} <span class="import-badge ${r.kind === 'update' ? 'import-badge--update' : 'import-badge--new'}">${r.kind === 'update' ? 'actualiza' : 'nuevo'}</span>`
+        if (r.nameSave.offer) {
+          nameCell = `<label style="font-size:12px"><input type="checkbox" data-act="name" data-line="${r.line}" ${nameChecked(r) ? 'checked' : ''}> guardar "${esc(r.nombre)}"</label>` +
+            (r.nameSave.conflict ? `<div class="row-warn">ya tiene "${esc(r.player.nombre_completo)}": marcarla lo sobrescribe</div>` : '')
+        }
+      } else {
+        match += (r.reason ? `<div class="row-warn">${esc(r.reason)}</div>` : '')
+        if (r.candidates?.length) match += `<div class="row-warn">Candidatos: ${r.candidates.map(c => esc(plainTag(c))).join(' · ')}</div>`
+        if (r.status === 'conflict') {
+          for (const c of r.conflicts) {
+            match += `<div class="totals-line"><span class="roster-pick">${playerTag(c.player)}</span> <small>temporada ${esc(c.player.temporada ?? '?')} · ya en este partido:</small> ${existingChips(c.row)}
+              <button class="btn btn--ghost btn--sm" data-act="conflict" data-line="${r.line}" data-pick="existing:${c.playerId}">Es la misma persona: actualizar su fila</button></div>`
+          }
+          match += `<div class="totals-line"><button class="btn btn--ghost btn--sm" data-act="conflict" data-line="${r.line}" data-pick="new">Es otra persona: crear fila de ${esc(plainTag(r.player))}</button> <small>u omite la fila con el selector</small></div>`
+        }
+        if (r.hint) match += `<div class="totals-line"><button class="btn btn--ghost btn--sm" data-act="usehint" data-line="${r.line}" data-id="${r.hint.id}">Usar pista (jersey ${r.jersey}): ${esc(plainTag(r.hint))}</button></div>`
+        if (r.status === 'none') {
+          match += `<div class="totals-line"><button class="btn btn--ghost btn--sm" data-act="alta-toggle" data-line="${r.line}">+ Alta de jugador</button></div>`
+          if (S.altaOpen[r.line]) match += `<div class="inline-alta">
+            <div class="field"><label class="field-label">Número</label><input class="input" type="number" min="0" max="99" id="alta-num-${r.line}" value="${r.jersey ?? ''}"></div>
+            <div class="field"><label class="field-label">Apellido</label><input class="input" type="text" id="alta-ap-${r.line}"></div>
+            <div class="field"><label class="field-label">Nombre</label><input class="input" type="text" id="alta-no-${r.line}"></div>
+            <button class="btn btn--primary btn--sm" data-act="alta-create" data-line="${r.line}">Crear y usar</button></div>`
+        }
+      }
+      return `<tr class="${cls}"><td class="num-cell">${r.line}</td><td>${match}</td><td>${stats}</td>
+        <td><span class="import-badge ${bc}">${bl}</span></td><td>${nameCell}</td>
+        <td>${['rest', 'noroster', 'pickgame'].includes(r.status) ? '' : changeSelect(r, roster)}</td></tr>`
+    }
+
+    function totalsHtml(t) {
+      const lines = Object.entries(t.diff).map(([c, d]) => {
+        const written = TEAM_TOTAL_WRITTEN.includes(c)
+        const val = `${d.old !== null && d.old !== d.new ? `<s>${d.old}</s> → ` : ''}<b>${d.new}</b>`
+        return written
+          ? `<div class="totals-line"><label><input type="checkbox" data-act="total" data-team="${t.teamId}" ${totalChecked(t) ? 'checked' : ''}> Escribir ${c} del equipo: ${val}</label></div>`
+          : `<div class="totals-line muted">${c}: ${val} (informativo, no se escribe)</div>`
+      }).join('')
+      return `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">${lines}${t.warnings.map(w => `<div class="row-warn">⚠ ${esc(w)}</div>`).join('')}</div>`
+    }
+
+    // ── Eventos ─────────────────────────────────────────────────────────────
+    $('app').addEventListener('change', e => {
+      const el = e.target, act = el.dataset.act
+      // Changing the roster player invalidates any same-number answer given for the previous one.
+      if (act === 'choose') { delete S.choices.conflicts[el.dataset.line]; if (el.value) S.choices.players[el.dataset.line] = el.value; else delete S.choices.players[el.dataset.line]; render() }
+      if (act === 'game') { if (el.value) S.choices.games[el.dataset.team] = el.value; else delete S.choices.games[el.dataset.team]; render() }
+      if (act === 'name') { S.nameChecks[el.dataset.line] = el.checked; render() }
+      if (act === 'total') { S.totalChecks[el.dataset.team] = el.checked; render() }
+    })
+
+    $('app').addEventListener('click', async e => {
+      const btn = e.target.closest('button'); if (!btn) return
+      const act = btn.dataset.act, line = btn.dataset.line
+      if (act === 'usehint') { delete S.choices.conflicts[line]; S.choices.players[line] = btn.dataset.id; render() }
+      if (act === 'conflict') { S.choices.conflicts[line] = btn.dataset.pick; render() }
+      if (act === 'conflict-clear') { delete S.choices.conflicts[line]; render() }
+      if (act === 'alta-toggle') { S.altaOpen[line] = !S.altaOpen[line]; render() }
+      if (act === 'alta-create') await createPlayer(Number(line))
+      if (btn.id === 'confirm-btn') await confirmImport()
+    })
+
+    // Los choices usan la línea como clave de objeto (string); el clasificador indexa con row.line.
+    // Alta de jugador suelto: escribe en `players` de inmediato (con su propio confirm).
+    async function createPlayer(line) {
+      const row = S.parsed.rows.find(r => r.line === line)
+      const teamId = PDF_TEAM_LABELS[row.equipo]
+      const number = parseInt($(`alta-num-${line}`).value, 10)
+      const apellido = $(`alta-ap-${line}`).value.trim()
+      const nombre = $(`alta-no-${line}`).value.trim()
+      if (isNaN(number) || number < 0 || number > 99) return showToast('Ingresa un número válido (0-99).', 'error')
+      if (!apellido || !nombre) return showToast('Apellido y nombre son obligatorios.', 'error')
+      const roster = S.rostersByTeam[teamId]
+      const dup = rosterDuplicate({ number, nombre, apellido, temporada: params().temporada }, roster)
+      if (dup) return showToast(dup.message, 'error')
+      if (!confirm(`Crear #${number} ${apellido}, ${nombre} en ${teamName(teamId)} (temporada ${params().temporada}) con nombre_completo "${row.nombre}"? Esto escribe en la base de inmediato.`)) return
+      try {
+        const [created] = await sbInsert('players', { team_id: teamId, temporada: params().temporada, number, nombre, apellido, nombre_completo: row.nombre })
+        roster.push(created); roster.sort((a, b) => a.number - b.number)
+        S.choices.players[line] = created.id; S.altaOpen[line] = false
+        showToast(`Jugador #${number} creado`)
+        render()
+      } catch (err) { showToast(err.message, 'error') }
+    }
+
+    // ── Confirmar ───────────────────────────────────────────────────────────
+    function download(name, obj) {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+    }
+
+    async function confirmImport() {
+      const { semana, temporada } = params()
+      // Rows listed in the preview only decide which games to read; what gets written is
+      // classified again below against the state read right now.
+      const gameIds = [...new Set(classify().rows.filter(r => r.status === 'ok').map(r => r.gameId))]
+      S.busy = true; render()
+      try {
+        // 1. Respaldo del estado ACTUAL (leído ahora, no el de la vista previa) de los partidos afectados.
+        const list = `(${gameIds.join(',')})`
+        const [games, psJoined, ts] = await Promise.all([
+          sbGet(`games?id=in.${list}&select=*`),
+          sbGet(`player_game_stats_manual?game_id=in.${list}&select=${EXISTING_SELECT}`),
+          sbGet(`team_game_stats_manual?game_id=in.${list}&select=*`),
+        ])
+        const ps = psJoined.map(({ player, ...r }) => r)   // el respaldo no lleva el join: se restaura con upsert
+        const fresh = new Map(psJoined.map(r => [`${r.game_id}|${r.player_id}`, r]))
+        const existingTeam = new Map(ts.map(r => [`${r.game_id}|${r.team_id}`, r]))
+
+        // Plan from the state read just now (not the preview's): a row created since the preview is an
+        // update, and a stats row that appeared since then with the same number blocks the write.
+        const { rows } = classifyStatsImport(S.parsed.rows, {
+          semana, temporada, games: S.games, rostersByTeam: S.rostersByTeam,
+          existing: { player: fresh, team: existingTeam }, choices: S.choices,
+        })
+        const stale = rows.filter(r => r.status === 'conflict')
+        if (stale.length) throw new Error(`Desde la vista previa aparecieron stats que chocan por número en ${stale.length} fila${stale.length > 1 ? 's' : ''} (líneas ${stale.map(r => r.line).join(', ')}). Recarga la página y resuélvelas. No se escribió nada.`)
+        const okRows = rows.filter(r => r.status === 'ok')
+        const totals = computeTeamTotals(rows, existingTeam).filter(totalChecked).filter(t => t.diff.pass_yds)
+        const nameRows = okRows.filter(nameChecked)
+        const overwriteNames = nameRows.filter(r => r.nameSave.conflict)
+
+        const backup = {
+          exportedAt: new Date().toISOString(), temporada, semana, source: S.fileName,
+          note: 'Estado previo al import. Restaurar con upsert (game_id,player_id) / (game_id,team_id); las filas ausentes aquí no existían.',
+          games, player_game_stats_manual: ps, team_game_stats_manual: ts,
+          players_nombre_completo_before: nameRows.map(r => ({ id: r.player.id, nombre_completo: r.player.nombre_completo ?? null })),
+        }
+        download(`respaldo_stats_${temporada}_s${semana}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`, backup)
+
+        const plan = planPlayerWrites(okRows, fresh, S.parsed.statColumns)
+        for (const req of plan) if (!uniformKeys(req.rows)) throw new Error('Bug interno: una petición tiene filas con llaves distintas. No se escribió nada.')
+        const nNew = plan.filter(q => q.kind === 'new').reduce((a, q) => a + q.rows.length, 0)
+
+        const msg = `Respaldo descargado (${ps.length} filas de jugador y ${ts.length} de equipo previas en ${games.length} partidos).\n\n` +
+          `Se escribirán: ${okRows.length} filas de jugador (${nNew} nuevas, ${okRows.length - nNew} actualizaciones) en ${plan.length} peticiones, ${totals.length} totales de equipo (pass_yds; solo en equipos cuyos jugadores salgan completos)` +
+          `${nameRows.length ? ` y, solo si todo lo anterior sale bien, ${nameRows.length} nombre_completo` : ''}.` +
+          `${overwriteNames.length ? `\n\nOJO: ${overwriteNames.length} nombre_completo marcado(s) SOBRESCRIBEN un valor existente.` : ''}\n\n¿Continuar?`
+        if (!confirm(msg)) { showToast('Cancelado: no se escribió nada.'); return }
+
+        // 2. Jugadores: peticiones por equipo (cada una atómica). Si una falla, ese equipo se detiene ahí.
+        //    El total pass_yds de un equipo solo se escribe si TODAS sus peticiones de jugadores salieron bien.
+        const report = new Map()   // teamId → { label, game, reqs[], total, totalErr, totalSkipped, names, nameErrs }
+        const teamIds = [...new Set(plan.map(q => q.teamId))]
+        let phaseAok = true
+        for (const teamId of teamIds) {
+          const reqs = plan.filter(q => q.teamId === teamId)
+          const rep = { label: reqs[0].label, game: gameLabel(S.games.find(g => g.id === reqs[0].gameId)), reqs: [], total: null, totalErr: null, totalSkipped: false, names: 0, nameErrs: [] }
+          report.set(teamId, rep)
+          let stopped = false
+          for (const q of reqs) {
+            const entry = { kind: q.kind, columns: q.columns, n: q.rows.length, players: q.players.map(p => p.nombre), status: 'pending', err: null }
+            rep.reqs.push(entry)
+            if (stopped) { entry.status = 'skipped'; continue }
+            try { await sbUpsert('player_game_stats_manual', q.rows, 'game_id,player_id'); entry.status = 'ok' }
+            catch (err) { entry.status = 'failed'; entry.err = err.message; stopped = true; phaseAok = false }
+          }
+          const t = totals.find(x => x.teamId === teamId)
+          if (t) {
+            if (stopped) rep.totalSkipped = true
+            else {
+              try { await sbUpsert('team_game_stats_manual', [buildTeamPayload(t, TEAM_TOTAL_WRITTEN)], 'game_id,team_id'); rep.total = `pass_yds = ${t.diff.pass_yds.new}` }
+              catch (err) { rep.totalErr = err.message; phaseAok = false }
+            }
+          }
+        }
+
+        // 3. nombre_completo: solo si TODO lo anterior salió bien. Un valor existente solo se pisa si el
+        //    operador marcó el conflicto; los demás solo se escriben mientras la columna siga vacía.
+        let namesSkipped = false
+        if (nameRows.length) {
+          if (!phaseAok) namesSkipped = true
+          else for (const r of nameRows) {
+            const rep = report.get(r.teamId)
+            try {
+              const filter = r.nameSave.conflict ? '' : '&nombre_completo=is.null'
+              const res = await sbPatch(`players?id=eq.${r.player.id}${filter}`, { nombre_completo: r.nombre })
+              if (res.length) rep.names++; else rep.nameErrs.push(`${r.nombre}: ya tenía un nombre_completo (no se sobrescribió)`)
+            } catch (err) { rep.nameErrs.push(`${r.nombre}: ${err.message}`) }
+          }
+        }
+        renderReport(report, { phaseAok, namesSkipped, nameRows: nameRows.length })
+        await reloadRostersAndExisting()
+        showToast(phaseAok ? 'Import completado' : 'Import con errores: revisa el reporte', phaseAok ? 'success' : 'error')
+      } catch (err) {
+        showToast(err.message, 'error')
+        $('report').innerHTML = `<div class="banner banner--error">Falló antes de escribir las stats: ${esc(err.message)}. Revisa si se descargó el respaldo; si el error ocurrió al leerlo, no se escribió nada.</div>`
+      } finally { S.busy = false; render() }
+    }
+
+    async function reloadRostersAndExisting() { await loadContext() }
+
+    const reqLabel = q => `${q.kind === 'new' ? 'nuevos' : 'actualizar'} (${q.n}${q.kind === 'update' ? `; ${q.columns.join(', ')}` : ''})`
+
+    function renderReport(report, { phaseAok, namesSkipped, nameRows }) {
+      const reqCell = rep => rep.reqs.map(q => {
+        const badge = { ok: ['import-badge--new', 'escrito'], failed: ['import-badge--error', 'FALLÓ'], skipped: ['import-badge--muted', 'no intentado'] }[q.status]
+        return `<div><span class="import-badge ${badge[0]}">${badge[1]}</span> ${esc(reqLabel(q))}${q.status !== 'ok' ? `<div class="row-warn">${q.err ? esc(q.err) + ' · ' : ''}${esc(q.players.join('; '))}</div>` : ''}</div>`
+      }).join('')
+      const rows = [...report.values()].map(r => `<tr>
+        <td><b>${esc(r.label)}</b><div class="pdf-name">${esc(r.game)}</div></td>
+        <td>${reqCell(r)}</td>
+        <td>${r.total ? esc(r.total) : (r.totalErr ? `<span class="import-badge import-badge--error">FALLÓ</span> ${esc(r.totalErr)}` : (r.totalSkipped ? 'no se escribió: fallaron jugadores del equipo' : '—'))}</td>
+        <td>${namesSkipped ? 'no se intentó' : `${r.names} escritos${r.nameErrs.length ? `<div class="row-warn">${r.nameErrs.map(esc).join('<br>')}</div>` : ''}`}</td></tr>`).join('')
+      const bad = [...report.values()].filter(r => r.reqs.some(q => q.status !== 'ok') || r.totalErr)
+      const head = phaseAok
+        ? `<div class="banner banner--ok">Stats de jugadores y totales escritos en todos los equipos.</div>`
+        : `<div class="banner banner--error"><b>Import incompleto.</b> Equipos afectados: ${bad.map(r => esc(r.label)).join(', ')}. Cada petición es atómica: lo marcado "escrito" quedó guardado; lo marcado "FALLÓ" o "no intentado" no se escribió. El total de un equipo no se escribe si falló algún jugador suyo.
+          ${namesSkipped ? `Los ${nameRows} nombre_completo marcados NO se escribieron, por diseño.` : ''}</div>`
+      $('report').innerHTML = `<div class="card"><div class="card__title">Resultado por equipo</div>${head}
+        <table class="setup-table report-table"><thead><tr><th>Equipo / partido</th><th>Peticiones de jugadores</th><th>Total de equipo</th><th>nombre_completo</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      $('report').scrollIntoView({ behavior: 'smooth' })
+    }
+
+    render()
+  </script>
+</body>
+</html>

@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — QB Map</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg2: #13161b;
+      --bg3: #1a1e25;
+      --border: #252a33;
+      --border2: #2e3540;
+      --text: #e8eaed;
+      --text2: #8a95a3;
+      --text3: #4a5568;
+      --accent: #3b82f6;
+      --accent-bg: rgba(59,130,246,0.12);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.12);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234,179,8,0.12);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.12);
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    [hidden] { display: none !important; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .topbar__brand { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: 0.04em; white-space: nowrap; }
+    .topbar__brand span { color: var(--accent); }
+    .topbar__sub { font-family: var(--mono); font-size: 11px; color: var(--text2); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+    .topbar__divider { width: 1px; height: 20px; background: var(--border2); }
+    .topbar__back { font-family: var(--mono); font-size: 12px; color: var(--text2); text-decoration: none; white-space: nowrap; transition: color 0.15s; }
+    .topbar__back:hover { color: var(--text); }
+    .topbar__game { font-family: var(--mono); font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── LAYOUT ── */
+    .content { max-width: 1760px; margin: 0 auto; padding: 18px 20px 80px; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 65fr) minmax(0, 35fr); gap: 16px; align-items: start; }
+    @media (max-width: 1000px) { .workspace { grid-template-columns: minmax(0, 1fr); } }
+
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+    .card__title { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field-label { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; }
+    .input {
+      background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text);
+      font-family: var(--mono); font-size: 13px; padding: 8px 10px; outline: none; width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+    .input--bad { border-color: var(--red); box-shadow: 0 0 0 2px var(--red-bg); }
+
+    /* ── BUTTONS ── */
+    .btn {
+      font-family: var(--mono); font-size: 12px; font-weight: 700;
+      padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer;
+      letter-spacing: 0.03em; transition: opacity 0.15s, transform 0.1s; white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.45; cursor: default; }
+    .btn--primary { background: var(--accent); color: #fff; }
+    .btn--primary:hover:not(:disabled) { opacity: 0.88; }
+    .btn--ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+    .btn--ghost:hover:not(:disabled) { color: var(--text); border-color: var(--text3); }
+    .btn--warn { background: var(--yellow-bg); color: var(--yellow); border: 1px solid rgba(234,179,8,0.3); }
+    .btn--warn:hover:not(:disabled) { opacity: 0.85; }
+    .btn--sm { padding: 5px 11px; font-size: 11px; }
+    .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+    .row > .field { flex: 1; min-width: 120px; }
+
+    /* ── VIDEO ── */
+    .video-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; }
+    .video-frame iframe, .video-frame #yt { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .video-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; color: var(--text3); font-family: var(--mono); font-size: 12px; }
+    .video-tools { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+    .ts-readout { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+
+    /* ── PLAY INFO ── */
+    .play-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+    .play-head__seq { font-family: var(--mono); font-size: 20px; font-weight: 700; }
+    .play-head__of { font-family: var(--mono); font-size: 12px; color: var(--text3); }
+    .chip { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .chip--pending  { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+    .chip--captured { background: var(--green-bg); color: var(--green); }
+    .chip--skipped  { background: var(--yellow-bg); color: var(--yellow); }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 14px; }
+    .info-item__k { font-family: var(--mono); font-size: 10px; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; }
+    .info-item__v { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+
+    /* ── PLAY STRIP ── */
+    .strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 12px; }
+    .strip__dot {
+      min-width: 26px; height: 24px; padding: 0 5px; border-radius: 4px; font-family: var(--mono); font-size: 10px; font-weight: 700;
+      border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); cursor: pointer;
+    }
+    .strip__dot--captured { background: var(--green-bg); color: var(--green); border-color: rgba(34,197,94,0.35); }
+    .strip__dot--skipped  { background: var(--yellow-bg); color: var(--yellow); border-color: rgba(234,179,8,0.35); }
+    .strip__dot--current  { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+    /* ── FIELD ── */
+    .field-wrap { background: #0a0c10; border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
+    #field { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; user-select: none; }
+    .field-legend { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; color: var(--text3); margin-top: 6px; }
+    #hover-readout { color: var(--text2); min-height: 16px; }
+    .point-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }  /* row layout: see compact block */
+    .card__divider { border: 0; border-top: 1px solid var(--border); margin: 16px 0 14px; }
+    .point-box { --pc: var(--accent); border: 1px solid var(--border2); border-top: 3px solid var(--pc); border-radius: 8px; padding: 10px 12px; background: var(--bg2); }
+    .point-box[data-kind="launch"] { --pc: #3b82f6; }
+    .point-box[data-kind="target"] { --pc: #22c55e; }
+    .point-box--active { border-color: var(--pc); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pc) 22%, transparent); }
+    .point-box__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; }
+    .point-box__dot { width: 10px; height: 10px; border-radius: 50%; }
+    .point-box__name { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--pc); }
+    .point-box__hint { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 6px; min-height: 14px; }
+    .point-box__err { color: var(--red); }
+
+    .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+    .actions .btn { width: 100%; }
+    .actions .btn--primary { grid-column: 1 / -1; padding: 11px 16px; }
+
+    /* ── STATE SCREENS ── */
+    .screen-msg { padding: 60px 20px; text-align: center; font-family: var(--mono); font-size: 13px; color: var(--text2); }
+    .screen-msg a { color: var(--accent); }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
+      font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 10px 18px;
+      border-radius: 8px; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+      z-index: 100; max-width: 90vw;
+    }
+    .toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast--success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .toast--error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* ── FIXED-VIEWPORT LAYOUT (wide screens): no page scroll, everything fits in 100vh ── */
+    @media (min-width: 1000px) {
+      html, body { height: 100%; overflow: hidden; }
+      body { display: flex; flex-direction: column; }
+      .topbar { position: static; flex: none; }
+      .content { flex: 1 1 auto; min-height: 0; width: 100%; padding: 10px 16px 12px; }
+      .workspace { height: 100%; min-height: 0; align-items: stretch; }
+      .col { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: 10px; }
+      .col > .card { margin-bottom: 0; }
+
+      /* left: video takes whatever the controls + play strip leave */
+      .card--video { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 10px 12px; }
+      .card--video .video-frame { flex: 1 1 0; min-height: 0; aspect-ratio: auto; }
+      .card--video .video-tools { flex: none; margin-top: 8px; }
+      .card--video .card__divider { flex: none; margin: 8px 0; }
+      #play-info, #strip { flex: none; }
+
+      /* right: field never shrinks; the Launch/Target area is what yields */
+      .card--field { flex: 0 0 auto; padding: 10px 12px; }
+      .card--field .card__title { margin-bottom: 6px; }
+      #point-grid { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-bottom: 0; }
+      .actions { flex: none; margin-top: 0; }
+    }
+
+    /* compact play sheet: one 6-column row + a thin strip of play buttons */
+    .play-head { gap: 10px; margin-bottom: 6px; }
+    .play-head__seq { font-size: 16px; line-height: 1; }
+    .play-head__meta { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-left: auto; white-space: nowrap; }
+    .chip { font-size: 9px; padding: 1px 6px; }
+    .info-item__k { font-size: 9px; letter-spacing: 0.06em; white-space: nowrap; }
+    .info-item__v { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (min-width: 1000px) {
+      .info-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0 10px; }
+      .strip { flex-wrap: nowrap; overflow-x: auto; margin-top: 6px; padding: 3px; position: relative; scrollbar-width: thin; }
+      .strip__dot { flex: none; min-width: 24px; height: 20px; font-size: 9px; padding: 0 4px; }
+    }
+
+    /* single-row video controls */
+    .video-tools .row { flex-wrap: nowrap; align-items: center; gap: 6px; }
+    .video-tools .row > .field { min-width: 0; flex: 1 1 auto; }
+    .video-tools .input { padding: 6px 8px; font-size: 12px; }
+    .video-tools .btn { padding: 6px 10px; font-size: 11px; }
+    .video-tools #ts-input { width: 78px; flex: none; }
+    .video-tools .ts-readout { font-size: 10px; white-space: nowrap; }
+    @media (max-width: 999px) { .video-tools .row { flex-wrap: wrap; } }
+
+    /* Launch / Target side by side, compact */
+    .point-grid { flex-direction: row; gap: 8px; }
+    .point-grid { align-items: flex-start; }
+    .point-grid > .point-box { flex: 1 1 0; min-width: 0; padding: 6px 8px; border-top-width: 3px; }
+    .point-box__head { margin-bottom: 4px; }
+    .point-box .row { flex-wrap: nowrap; gap: 6px; }
+    .point-box .row > .field { min-width: 0; gap: 2px; }
+    .point-box .field-label { font-size: 9px; }
+    .point-box .input { padding: 4px 7px; font-size: 12px; }
+    .point-box__hint { font-size: 9px; margin-top: 3px; min-height: 12px; }
+    .actions { gap: 6px; }
+    .actions .btn { padding: 6px 10px; }
+    .actions .btn--primary { padding: 8px 12px; }
+
+    /* ── FIELD SVG PALETTE ── */
+    .f-turf     { fill: #14301c; }
+    .f-endzone  { fill: #1c2a45; }
+    .f-yl5      { stroke: rgba(255,255,255,0.14); stroke-width: 0.08; }   /* every 5 (odd multiples): thin, faint */
+    .f-yl10     { stroke: rgba(255,255,255,0.5);  stroke-width: 0.18; }   /* every 10: solid, marked */
+    .f-goal     { stroke: rgba(255,255,255,0.85); stroke-width: 0.25; }
+    .f-hash     { fill: rgba(255,255,255,0.4); }
+    .f-num      { fill: rgba(255,255,255,0.35); font-family: 'IBM Plex Mono', monospace; font-weight: 700; }
+    .f-ez-label { fill: rgba(255,255,255,0.22); font-family: 'IBM Plex Mono', monospace; font-weight: 700; }
+    .f-los      { stroke: #3b82f6; stroke-width: 0.3; }
+    .f-fd       { stroke: #eab308; stroke-width: 0.25; stroke-dasharray: 0.8 0.6; }
+    .f-flight   { stroke: rgba(232,234,237,0.7); stroke-width: 0.2; stroke-dasharray: 0.6 0.5; fill: none; }
+    .f-edge     { stroke: rgba(255,255,255,0.5); stroke-width: 0.15; fill: none; }
+  </style>
+</head>
+<body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
+
+  <header class="topbar">
+    <span class="topbar__brand">COVER<span>CERO</span></span>
+    <span class="topbar__sub">QB Map</span>
+    <div class="topbar__divider"></div>
+    <a class="topbar__back" href="advanced.html">← Advanced Stats</a>
+    <span class="topbar__game" id="topbar-game"></span>
+  </header>
+
+  <main class="content" id="main">
+    <div class="screen-msg">Cargando…</div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
+    import { installHotkeys, showCombo } from '../../shared/hotkeys.js'
+    import { mountSettingsPanel } from '../../shared/settings-panel.js'
+    import { hotkeysSection } from '../../shared/settings-hotkeys.js'
+    import { QBMAP_HOTKEYS } from './qbmap_hotkeys.js'
+    import {
+      FIELD_WIDTH, HASHES, ABS_MIN, ABS_MAX,
+      spotFromAbs, driveDir, abbrOf, formatSpot, parseQbSpot, parseLat,
+      relFromAbs, absFromRel, axisRange, toAbs,
+    } from './qbmap_geometry.js'
+
+    const QS       = new URLSearchParams(location.search)
+    const GAME_ID  = QS.get('game')
+    const SIDE     = QS.get('side')            // 'home' | 'away'
+    const VIDEO_LS = 'qbmap_video_url'         // one YouTube link covers every game
+    const SVG_NS   = 'http://www.w3.org/2000/svg'
+    const NON_THROWN = new Set(['scramble', 'sack'])   // PASS rows with no pass to map
+    const DEFAULT_LAT = FIELD_WIDTH / 2
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let plays  = []            // filtered PASS plays: { id, seq, possession, field_pos, down, distance, net_yards, result, play_data }
+    let idx    = 0
+    let state  = null          // working copy for the current play
+    let player = null          // YT.Player
+    let playerReady = false
+    let saving = false
+
+    const $  = id => document.getElementById(id)
+    const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+
+    let _toastTimer
+    function toast(msg, kind = 'success') {
+      const el = $('toast')
+      el.textContent = msg
+      el.className = `toast toast--${kind} toast--visible`
+      clearTimeout(_toastTimer)
+      _toastTimer = setTimeout(() => el.classList.remove('toast--visible'), 2600)
+    }
+
+    function screenMsg(html) { $('main').innerHTML = `<div class="screen-msg">${html}</div>` }
+
+    // ── Supabase ─────────────────────────────────────────────────────────────
+    async function sbGet(path) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    }
+
+    // PATCH replaces the whole play_data jsonb column, so the current column is
+    // re-read right before writing and only the qbmap_* keys are merged in
+    // (a patch value of undefined removes the key). return=representation lets
+    // us detect an RLS-filtered PATCH, which otherwise "succeeds" on 0 rows.
+    async function savePatch(play, patch) {
+      const rows = await sbGet(`plays?id=eq.${encodeURIComponent(play.id)}&select=play_data`)
+      if (!rows.length) throw new Error('la jugada ya no existe')
+      const merged = { ...(rows[0].play_data || {}) }
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) delete merged[k]; else merged[k] = v
+      }
+      const res = await fetch(`${SB_URL}/rest/v1/plays?id=eq.${encodeURIComponent(play.id)}`, {
+        method: 'PATCH',
+        headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify({ play_data: merged }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 160)}`)
+      const out = await res.json()
+      if (!Array.isArray(out) || out.length !== 1) throw new Error('el UPDATE no afectó ninguna fila (¿permisos/RLS?)')
+      play.play_data = merged
+    }
+
+    // ── Play helpers ─────────────────────────────────────────────────────────
+    function teamsOf(p) { return p.play_data.teams }
+    function statusOf(p) {
+      const pd = p.play_data
+      if (pd.qbmap_status === 'skipped') return 'skipped'
+      if (pd.qbmap_launch && pd.qbmap_target) return 'captured'
+      return 'pending'
+    }
+    const STATUS_LABEL = { pending: 'Pendiente', captured: 'Capturada', skipped: 'Omitida' }
+    const RESULT_LABEL = { complete: 'Completo', incomplete: 'Incompleto', dropped: 'Drop', broken_up: 'Defendido', intercepted: 'INT' }
+
+    function losAbs(p) { return toAbs(teamsOf(p), p.field_pos.team, p.field_pos.yard) }
+
+    function fmtTime(sec) {
+      if (sec == null || Number.isNaN(sec)) return '—'
+      const s = Math.floor(sec), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60
+      return h ? `${h}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}` : `${m}:${String(r).padStart(2,'0')}`
+    }
+    // "1:23:45" | "12:30" | "750" | "750.5" -> seconds, else null
+    function parseTime(raw) {
+      const s = String(raw ?? '').trim()
+      if (!s) return null
+      const parts = s.split(':')
+      if (parts.length > 3 || parts.some(x => !/^\d+(\.\d+)?$/.test(x))) return null
+      return parts.reduce((acc, x) => acc * 60 + parseFloat(x), 0)
+    }
+
+    function loadState() {
+      const pd = plays[idx].play_data
+      state = {
+        launch: pd.qbmap_launch ? { ...pd.qbmap_launch } : null,
+        target: pd.qbmap_target ? { ...pd.qbmap_target } : null,
+        ts:     pd.qbmap_timestamp ?? null,
+        active: 'launch',
+        errors: { launch: '', target: '' },
+        latDefault: { launch: false, target: false },
+      }
+    }
+
+    // ── Video (YouTube IFrame Player API) ────────────────────────────────────
+    function youtubeId(raw) {
+      const s = String(raw ?? '').trim()
+      if (/^[\w-]{11}$/.test(s)) return s
+      const m = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([\w-]{11})/)
+      return m ? m[1] : null
+    }
+
+    function initVideoApi() {
+      if (window.YT?.Player) return
+      const tag = document.createElement('script')
+      tag.src = 'https://www.youtube.com/iframe_api'
+      document.head.appendChild(tag)
+    }
+    window.onYouTubeIframeAPIReady = () => { applyVideoUrl($('video-url')?.value, false) }
+
+    function applyVideoUrl(raw, persist = true) {
+      const id = youtubeId(raw)
+      const empty = $('video-empty')
+      if (!id) { if (empty) empty.hidden = false; return false }
+      if (persist) { try { localStorage.setItem(VIDEO_LS, raw.trim()) } catch {} }
+      if (empty) empty.hidden = true
+      if (!window.YT?.Player) return true            // created once the API loads
+      if (player && playerReady) { player.loadVideoById(id); return true }
+      if (!player) {
+        player = new YT.Player('yt', {
+          videoId: id,
+          playerVars: { rel: 0, playsinline: 1 },
+          events: { onReady: () => { playerReady = true } },
+        })
+      }
+      return true
+    }
+
+    function useCurrentTime() {
+      if (!player || !playerReady) { toast('El video todavía no está listo', 'error'); return }
+      state.ts = Math.max(0, Math.round((player.getCurrentTime() - 3) * 10) / 10)
+      renderTimestamp()
+    }
+
+    function seekToTs() {
+      if (state.ts == null || !player || !playerReady) return
+      player.seekTo(state.ts, true)
+    }
+
+    // ── Rendering: shell ─────────────────────────────────────────────────────
+    function renderShell() {
+      const savedUrl = (() => { try { return localStorage.getItem(VIDEO_LS) || '' } catch { return '' } })()
+      $('main').innerHTML = `
+        <div class="workspace">
+          <div class="col">
+            <div class="card card--video">
+              <div class="video-frame">
+                <div id="yt"></div>
+                <div class="video-empty" id="video-empty">Pega el link de YouTube del partido abajo</div>
+              </div>
+              <div class="video-tools">
+                <div class="row">
+                  <div class="field"><input class="input" id="video-url" aria-label="Link de YouTube" placeholder="Link de YouTube (https://www.youtube.com/watch?v=…)" value="${esc(savedUrl)}"></div>
+                  <button class="btn btn--ghost" id="btn-video-load">Cargar</button>
+                  <button class="btn btn--primary" id="btn-use-time">Usar tiempo actual (−3 s)</button>
+                  <input class="input" id="ts-input" aria-label="Timestamp" placeholder="m:ss" autocomplete="off">
+                  <button class="btn btn--ghost" id="btn-seek">▶ Ir</button>
+                  <span class="ts-readout" id="ts-readout"></span>
+                </div>
+              </div>
+              <hr class="card__divider">
+              <div id="play-info"></div>
+              <div class="strip" id="strip"></div>
+            </div>
+          </div>
+          <div class="col">
+            <div class="card card--field">
+              <div class="card__title">Campo · ataque →</div>
+              <div class="field-wrap"><svg id="field" xmlns="${SVG_NS}"></svg></div>
+              <div class="field-legend">
+                <span id="hover-readout"></span>
+                <span>Lat 0 = banda izquierda del QB · Lat ${FIELD_WIDTH} = derecha</span>
+              </div>
+            </div>
+            <div class="point-grid" id="point-grid"></div>
+            <div class="actions">
+                <button class="btn btn--ghost" id="btn-prev">← Anterior</button>
+                <button class="btn btn--ghost" id="btn-next">Siguiente →</button>
+                <button class="btn btn--ghost" id="btn-clear">Limpiar</button>
+                <button class="btn btn--warn" id="btn-skip">Omitir</button>
+                <button class="btn btn--primary" id="btn-save">Update Play → siguiente</button>
+              </div>
+          </div>
+        </div>`
+
+      $('btn-video-load').onclick = () => {
+        if (!applyVideoUrl($('video-url').value)) toast('Link de YouTube no válido', 'error')
+      }
+      $('video-url').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-video-load').click() })
+      $('btn-use-time').onclick = useCurrentTime
+      $('btn-seek').onclick = seekToTs
+      $('ts-input').addEventListener('change', e => {
+        const v = parseTime(e.target.value)
+        if (e.target.value.trim() && v == null) { e.target.classList.add('input--bad'); return }
+        e.target.classList.remove('input--bad')
+        state.ts = v
+        renderTimestamp()
+      })
+      $('btn-prev').onclick  = () => go(idx - 1)
+      $('btn-next').onclick  = () => go(idx + 1)
+      $('btn-clear').onclick = () => { state.launch = null; state.target = null; state.active = 'launch'; renderPoints(); renderField() }
+      $('btn-skip').onclick  = skipPlay
+      $('btn-save').onclick  = updatePlay
+
+      const fieldEl = $('field')
+      fieldEl.addEventListener('click', onFieldClick)
+      fieldEl.addEventListener('mousemove', onFieldHover)
+      fieldEl.addEventListener('mouseleave', () => { $('hover-readout').textContent = '' })
+
+      initVideoApi()
+      if (window.YT?.Player) applyVideoUrl(savedUrl, false)
+    }
+
+    // ── Rendering: per-play ──────────────────────────────────────────────────
+    function renderAll() {
+      renderInfo(); renderStrip(); renderTimestamp(); renderPoints(); renderField(); renderButtons()
+    }
+
+    function renderInfo() {
+      const p = plays[idx], teams = teamsOf(p), pd = p.play_data, st = statusOf(p)
+      const qb = pd.pass_by ? `#${pd.pass_by.number}${pd.pass_by.name ? ' ' + pd.pass_by.name : ''}` : '—'
+      const rec = pd.received_by ? `#${pd.received_by.number}` : '—'
+      const dirTo = driveDir(teams, p.possession) === 1 ? teams.away.name : teams.home.name
+      const item = (k, v) => `<div class="info-item"><div class="info-item__k">${k}</div><div class="info-item__v">${v}</div></div>`
+      $('play-info').innerHTML = `
+        <div class="play-head">
+          <span class="play-head__seq">#${p.seq}</span>
+          <span class="play-head__of">${idx + 1}/${plays.length}</span>
+          <span class="chip chip--${st}">${STATUS_LABEL[st]}</span>
+          <span class="play-head__meta">Q${p.quarter ?? '?'} · ${esc(p.clock ?? '')} · ataca → ${esc(abbrOf(teams, dirTo))}</span>
+        </div>
+        <div class="info-grid">
+          ${item('Down & dist', `${p.down ?? '—'} & ${p.distance ?? '—'}`)}
+          ${item('LOS', esc(formatSpot(teams, p.field_pos)))}
+          ${item('Resultado', esc(RESULT_LABEL[pd.pass_result] || pd.pass_result || '—'))}
+          ${item('Yardas netas', p.net_yards ?? '—')}
+          ${item('QB', esc(qb))}
+          ${item('Receptor', esc(rec))}
+        </div>`
+    }
+
+    function renderStrip() {
+      $('strip').innerHTML = plays.map((p, i) =>
+        `<button class="strip__dot strip__dot--${statusOf(p)}${i === idx ? ' strip__dot--current' : ''}" data-i="${i}" title="Jugada #${p.seq} · ${STATUS_LABEL[statusOf(p)]}">${p.seq}</button>`
+      ).join('')
+      $('strip').querySelectorAll('button').forEach(b => { b.onclick = () => go(+b.dataset.i) })
+      const cur = $('strip').querySelector('.strip__dot--current')
+      if (cur) $('strip').scrollLeft = cur.offsetLeft - ($('strip').clientWidth - cur.offsetWidth) / 2
+    }
+
+    function renderTimestamp() {
+      const ti = $('ts-input')
+      if (document.activeElement !== ti) ti.value = state.ts == null ? '' : fmtTime(state.ts)
+      ti.classList.remove('input--bad')
+      $('ts-readout').textContent = state.ts == null ? 'sin timestamp' : `${state.ts}s`
+    }
+
+    function renderButtons() {
+      $('btn-prev').disabled = idx === 0 || saving
+      $('btn-next').disabled = idx === plays.length - 1 || saving
+      $('btn-save').disabled = saving || !(state.launch && state.target) || !!(state.errors.launch || state.errors.target)
+      $('btn-skip').disabled = saving
+      $('btn-clear').disabled = saving
+    }
+
+    const KINDS = [
+      { key: 'launch', label: 'Launch', color: '#3b82f6' },
+      { key: 'target', label: 'Target', color: '#22c55e' },
+    ]
+
+    function renderPoints() {
+      const teams = teamsOf(plays[idx])
+      $('point-grid').innerHTML = KINDS.map(k => {
+        const pt = state[k.key]
+        return `
+          <div class="point-box${state.active === k.key ? ' point-box--active' : ''}" data-kind="${k.key}">
+            <div class="point-box__head" data-pick="${k.key}">
+              <span class="point-box__dot" style="background:${k.color}"></span>
+              <span class="point-box__name">${k.label}</span>
+            </div>
+            <div class="row">
+              <div class="field"><span class="field-label">Yarda</span>
+                <input class="input" data-spot="${k.key}" placeholder="${esc(abbrOf(teams, plays[idx].possession))}34 · -5" autocomplete="off"
+                  value="${pt ? esc(formatSpot(teams, pt)) : ''}"></div>
+              <div class="field" style="flex:0 0 64px"><span class="field-label">Lat 0-${FIELD_WIDTH}</span>
+                <input class="input" data-lat="${k.key}" inputmode="decimal" placeholder="26.5" autocomplete="off"
+                  value="${pt ? pt.lat : ''}"></div>
+            </div>
+            <div class="point-box__hint" id="hint-${k.key}"></div>
+          </div>`
+      }).join('')
+
+      $('point-grid').querySelectorAll('[data-pick]').forEach(el => {
+        el.onclick = () => { state.active = el.dataset.pick; renderPoints() }
+      })
+      $('point-grid').querySelectorAll('[data-spot]').forEach(el => {
+        el.addEventListener('focus', () => { state.active = el.dataset.spot; markActive() })
+        el.addEventListener('input', () => onSpotInput(el.dataset.spot, el))
+      })
+      $('point-grid').querySelectorAll('[data-lat]').forEach(el => {
+        el.addEventListener('focus', () => { state.active = el.dataset.lat; markActive() })
+        el.addEventListener('input', () => onLatInput(el.dataset.lat, el))
+      })
+      KINDS.forEach(k => renderHint(k.key))
+      renderButtons()
+    }
+
+    function markActive() {
+      $('point-grid').querySelectorAll('.point-box').forEach(b =>
+        b.classList.toggle('point-box--active', b.dataset.kind === state.active))
+    }
+
+    function renderHint(kind) {
+      const el = $(`hint-${kind}`); if (!el) return
+      const p = plays[idx], teams = teamsOf(p), pt = state[kind]
+      if (state.errors[kind]) { el.innerHTML = `<span class="point-box__err">${esc(state.errors[kind])}</span>`; return }
+      if (!pt) { el.textContent = 'Clic en el campo o escribe la yarda'; return }
+      const rel = Math.round(relFromAbs(pt.abs, losAbs(p), driveDir(teams, p.possession)))
+      let t = `abs ${pt.abs} · ${rel >= 0 ? '+' : ''}${rel} vs LOS`
+      if (state.latDefault[kind]) t += ' · lateral por defecto (centro)'
+      el.textContent = t
+    }
+
+    // ── Input handlers (text <-> field stay in sync via `state`) ─────────────
+    function onSpotInput(kind, el) {
+      const p = plays[idx], teams = teamsOf(p)
+      const raw = el.value
+      if (!raw.trim()) { state[kind] = null; state.errors[kind] = ''; el.classList.remove('input--bad'); afterPointChange(kind, el); return }
+      const r = parseQbSpot(raw, teams, p.possession)
+      if (r.error) {
+        state.errors[kind] = r.error; el.classList.add('input--bad')
+        renderHint(kind); renderButtons(); return
+      }
+      el.classList.remove('input--bad'); state.errors[kind] = ''
+      const prev = state[kind]
+      state[kind] = { ...r.spot, lat: prev ? prev.lat : DEFAULT_LAT }
+      if (!prev) state.latDefault[kind] = true
+      afterPointChange(kind, el)
+    }
+
+    function onLatInput(kind, el) {
+      const pt = state[kind]
+      const raw = el.value
+      if (!raw.trim()) { el.classList.remove('input--bad'); return }
+      const lat = parseLat(raw)
+      if (lat == null || !pt) {
+        el.classList.add('input--bad')
+        state.errors[kind] = !pt ? 'primero pon la yarda' : `lateral inválido (0-${FIELD_WIDTH})`
+        renderHint(kind); renderButtons(); return
+      }
+      el.classList.remove('input--bad'); state.errors[kind] = ''
+      pt.lat = lat; state.latDefault[kind] = false
+      afterPointChange(kind, el)
+    }
+
+    // Refreshes the field, hints, and the sibling inputs — never the input the
+    // user is currently typing in.
+    function afterPointChange(kind, typingEl) {
+      renderField()
+      KINDS.forEach(k => renderHint(k.key))
+      syncInputs(typingEl)
+      renderButtons()
+    }
+
+    function syncInputs(skipEl) {
+      const teams = teamsOf(plays[idx])
+      document.querySelectorAll('[data-spot]').forEach(el => {
+        if (el === skipEl || el === document.activeElement) return
+        const pt = state[el.dataset.spot]
+        el.value = pt ? formatSpot(teams, pt) : ''
+        el.classList.remove('input--bad')
+      })
+      document.querySelectorAll('[data-lat]').forEach(el => {
+        if (el === skipEl || el === document.activeElement) return
+        const pt = state[el.dataset.lat]
+        el.value = pt ? pt.lat : ''
+        el.classList.remove('input--bad')
+      })
+    }
+
+    // ── Field SVG ────────────────────────────────────────────────────────────
+    let axis = { min: -10, max: 40 }
+
+    function svgEl(name, attrs, text) {
+      const e = document.createElementNS(SVG_NS, name)
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v)
+      if (text != null) e.textContent = text
+      return e
+    }
+
+    function renderField() {
+      const p = plays[idx], teams = teamsOf(p), dir = driveDir(teams, p.possession), los = losAbs(p)
+      const rels = [state.launch, state.target].filter(Boolean).map(q => relFromAbs(q.abs, los, dir))
+      axis = axisRange(los, dir, rels)
+      // Layout-only: the drawn window is kept landscape (~1.3:1 at the true 1:1
+      // yard/lateral scale) by showing extra yards ahead of the LOS (then behind,
+      // if the endzone caps the front). axisRange()/saved data are not affected.
+      const extra = Math.round(FIELD_WIDTH * 1.3) - (axis.max - axis.min)
+      if (extra > 0) {
+        const fwdRoom  = (dir === 1 ? ABS_MAX - los : los - ABS_MIN) - axis.max
+        const addFwd   = Math.max(0, Math.min(extra, fwdRoom))
+        const backRoom = (dir === 1 ? los - ABS_MIN : ABS_MAX - los) + axis.min
+        const addBack  = Math.max(0, Math.min(extra - addFwd, backRoom))
+        axis = { min: axis.min - addBack, max: axis.max + addFwd }
+      }
+      const W = axis.max - axis.min
+      const svg = $('field')
+      svg.setAttribute('viewBox', `${axis.min} 0 ${W} ${FIELD_WIDTH}`)
+      svg.replaceChildren()
+
+      const relOf = abs => relFromAbs(abs, los, dir)
+      const clipX = (a, b) => { const x0 = Math.max(Math.min(a, b), axis.min), x1 = Math.min(Math.max(a, b), axis.max); return x1 > x0 ? [x0, x1] : null }
+
+      svg.appendChild(svgEl('rect', { class: 'f-turf', x: axis.min, y: 0, width: W, height: FIELD_WIDTH }))
+
+      // Endzones (abs -10..0 and 100..110)
+      for (const [a, b] of [[ABS_MIN, 0], [100, ABS_MAX]]) {
+        const c = clipX(relOf(a), relOf(b))
+        if (!c) continue
+        svg.appendChild(svgEl('rect', { class: 'f-endzone', x: c[0], y: 0, width: c[1] - c[0], height: FIELD_WIDTH }))
+        if (c[1] - c[0] >= 5) {
+          const mid = (relOf(a) + relOf(b)) / 2
+          const who = abbrOf(teams, spotFromAbs(teams, (a + b) / 2).team)
+          svg.appendChild(svgEl('text', { class: 'f-ez-label', x: mid, y: FIELD_WIDTH / 2, 'font-size': 3.2, 'text-anchor': 'middle', 'dominant-baseline': 'middle' }, who))
+        }
+      }
+
+      // Yard lines, numbers, hashes
+      for (let abs = ABS_MIN; abs <= ABS_MAX; abs++) {
+        const x = relOf(abs)
+        if (x < axis.min || x > axis.max) continue
+        const inField = abs >= 0 && abs <= 100
+        if (abs === 0 || abs === 100) {
+          svg.appendChild(svgEl('line', { class: 'f-goal', x1: x, y1: 0, x2: x, y2: FIELD_WIDTH }))
+          continue
+        }
+        if (!inField) continue
+        if (abs % 5 === 0) svg.appendChild(svgEl('line', { class: abs % 10 === 0 ? 'f-yl10' : 'f-yl5', x1: x, y1: 0, x2: x, y2: FIELD_WIDTH }))
+        for (const [h0, h1] of HASHES) svg.appendChild(svgEl('rect', { class: 'f-hash', x: x - 0.12, y: h0, width: 0.24, height: h1 - h0 }))
+        if (abs % 10 === 0) {
+          const n = String(Math.min(abs, 100 - abs))
+          // Same number on both sides of the field, upright: baselines at lateral 9 and
+          // 46 put the digits in the 7-9 / 44-46 bands (7 units from the nearest sideline).
+          for (const yBase of [9, FIELD_WIDTH - 7]) {
+            svg.appendChild(svgEl('text', { class: 'f-num', x, y: yBase, 'font-size': 2.2, 'text-anchor': 'middle' }, n))
+          }
+        }
+      }
+      svg.appendChild(svgEl('rect', { class: 'f-edge', x: axis.min, y: 0, width: W, height: FIELD_WIDTH }))
+
+      // LOS + first-down line
+      svg.appendChild(svgEl('line', { class: 'f-los', x1: 0, y1: 0, x2: 0, y2: FIELD_WIDTH }))
+      if (p.distance != null && p.distance > 0 && p.distance <= axis.max) {
+        svg.appendChild(svgEl('line', { class: 'f-fd', x1: p.distance, y1: 0, x2: p.distance, y2: FIELD_WIDTH }))
+      }
+
+      // Points (clamped to the visible axis so an off-axis marker stays reachable)
+      const at = pt => ({ x: Math.max(axis.min, Math.min(axis.max, relOf(pt.abs))), y: pt.lat })
+      if (state.launch && state.target) {
+        const a = at(state.launch), b = at(state.target)
+        svg.appendChild(svgEl('line', { class: 'f-flight', x1: a.x, y1: a.y, x2: b.x, y2: b.y }))
+      }
+      for (const k of KINDS) {
+        const pt = state[k.key]; if (!pt) continue
+        const c = at(pt)
+        svg.appendChild(svgEl('circle', { cx: c.x, cy: c.y, r: 1.1, fill: k.color, stroke: '#fff', 'stroke-width': 0.2 }))
+        svg.appendChild(svgEl('text', { x: c.x, y: c.y, 'font-size': 1.3, 'font-weight': 700, fill: '#fff', 'text-anchor': 'middle', 'dominant-baseline': 'central', style: 'pointer-events:none', 'font-family': 'IBM Plex Mono, monospace' }, k.key === 'launch' ? 'L' : 'T'))
+      }
+    }
+
+    function eventToField(e) {
+      const svg = $('field')
+      const pt = svg.createSVGPoint()
+      pt.x = e.clientX; pt.y = e.clientY
+      const m = svg.getScreenCTM()
+      if (!m) return null
+      const loc = pt.matrixTransform(m.inverse())
+      const p = plays[idx], teams = teamsOf(p), dir = driveDir(teams, p.possession)
+      const rel = Math.round(loc.x)
+      const abs = Math.max(ABS_MIN, Math.min(ABS_MAX, Math.round(absFromRel(rel, losAbs(p), dir))))
+      const lat = Math.max(0, Math.min(FIELD_WIDTH, Math.round(loc.y * 10) / 10))
+      return { abs, lat }
+    }
+
+    function onFieldClick(e) {
+      const f = eventToField(e); if (!f) return
+      const teams = teamsOf(plays[idx])
+      const kind = state.active
+      state[kind] = { ...spotFromAbs(teams, f.abs), lat: f.lat }
+      state.errors[kind] = ''; state.latDefault[kind] = false
+      if (kind === 'launch') state.active = 'target'
+      renderPoints(); renderField()
+    }
+
+    function onFieldHover(e) {
+      const f = eventToField(e); if (!f) return
+      const p = plays[idx], teams = teamsOf(p)
+      const rel = Math.round(relFromAbs(f.abs, losAbs(p), driveDir(teams, p.possession)))
+      $('hover-readout').textContent = `${formatSpot(teams, spotFromAbs(teams, f.abs))} · lat ${f.lat} · ${rel >= 0 ? '+' : ''}${rel} vs LOS`
+    }
+
+    // ── Navigation & save ────────────────────────────────────────────────────
+    function go(i) {
+      if (saving || i < 0 || i >= plays.length) return
+      idx = i; loadState(); renderAll()
+      if (state.ts != null) seekToTs()
+    }
+
+    async function updatePlay() {
+      if (saving || !(state.launch && state.target)) return
+      const p = plays[idx]
+      const pack = pt => ({ team: pt.team, yard: pt.yard, abs: pt.abs, lat: pt.lat })
+      saving = true; renderButtons()
+      try {
+        await savePatch(p, {
+          qbmap_launch: pack(state.launch),
+          qbmap_target: pack(state.target),
+          qbmap_timestamp: state.ts,
+          qbmap_status: 'captured',
+          qbmap_version: 1,
+          qbmap_updated_at: new Date().toISOString(),
+        })
+        saving = false
+        toast(`Jugada #${p.seq} guardada`)
+        advance()
+      } catch (err) {
+        console.error(err); saving = false; renderButtons()
+        toast(`Error al guardar: ${err.message}`, 'error')
+      }
+    }
+
+    async function skipPlay() {
+      if (saving) return
+      const p = plays[idx]
+      saving = true; renderButtons()
+      try {
+        await savePatch(p, {
+          qbmap_launch: undefined, qbmap_target: undefined, qbmap_timestamp: undefined,
+          qbmap_status: 'skipped', qbmap_version: 1, qbmap_updated_at: new Date().toISOString(),
+        })
+        saving = false
+        toast(`Jugada #${p.seq} omitida`)
+        advance()
+      } catch (err) {
+        console.error(err); saving = false; renderButtons()
+        toast(`Error al guardar: ${err.message}`, 'error')
+      }
+    }
+
+    function advance() {
+      if (idx < plays.length - 1) go(idx + 1)
+      else { loadState(); renderAll(); toast('Última jugada del equipo', 'success') }
+    }
+
+    // ── Boot ─────────────────────────────────────────────────────────────────
+    async function boot() {
+      if (!GAME_ID || (SIDE !== 'home' && SIDE !== 'away')) {
+        screenMsg('Falta el partido o el equipo. <a href="advanced.html">Volver a Advanced Stats</a>')
+        return
+      }
+      try {
+        const [games, rows] = await Promise.all([
+          sbGet(`games?id=eq.${encodeURIComponent(GAME_ID)}&select=id,semana,home:home_team_id(abreviatura),away:away_team_id(abreviatura)`),
+          sbGet(`plays?game_id=eq.${encodeURIComponent(GAME_ID)}&play_type=eq.PASS&select=id,seq,quarter,clock,possession,field_pos,down,distance,net_yards,result,play_data&order=seq.asc`),
+        ])
+        const g = games[0]
+        if (g) $('topbar-game').textContent = `${g.away?.abreviatura || '?'} @ ${g.home?.abreviatura || '?'} · ${SIDE === 'home' ? 'Local' : 'Visitante'} ofensiva`
+
+        const teams = rows.map(r => r.play_data?.teams).find(Boolean)
+        if (!teams) { screenMsg('Este partido no tiene jugadas de pase capturadas.'); return }
+        const teamName = teams[SIDE].name
+
+        plays = rows.filter(r =>
+          r.possession === teamName && r.play_data?.teams && r.field_pos &&
+          !NON_THROWN.has(r.play_data.pass_result))
+        if (!plays.length) { screenMsg(`Sin pases lanzados para ${esc(teamName)} en este partido.`); return }
+
+        idx = Math.max(0, plays.findIndex(p => statusOf(p) === 'pending'))
+        loadState()
+        renderShell()
+        renderAll()
+        installQbHotkeys()
+      } catch (err) {
+        console.error(err)
+        screenMsg(`Error al cargar: ${esc(err.message)}`)
+      }
+    }
+
+    // ── Hotkeys ──────────────────────────────────────────────────────────────
+    // Document-level keydown; the video is driven through the YT Player API, so
+    // it never needs focus. The table lives in localStorage (qbmap_hotkeys.js).
+    function videoReady() {
+      if (player && playerReady) return true
+      toast('El video todavía no está listo', 'error'); return false
+    }
+    function seekBy(delta) {
+      if (!videoReady()) return
+      player.seekTo(Math.max(0, player.getCurrentTime() + delta), true)
+    }
+    function setActive(kind) { state.active = kind; markActive() }
+
+    const HOTKEY_RUN = {
+      play_pause()  { if (!videoReady()) return; const st = player.getPlayerState(); (st === 1 || st === 3) ? player.pauseVideo() : player.playVideo() },
+      seek_back_1() { seekBy(-1) },
+      seek_fwd_1()  { seekBy(1) },
+      seek_back_5() { seekBy(-5) },
+      seek_fwd_5()  { seekBy(5) },
+      use_time()    { useCurrentTime() },
+      mark_launch() { setActive('launch') },
+      mark_target() { setActive('target') },
+      save() {
+        if (saving) return
+        if ($('btn-save').disabled) { toast('Marca launch y target (sin errores) antes de guardar', 'error'); return }
+        updatePlay()
+      },
+      skip()        { skipPlay() },
+      slow_toggle() {
+        if (!videoReady()) return
+        const r = player.getPlaybackRate() === 0.25 ? 1 : 0.25
+        player.setPlaybackRate(r); toast(`Velocidad ${r}×`)
+      },
+    }
+
+    function installQbHotkeys() {
+      const hint = (bindings, btnId, actionId, base) => {
+        const combos = bindings[actionId] || []
+        $(btnId).title = combos.length ? `${base} [${combos.map(showCombo).join(' / ')}]` : base
+      }
+      installHotkeys({
+        config: QBMAP_HOTKEYS,
+        run: HOTKEY_RUN,
+        onChange: bindings => {                       // also fires when the settings panel edits the table
+          hint(bindings, 'btn-use-time', 'use_time', 'Usar tiempo actual (−3 s)')
+          hint(bindings, 'btn-save', 'save', 'Guardar y avanzar')
+          hint(bindings, 'btn-skip', 'skip', 'Omitir jugada')
+        },
+      })
+
+      // Clicking the player hands keyboard focus to the YouTube iframe, whose
+      // key events never reach this document. Take the focus straight back
+      // (the click itself still reaches the player).
+      window.addEventListener('blur', () => setTimeout(() => {
+        const a = document.activeElement
+        if (a && a.tagName === 'IFRAME') { a.blur(); window.focus() }
+      }, 0))
+    }
+
+    mountSettingsPanel({ sections: [hotkeysSection(QBMAP_HOTKEYS)] })
+    boot()
+  </script>
+</body>
+</html>
