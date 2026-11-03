@@ -153,6 +153,12 @@ const P_ = {
     return { pbu: find(L.computeDefenseStats([p], A, B)[B], 50)?.pbu ?? 0, pbuOnInt: find(L.computeDefenseStats([q], A, B)[B], 50)?.pbu ?? 0 } },
   'TC-40': () => pick(defOf([mk({ play_type: 'RUSH', possession: A, field_pos: pos(B, 30), down: 1, distance: 10, rush_by: Adams, result: 'fumble',
       fumble_at: pos(B, 27), fumble_forced_by: Brown, fumble_recovery_team: A, fumble_recovered_by: Allen, fumble_recovered_at: pos(B, 27), fumble_result: 'eop', fumble_at_result: pos(B, 27) })], B, 50), ['ff', 'solo']),
+  'TC-42': () => { const lost = d => mk({ play_type: 'RUSH', possession: A, field_pos: pos(B, 40), down: d, distance: 5, rush_by: Adams, result: 'fumble',
+      fumble_at: pos(B, 30), fumble_recovery_team: B, fumble_recovered_by: Brown, fumble_recovered_at: pos(B, 30), fumble_result: 'eop', fumble_at_result: pos(B, 30) })
+    const second = lost(2), third = cmp([lost(3)])[A]
+    return { adamsYds: rushOf([second], A, 12)?.yds ?? 0, firstDowns: cmp([second])[A].firstDowns, thirdAtt: third.thirdAtt, thirdConv: third.thirdConv } },
+  'TC-43': () => { const r = (yl, d, to) => mk({ play_type: 'RUSH', possession: A, field_pos: pos(B, yl), down: d, distance: yl, rush_by: Adams, result: 'tackle', at: pos(B, to) })
+    const c = cmp([r(8, 1, 6), r(6, 2, 5), r(5, 3, 0)])[A]; return { firstDowns: c.firstDowns, thirdAtt: c.thirdAtt, thirdConv: c.thirdConv } },
   'TC-41': () => ({ punterRows: L.computeSpecialTeamsStats([punt({ punt_result: 'downed', punt_downed_at: pos(B, 5), ...flag(1, 'RK', B, pos(B, 35), 'first_down') })], A, B, teams).punting.length }),
 }
 

@@ -7,7 +7,7 @@
       "net_yards_touchdown_stats_count": "Las jugadas fueron pasadas por una réplica de wizard.js (_renderSubmit/_confirmSubmit): net_yards y touchdown se derivan sólo de `at`; un flag aceptado con down_result y timing != dead anula la jugada (net_yards=0, stats_count=false).",
       "grupos": "a = corregible con datos que ya se capturan; b = requiere capturar datos nuevos (segunda pasada con video); a+b = parte corregible y parte no."
     },
-    "total": 41,
+    "total": 43,
     "cumplen_hoy": 1,
     "no_cumplen_hoy": 40
   },
@@ -2820,6 +2820,199 @@
       },
       "resultado_actual_codigo": {
         "punterRows": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-42",
+      "regla_ncaa": "Fumble perdido nunca da primer down por yardas, aunque la yarda de recuperación alcance la distancia; en 3ª down tampoco es conversión (§1 Art.4)",
+      "fuente_manual": "Manual p.6 §1 Art.4 A.R. (2ª y 5 en BBB40, rush de 10 y fumble recuperado por B)",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_isFirstDownPlay / computeComparisonStats",
+      "entrada": {
+        "descripcion": "Caso propio (no es de la auditoría): protege §1 Art.4 una vez que H-01 deriva las yardas de los fumbles. (1) 2ª y 5 en BBB40: Adams corre a BBB30, fumble, Brown (B) recupera en BBB30. (2) La misma jugada en 3ª y 5.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 2,
+            "distance": 5,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "fumble_recovery_team": "BBB",
+            "fumble_recovered_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "yardline_100": 40
+          },
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 40
+            },
+            "down": 3,
+            "distance": 5,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "fumble",
+            "fumble_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "fumble_recovery_team": "BBB",
+            "fumble_recovered_by": {
+              "number": 50,
+              "nombre": "",
+              "apellido": ""
+            },
+            "fumble_recovered_at": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "fumble_result": "eop",
+            "fumble_at_result": {
+              "team": "BBB",
+              "yard": 30
+            },
+            "yardline_100": 40
+          }
+        ]
+      },
+      "salida_esperada": {
+        "adamsYds": 10,
+        "firstDowns": 0,
+        "thirdAtt": 1,
+        "thirdConv": 0
+      },
+      "resultado_actual_codigo": {
+        "adamsYds": 0,
+        "firstDowns": 0,
+        "thirdAtt": 1,
+        "thirdConv": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-43",
+      "regla_ncaa": "TD en 3ª y gol: es conversión de 3ª down aunque no sea primer down porque la serie empezó dentro de la 10 (B.I.8 A.R.1, §1 Art.1)",
+      "fuente_manual": "Manual p.6 §1 Art.1 y B.I.8 A.R.1",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_isFirstDownPlay / computeComparisonStats",
+      "entrada": {
+        "descripcion": "Caso propio: protege la conversión de 3ª down al aplicar §1 Art.1 (TC-32). 1ª y gol en BBB8 (Adams a BBB6), 2ª y gol (Adams a BBB5), 3ª y gol: Adams anota.",
+        "jugadas": [
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 8
+            },
+            "down": 1,
+            "distance": 8,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 6
+            },
+            "yardline_100": 8,
+            "net_yards": 2,
+            "touchdown": false
+          },
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 6
+            },
+            "down": 2,
+            "distance": 6,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 5
+            },
+            "yardline_100": 6,
+            "net_yards": 1,
+            "touchdown": false
+          },
+          {
+            "play_type": "RUSH",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 5
+            },
+            "down": 3,
+            "distance": 5,
+            "rush_by": {
+              "number": 12,
+              "nombre": "",
+              "apellido": ""
+            },
+            "result": "tackle",
+            "at": {
+              "team": "BBB",
+              "yard": 0
+            },
+            "yardline_100": 5,
+            "net_yards": 5,
+            "touchdown": true
+          }
+        ]
+      },
+      "salida_esperada": {
+        "firstDowns": 0,
+        "thirdAtt": 1,
+        "thirdConv": 1
+      },
+      "resultado_actual_codigo": {
+        "firstDowns": 1,
+        "thirdAtt": 1,
+        "thirdConv": 1
       },
       "cumple_hoy": false
     }

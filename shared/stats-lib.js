@@ -384,9 +384,20 @@ export function driveEndLabel(plays, isLastDrive, teams) {
   return null
 }
 
-export function _isFirstDownPlay(p) {
-  const byYards = p.stats_count !== false &&
-    ((p.net_yards != null && p.distance != null && p.net_yards >= p.distance) || p.touchdown === true)
+// seriesStartYardline: yardline_100 of the 1st down that started this series
+// (null when unknown — the TD then counts, as before).
+export function _isFirstDownPlay(p, seriesStartYardline = null) {
+  const yds = playNetYards(p)
+  // §1 Art.1: a TD is a first down only in a series that started 10 or more
+  // yards from the goal line (not on 1st and goal from inside the 10).
+  const reached = p.touchdown === true
+    ? !(seriesStartYardline != null && seriesStartYardline < 10)
+    : (yds != null && p.distance != null && yds >= p.distance)
+  // §1 Art.4: no first down by yardage when the play ends with the opponent
+  // recovering a fumble. §1 Art.5: an own-team recovery that makes the line
+  // to gain is a first down (fumbleYards().team runs to the end of the play).
+  const lost = fumbleYards(p)?.lost === true
+  const byYards = p.stats_count !== false && !lost && reached
   const byPenalty = p.flag_1_down_result === 'first_down' ||
     p.flag_2_down_result === 'first_down' ||
     p.penalty_down_result === 'first_down'
@@ -425,9 +436,13 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
   })
   const out = { [homeAbbr]: blank(), [awayAbbr]: blank() }
   const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null))
+  // yardline_100 of each team's latest 1st down (start of its current series).
+  const seriesStart = {}
 
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue
+    if (p.down === 1 && p.yardline_100 != null && out[p.possession]) seriesStart[p.possession] = p.yardline_100
+    const firstDown = _isFirstDownPlay(p, seriesStart[p.possession] ?? null)
 
     // intsThrown mirrors viewer.html's Comparación team summary panel split
     // (PASS-CAI) — kept in sync here even though no Box Score row reads it
@@ -455,7 +470,7 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards) }
     }
 
-    if (out[p.possession] && _isFirstDownPlay(p)) out[p.possession].firstDowns++
+    if (out[p.possession] && firstDown) out[p.possession].firstDowns++
 
     if (p.stats_count === false) continue
     const t = out[p.possession]
@@ -463,8 +478,11 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
 
     if (p.play_type === 'RUSH' || p.play_type === 'PASS') {
       t.totalPlays++
-      if (p.down === 3) { t.thirdAtt++; if (_isFirstDownPlay(p)) t.thirdConv++ }
-      if (p.down === 4) { t.fourthAtt++; if (_isFirstDownPlay(p)) t.fourthConv++ }
+      // B.I.8 A.R.1: a TD converts 3rd/4th down even when it isn't a first
+      // down under §1 Art.1 (3rd and goal from inside the 10).
+      const converted = firstDown || p.touchdown === true
+      if (p.down === 3) { t.thirdAtt++; if (converted) t.thirdConv++ }
+      if (p.down === 4) { t.fourthAtt++; if (converted) t.fourthConv++ }
     }
 
     if (p.play_type === 'RUSH') {
