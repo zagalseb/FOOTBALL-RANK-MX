@@ -783,7 +783,7 @@ export function renderByMenu(config) {
 }
 
 export function renderATField(config) {
-  const { onComplete, snapPos: snapPosOverride, possession: possessionOverride } = config
+  const { onComplete, snapPos: snapPosOverride, possession: possessionOverride, title, hint, refs } = config
   _setContext('AT')
   KEYBOARD_CONTEXTS.AT = { Escape: goBack }
 
@@ -820,15 +820,22 @@ export function renderATField(config) {
             Escribe posición: <code>${teams.home.abreviatura}40</code> · <code>${teams.away.abreviatura}30</code> · o solo <code>40</code> para campo local
           </div>`
 
+    // Steps that say what the spot is for (penalty spots) also list the spots
+    // already known, instead of the generic snap chip.
+    const refChips = refs?.length
+      ? refs.map(r => `<span class="at-snap-chip">${r.label}: ${r.pos.team} ${r.pos.yard}</span>`).join('')
+      : `<span class="at-snap-chip">Snap: ${snapPos.team} ${snapPos.yard}</span>`
     const hintLine = `
       <div class="at-team-hint">
         <span class="at-team-chip">${teams.home.abreviatura} = ${teams.home.name}</span>
         <span class="at-team-chip">${teams.away.abreviatura} = ${teams.away.name}</span>
-        <span class="at-snap-chip">Snap: ${snapPos.team} ${snapPos.yard}</span>
+        ${refChips}
       </div>`
 
     container.innerHTML = `
       <div class="at-field">
+        ${title ? `<div class="wizard-area__title">${title}</div>` : ''}
+        ${hint ? `<div class="at-feedback at-feedback--hint">${hint}</div>` : ''}
         ${hintLine}
         <div class="at-input-row">
           <input id="at-input" class="at-input${td ? ' at-input--td' : ''}" type="text"
@@ -1679,7 +1686,7 @@ function _renderStepByComponent(step, onComplete) {
     const overrides = editMode
       ? { snapPos: editContext.field_pos, possession: editContext.possession }
       : {}
-    renderATField({ ...step.config, ...overrides, label: step.label, onComplete })
+    renderATField({ ...step.config, ...overrides, label: step.label, refs: _spotRefs(step), onComplete })
     return
   }
 
@@ -1950,8 +1957,25 @@ function _flagEnforcementStep(num, play = { ..._previewPlay, ...currentPlay }, s
 
 function _flagFoulSpotStep(num) {
   const prefix = `flag_${num}_`
-  return { id: `${prefix}foul_spot`, label: 'Spot de la falta', component: 'AT',
-    config: { stateKey: `${prefix}foul_spot` }, value: null }
+  return { id: `${prefix}foul_spot`, label: 'Yarda de la falta', component: 'AT',
+    config: { stateKey: `${prefix}foul_spot`,
+      title: '¿En qué yarda ocurrió la falta?',
+      hint: 'La jugada cuenta hasta aquí y la penalidad se mide desde aquí.' }, value: null }
+}
+
+// Spots already known, shown on the penalty spot screens so the operator
+// doesn't have to remember them: the line of scrimmage, where the play ended
+// and, once captured, where the ball is for the next snap. Display only.
+function _spotRefs(step) {
+  const m = /^(?:flag_([12])_|penalty_)(new_los|foul_spot)$/.exec(step.id)
+  if (!m) return []
+  const play = editMode ? { ...editingPlay, ...editContext } : { ...gameState, ...currentPlay }
+  const prefix = m[1] ? `flag_${m[1]}_` : 'penalty_'
+  const refs = []
+  if (play.field_pos) refs.push({ label: 'Línea de scrimmage', pos: play.field_pos })
+  if (play.at && play.play_type !== 'PENALTY') refs.push({ label: 'Fin de la jugada', pos: play.at })
+  if (m[2] === 'foul_spot' && play[`${prefix}new_los`]) refs.push({ label: 'Balón tras la penalidad', pos: play[`${prefix}new_los`] })
+  return refs
 }
 
 // Fouls at the snap: always enforced from the previous spot (§14 Art.6).

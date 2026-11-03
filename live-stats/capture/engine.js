@@ -883,8 +883,10 @@ export const PENALTY_RESULT_BRANCHES = {
   accepted: [
     { id: 'penalty_by', label: 'Penalty By', component: 'BY',
       config: { stateKey: 'penalty_by', multiple: false, optional: true } },
-    { id: 'penalty_new_los', label: 'New LOS', component: 'AT',
-      config: { stateKey: 'penalty_new_los' } },
+    { id: 'penalty_new_los', label: 'Balón tras la penalidad', component: 'AT',
+      config: { stateKey: 'penalty_new_los',
+        title: '¿Dónde quedó el balón tras la penalidad? (siguiente snap)',
+        hint: 'Es la yarda desde donde empieza la siguiente jugada.' } },
     { id: 'penalty_down_result', label: 'Down Result', component: 'PENALTY_DOWN',
       config: { stateKey: 'penalty_down_result' } },
   ],
