@@ -122,6 +122,11 @@ export function playNetYards(p) {
   if (p.net_yards != null) return p.net_yards
   const f = fumbleYards(p)
   if (f) return f.team
+  // §12: a safety on a scrimmage play charges the ball carrier with the loss
+  // from the line of scrimmage to the goal line (the safety branch has no `at`).
+  if (p.result === 'safety' && _isYardagePlay(p) && p.field_pos && p.possession) {
+    return _netTo(p, { team: p.possession, yard: 0 })
+  }
   return p.net_yards
 }
 
@@ -1348,8 +1353,7 @@ export function advanceGameState(state, play, teams) {
         // zone, so the OTHER team scores — but recoveringTeam is still the
         // one who owes the free kick next, so possession/field_pos (the
         // pre-filled starting point for that next captured KICK play) stay
-        // on recoveringTeam, at their own 20. Not the bare "add 2 points and
-        // leave state untouched" pattern RUSH's safety branch still has.
+        // on recoveringTeam, at their own 20 (same state as _safetyFreeKick).
         if (snapResult === 'safety') {
           const scoringTeam = recoveringTeam === teams.home.name
             ? teams.away.name
@@ -1566,10 +1570,7 @@ export function advanceGameState(state, play, teams) {
       }
 
       if (muffResult === 'safety') {
-        const muffDefTeam = recoveringTeam === teams.home.name
-          ? teams.away.name
-          : teams.home.name
-        _addPoints(state, muffDefTeam, 2, teams)
+        _safetyFreeKick(state, recoveringTeam, teams)
         return
       }
 
@@ -1615,8 +1616,7 @@ export function advanceGameState(state, play, teams) {
       // Safety: recoveringTeam is the one pinned in their own end zone, so
       // the OTHER team scores — but recoveringTeam still owes the free kick
       // next, so possession/field_pos stay on recoveringTeam, at their own
-      // 20. See the matching fg_result === 'bad_snap' comment above for why
-      // this differs from RUSH's minimal safety handling.
+      // 20 (same state as _safetyFreeKick).
       if (snapResult === 'safety') {
         const scoringTeam = recoveringTeam === teams.home.name
           ? teams.away.name
@@ -1707,10 +1707,7 @@ export function advanceGameState(state, play, teams) {
     }
 
     if (snapResult === 'safety') {
-      const snapDefTeam = recoveringTeam === teams.home.name
-        ? teams.away.name
-        : teams.home.name
-      _addPoints(state, snapDefTeam, 2, teams)
+      _safetyFreeKick(state, recoveringTeam, teams)
       return
     }
 
@@ -1862,6 +1859,11 @@ export function advanceGameState(state, play, teams) {
         _advanceFumble(state, play, '', teams)
         return
       }
+      // §12, §3 Art.10 A.R.3: sacked in his own end zone.
+      if (result === 'safety') {
+        _safetyFreeKick(state, play.possession, teams)
+        return
+      }
       if (play.at) state.field_pos = { ...play.at }
       _advanceDownDistance(state, play.net_yards ?? 0)
       return
@@ -1877,6 +1879,11 @@ export function advanceGameState(state, play, teams) {
       }
       if (result === 'fumble') {
         _advanceFumble(state, play, '', teams)
+        return
+      }
+      // §12: scramble downed in his own end zone.
+      if (result === 'safety') {
+        _safetyFreeKick(state, play.possession, teams)
         return
       }
       if (at) state.field_pos = { ...at }
@@ -1927,11 +1934,10 @@ export function advanceGameState(state, play, teams) {
         _addPoints(state, play.possession, 6, teams)
         return
       }
+      // §12: receiver downed in his own end zone.
       if (result === 'safety') {
-        const defTeam = play.possession === teams.home.name
-          ? teams.away.name
-          : teams.home.name
-        _addPoints(state, defTeam, 2, teams)
+        _safetyFreeKick(state, play.possession, teams)
+        return
       }
       if (result === 'fumble') {
         _advanceFumble(state, play, '', teams)
@@ -1958,16 +1964,15 @@ export function advanceGameState(state, play, teams) {
     return
   }
 
-  if (at) state.field_pos = { ...at }
-  _advanceDownDistance(state, net_yards ?? 0)
-
+  // §12: ball carrier downed in his own end zone. Must run before the down
+  // advance below, which would otherwise leave a stale spot and next down.
   if (result === 'safety') {
-    const defensiveTeam = play.possession === teams.home.name
-      ? teams.away.name
-      : teams.home.name
-    _addPoints(state, defensiveTeam, 2, teams)
+    _safetyFreeKick(state, play.possession, teams)
+    return
   }
 
+  if (at) state.field_pos = { ...at }
+  _advanceDownDistance(state, net_yards ?? 0)
 }
 
 export function applyFlags(state, play, teams) {
@@ -2026,6 +2031,19 @@ function _applyFlag(state, play, num, teams) {
   }
 }
 
+// §12 / §9: after a safety the team that conceded it free-kicks from its own
+// 20 — the same pending-KICK state the bad-snap safety branches (FG, punt,
+// PAT) and the post-PAT kickoff use: possession = kicking team, field_pos =
+// its kicking spot, down/distance 0.
+function _safetyFreeKick(state, concedingTeam, teams) {
+  const scoringTeam = concedingTeam === teams.home.name ? teams.away.name : teams.home.name
+  _addPoints(state, scoringTeam, 2, teams)
+  state.possession = concedingTeam
+  state.field_pos  = { team: concedingTeam, yard: 20 }
+  state.down       = 0
+  state.distance   = 0
+}
+
 function _addPoints(state, teamName, points, teams) {
   if (teamName === teams.home.name) {
     state.score.home += points
@@ -2069,10 +2087,7 @@ function _advanceFumble(state, play, prefix, teams) {
   }
 
   if (fumbleResult === 'safety') {
-    const fumbleDefTeam = recoveryTeam === teams.home.name
-      ? teams.away.name
-      : teams.home.name
-    _addPoints(state, fumbleDefTeam, 2, teams)
+    _safetyFreeKick(state, state.possession, teams)
     return
   }
 
