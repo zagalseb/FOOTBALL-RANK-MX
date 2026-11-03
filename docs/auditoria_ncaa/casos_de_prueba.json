@@ -15,7 +15,7 @@
     {
       "id": "TC-01",
       "regla_ncaa": "Pass efficiency (B.I. 16)",
-      "fuente_manual": "Manual p.5 muestra: 166 att, 98 comp, 1567 yds, 16 TD, 7 INT => 161.71",
+      "fuente_manual": "Manual p.5 muestra: 166 att, 98 comp, 1567 yds, 16 TD, 7 INT. Fórmula exacta (decimal flotante) = 161.70; el 161.71 del ejemplo sale de redondear cada factor.",
       "grupo": "a",
       "severidad": "ALTA",
       "archivo": "shared/stats-lib.js",
@@ -31,12 +31,13 @@
         "jugadas": []
       },
       "salida_esperada": {
-        "rating": 161.71
+        "rating": 161.7
       },
       "resultado_actual_codigo": {
         "rating": 105.17
       },
-      "cumple_hoy": false
+      "cumple_hoy": false,
+      "tolerancia": 0.01
     },
     {
       "id": "TC-02",
