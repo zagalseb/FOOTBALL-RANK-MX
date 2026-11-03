@@ -2261,7 +2261,9 @@ export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, ros
         let endPos = null
         if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
         else if (p.return_result === 'fumble') endPos = p.fumble_at
-        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0
+        // No floor at 0: a return can be negative (NCAA Manual 2011, Sec. 3 Art. 6 A.R. 1;
+        // same for fumble returns below, B.I. 5).
+        const yds = endPos ? dist(intTeam, p.intercepted_at, endPos) : 0
         add(intTeam, _playerKeyLabel(p.intercepted_by, rosters?.[intTeam] || null), yds)
       }
     }
@@ -2273,7 +2275,7 @@ export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, ros
       if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
       const endPos = p[advField] || null
-      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0
+      const yds = endPos ? dist(recTeam, recAt, endPos) : 0
       add(recTeam, _playerKeyLabel(recBy, rosters?.[recTeam] || null), yds)
     }
   }
@@ -2301,7 +2303,9 @@ export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, team
         let endPos = null
         if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
         else if (p.return_result === 'fumble') endPos = p.fumble_at
-        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0
+        // No floor at 0: a return can be negative (NCAA Manual 2011, Sec. 3 Art. 6 A.R. 1;
+        // same for fumble returns below, B.I. 5).
+        const yds = endPos ? dist(intTeam, p.intercepted_at, endPos) : 0
         out[intTeam].intYds += yds
       }
     }
@@ -2312,7 +2316,7 @@ export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, team
       if (!recTeam || !recAt || recTeam === p.possession || !out[recTeam]) continue
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
       const endPos = p[advField] || null
-      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0
+      const yds = endPos ? dist(recTeam, recAt, endPos) : 0
       out[recTeam].fumYds += yds
     }
   }
@@ -2353,7 +2357,9 @@ export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, r
         let endPos = null
         if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
         else if (p.return_result === 'fumble') endPos = p.fumble_at
-        const yds = endPos ? Math.max(dist(intTeam, p.intercepted_at, endPos), 0) : 0
+        // No floor at 0: a return can be negative (NCAA Manual 2011, Sec. 3 Art. 6 A.R. 1;
+        // same for fumble returns below, B.I. 5).
+        const yds = endPos ? dist(intTeam, p.intercepted_at, endPos) : 0
         const isTD = !!(endPos && isTouchdown(teams, intTeam, endPos))
         credit(interceptions, intTeam, p.intercepted_by, yds, isTD)
       }
@@ -2366,7 +2372,10 @@ export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, r
       if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
       const endPos = p[advField] || null
-      const yds = endPos ? Math.max(dist(recTeam, recAt, endPos), 0) : 0
+      const yds = endPos ? dist(recTeam, recAt, endPos) : 0
+      // NCAA Manual 2011, B.I. 5 / Sec. 13 Art. 4: list only fumble returns
+      // with return yardage — not a player who just falls on the ball.
+      if (!yds) continue
       const isTD = !!(endPos && isTouchdown(teams, recTeam, endPos))
       credit(fumbleReturns, recTeam, recBy, yds, isTD)
     }
