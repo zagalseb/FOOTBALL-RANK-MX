@@ -2373,10 +2373,12 @@ export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, r
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
       const endPos = p[advField] || null
       const yds = endPos ? dist(recTeam, recAt, endPos) : 0
-      // NCAA Manual 2011, B.I. 5 / Sec. 13 Art. 4: list only fumble returns
-      // with return yardage — not a player who just falls on the ball.
-      if (!yds) continue
       const isTD = !!(endPos && isTouchdown(teams, recTeam, endPos))
+      // NCAA Manual 2011, B.I. 5 / Sec. 13 Art. 4: list only fumble returns
+      // with return yardage — not a player who just falls on the ball. A
+      // 0-yard recovery in the end zone is still listed for its TD (Sec. 8
+      // Art. 7 A.R. 2).
+      if (!yds && !isTD) continue
       credit(fumbleReturns, recTeam, recBy, yds, isTD)
     }
   }
