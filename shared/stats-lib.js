@@ -125,6 +125,7 @@ export function fumbleYards(p) {
 // or an own-team fumble recovery in the end zone (H-04). The latter has no
 // `at`, so touchdown is false in the DB; a voided play keeps net_yards 0.
 export function playTouchdown(p) {
+  p = resolvePlay(p)
   if (p.touchdown === true) return true
   return p.net_yards == null && fumbleYards(p)?.td === true
 }
@@ -139,6 +140,7 @@ function _fumbleScorer(p) {
 
 // Team net yards of a play: the stored net_yards, else derived (see above).
 export function playNetYards(p) {
+  p = resolvePlay(p)
   if (p.net_yards != null) return p.net_yards
   const f = fumbleYards(p)
   if (f) return f.team
@@ -162,6 +164,61 @@ function _fumbleRecoverer(p) {
   if (p.net_yards != null) return null
   const rc = fumbleYards(p)?.recoverer
   return rc && rc.yds !== 0 ? rc : null
+}
+
+// ── Accepted flags, resolved at read time (H-06) ────────────────────────────
+// wizard.js stores net_yards/touchdown/stats_count at capture, but the
+// authority is flagOutcome() at read time, so a later fix to the rule also
+// applies to games already captured (same approach as fumbleYards, H-01).
+
+// down_result values that replay or override the down — the same 3 options
+// PENALTY_DOWN_RESULT_OPTIONS offers.
+const _NO_PLAY_DOWN_RESULTS = ['repeat_down', 'loss_of_down', 'first_down']
+
+// Where an accepted flag was enforced from, or null if it is not accepted:
+//   'previous'   the previous spot: the play is void (§14 Art.3, 5, 6).
+//   'end'        the end of the play: it counts (§14 Art.2, 4; dead-ball fouls).
+//   'foul_spot'  the spot of the foul, flag_N_foul_spot: it counts up to
+//                there (§14 Art.1).
+// Plays captured before flag_N_enforced existed map from flag_N_timing, which
+// reproduces the old wizard.js _flagVoidsPlay rule: 'dead' -> 'end'; 'live'
+// or missing -> 'previous' when the down_result replays the down, else 'end'.
+export function flagEnforcement(p, num) {
+  if (!p[`flag_${num}_infraction`] || p[`flag_${num}_result`] !== 'accepted') return null
+  const enforced = p[`flag_${num}_enforced`]
+  if (enforced) return enforced
+  if (p[`flag_${num}_timing`] === 'dead') return 'end'
+  return _NO_PLAY_DOWN_RESULTS.includes(p[`flag_${num}_down_result`]) ? 'previous' : 'end'
+}
+
+// { voided, net_yards, touchdown } of a play with an accepted flag, else null.
+export function flagOutcome(p) {
+  if (!p || p.play_type === 'PENALTY') return null
+  const enf = [1, 2].map(n => flagEnforcement(p, n))
+  if (!enf.some(Boolean)) return null
+  if (enf.includes('previous')) return { voided: true, net_yards: 0, touchdown: false }
+  const foulSpot = [1, 2].filter((n, i) => enf[i] === 'foul_spot').map(n => p[`flag_${n}_foul_spot`]).find(Boolean)
+  const end = foulSpot || p.at
+  if (end && p.field_pos && p.possession) {
+    return { voided: false, net_yards: _netTo(p, end), touchdown: end.team !== p.possession && end.yard === 0 }
+  }
+  // No spot of its own (fumble, kick, incomplete pass): the stored values,
+  // unless they are the zeros of a capture-time void that no longer applies.
+  const wasVoided = p.stats_count === false
+  return { voided: false, net_yards: wasVoided ? null : (p.net_yards ?? null), touchdown: wasVoided ? false : p.touchdown }
+}
+
+// The play with net_yards/touchdown/stats_count taken from flagOutcome().
+// Returns the same object when nothing changes, so resolving twice is free.
+export function resolvePlay(p) {
+  const o = flagOutcome(p)
+  if (!o) return p
+  if (p.net_yards === o.net_yards && p.touchdown === o.touchdown && (p.stats_count === false) === o.voided) return p
+  return { ...p, net_yards: o.net_yards, touchdown: o.touchdown, stats_count: o.voided ? false : undefined }
+}
+
+function _resolvePlays(plays) {
+  return Array.isArray(plays) ? plays.map(resolvePlay) : plays
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
@@ -203,6 +260,7 @@ function _isSamePlayer(ref, player) {
 // (see resolvePlayerKey); without it, the legacy number-only match is used, so
 // existing callers (capture Reports) keep their exact behaviour.
 export function computePlayerStats(plays, player, teamAbbr, index = null) {
+  plays = _resolvePlays(plays)
   const targetKey = index
     ? (player.id ?? resolvePlayerKey({ number: player.number, nombre: player.nombre, apellido: player.apellido }, index))
     : null
@@ -359,6 +417,7 @@ function _turnoverScore(p, teams) {
 }
 
 export function computeDrives(plays, homeAbbr, awayAbbr) {
+  plays = _resolvePlays(plays)
   const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null))
 
   function driveOwner(p) {
@@ -397,6 +456,7 @@ export function computeDrives(plays, homeAbbr, awayAbbr) {
 }
 
 export function driveEndLabel(plays, isLastDrive, teams) {
+  plays = _resolvePlays(plays)
   if (!plays.length) return null
   let last = plays[plays.length - 1]
   if (last.play_type === 'PAT_TRY' && plays.length > 1) {
@@ -417,6 +477,7 @@ export function driveEndLabel(plays, isLastDrive, teams) {
 // seriesStartYardline: yardline_100 of the 1st down that started this series
 // (null when unknown — the TD then counts, as before).
 export function _isFirstDownPlay(p, seriesStartYardline = null) {
+  p = resolvePlay(p)
   const yds = playNetYards(p)
   // §1 Art.1: a TD is a first down only in a series that started 10 or more
   // yards from the goal line (not on 1st and goal from inside the 10).
@@ -435,6 +496,7 @@ export function _isFirstDownPlay(p, seriesStartYardline = null) {
 }
 
 export function _effectiveNetYards(p, teams) {
+  p = resolvePlay(p)
   if (!teams) return playNetYards(p)
 
   if (p.play_type === 'PENALTY') {
@@ -456,6 +518,7 @@ export function _effectiveNetYards(p, teams) {
 }
 
 export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
+  plays = _resolvePlays(plays)
   const blank = () => ({
     passYds: 0, rushYds: 0, totalPlays: 0,
     passCompletions: 0, passAttempts: 0, rushPlays: 0, sackAdjRushYds: 0, sackAdjRushPlays: 0,
@@ -576,6 +639,7 @@ function _puntTerminalSpot(p) {
 }
 
 export function computePenalties(plays, homeAbbr) {
+  plays = _resolvePlays(plays)
   const absYd = (team, yard) => (team === homeAbbr ? yard : 100 - yard)
   const out = []
 
@@ -2169,6 +2233,7 @@ function _advanceDownDistance(state, gained) {
 // they only ever come from the opposing side of `possession`, this is enough
 // to attribute every defensive credit correctly without needing that.
 export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
+  plays = _resolvePlays(plays)
   const teams = { [homeAbbr]: {}, [awayAbbr]: {} }
 
   function credit(team, player, field, delta) {
@@ -2232,6 +2297,7 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
 // have no measurable landing spot recorded — they still count as an attempt
 // (No.) but contribute 0 to Yds/Long/Avg.
 export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams, rosters = null) {
+  plays = _resolvePlays(plays)
   const punting     = {}
   const kickoffs     = {}
   const fgs          = []
@@ -2364,6 +2430,7 @@ export function _fumbleCarrier(p) {
 }
 
 export function computeFumbleStats(plays, rosters = null) {
+  plays = _resolvePlays(plays)
   const out = {}
   for (const p of plays) {
     if (!_fumbleOccurred(p)) continue
@@ -2403,6 +2470,7 @@ export function fumbleStatsToMap(fumbleStats, homeAbbr, awayAbbr) {
 // See computeTurnoverReturnYardsByTeam() below for the team-total, split-by-
 // origin sibling used by Comparación's summary panel (INT vs FUM-YDS).
 export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, rosters = null) {
+  plays = _resolvePlays(plays)
   const map = {}
   function add(team, kl, yds) {
     if (!team || !kl || !yds) return
@@ -2451,6 +2519,7 @@ export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, ros
 // merged) is untouched. If the return-distance resolution logic ever
 // changes (e.g. a new return_result branch), update both copies.
 export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, teams) {
+  plays = _resolvePlays(plays)
   const out = { [homeAbbr]: { intYds: 0, fumYds: 0 }, [awayAbbr]: { intYds: 0, fumYds: 0 } }
   const dist = (team, from, to) =>
     (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0
@@ -2491,6 +2560,7 @@ export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, team
 // and a Long (max single return). Feeds Comparación's Defense sub-tab
 // (Interceptions / Fumble Returns sections).
 export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, rosters = null) {
+  plays = _resolvePlays(plays)
   const interceptions = { [homeAbbr]: {}, [awayAbbr]: {} }
   const fumbleReturns = { [homeAbbr]: {}, [awayAbbr]: {} }
 
@@ -2578,6 +2648,7 @@ export function computeAllPurposeMap(rushers, receivers, kickReturns, puntReturn
 
 // ── QB progression ───────────────────────────────────────────────────────────
 export function computeQBProgression(plays, rosters = null) {
+  plays = _resolvePlays(plays)
   const byQB = {}
   const sorted = plays
     .filter(p => p.play_type === 'PASS' && p.pass_by)
@@ -2625,6 +2696,7 @@ export function computeQBProgression(plays, rosters = null) {
 
 // ── Explosive plays ──────────────────────────────────────────────────────────
 export function computeExplosivePlays(plays, teams) {
+  plays = _resolvePlays(plays)
   const passing = []
   const rushing = []
   for (const p of plays) {
@@ -2654,6 +2726,7 @@ export function computeExplosivePlays(plays, teams) {
 // two players who share a number or label stay separate. Every value carries
 // `label` (the display name). Without rosters the key is the label, as before.
 export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
+  plays = _resolvePlays(plays)
   const pa = {}, ru = {}, re = {}
   const UNKNOWN = { key: 'Desconocido', label: 'Desconocido' }
 
