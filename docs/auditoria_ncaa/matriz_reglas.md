@@ -1,7 +1,7 @@
 # Matriz de reglas NCAA 2011 vs. código — ONEFA stats
 
 Auditoría **solo lectura**. Fuente: *2011 Football Statisticians' Manual* (18 págs.). Código revisado: `shared/stats-lib.js`, `live-stats/capture/engine.js`, `live-stats/capture/wizard.js`, `live-stats/viewer/viewer.html`, `live-stats/viewer/leaders.html`.
-Las filas con un caso `TC-xx` se verificaron **ejecutando** el código contra [casos_de_prueba.json](casos_de_prueba.json) (de 41 casos, sólo TC-39 pasa hoy). Las filas sin caso (o con "—") se evaluaron **por lectura de código**; es el caso de B9/B10 (la lógica de drives vive en viewer.html y no es importable), S10-5 y S14-7, entre otras.
+Las filas con un caso `TC-xx` se verificaron **ejecutando** el código contra [casos_de_prueba.json](../../debug/ncaa_cases/casos_de_prueba.json) (de 41 casos, sólo TC-39 pasa hoy). Las filas sin caso (o con "—") se evaluaron **por lectura de código**; es el caso de B9/B10 (la lógica de drives vive en viewer.html y no es importable), S10-5 y S14-7, entre otras.
 
 Estados: **CUMPLE** · **NO CUMPLE** · **PARCIAL** · **NO APLICA** (no se captura) · **VERIFICAR VIGENCIA**.
 Grupo: **a** = corregible con lo que ya se captura · **b** = requiere captura nueva (segunda pasada con video).

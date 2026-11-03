@@ -1,6 +1,6 @@
 # Hallazgos — cálculo de estadísticas vs. NCAA Football Statisticians' Manual 2011
 
-Auditoría **solo lectura** (no se modificó código). Cada hallazgo se verificó ejecutando `shared/stats-lib.js` contra un caso derivado de un A.R. del manual; el detalle (jugadas de entrada, salida esperada, resultado actual) está en [casos_de_prueba.json](casos_de_prueba.json). Reglas por A.R.: [matriz_reglas.md](matriz_reglas.md).
+Auditoría **solo lectura** (no se modificó código). Cada hallazgo se verificó ejecutando `shared/stats-lib.js` contra un caso derivado de un A.R. del manual; el detalle (jugadas de entrada, salida esperada, resultado actual) está en [casos_de_prueba.json](../../debug/ncaa_cases/casos_de_prueba.json). Reglas por A.R.: [matriz_reglas.md](matriz_reglas.md).
 
 **Resultado global:** de 41 casos ejecutados, 40 fallan hoy y 1 pasa (TC-39, PBU). Eso es una muestra dirigida a las áreas prioritarias, no una tasa de error del sistema.
 
