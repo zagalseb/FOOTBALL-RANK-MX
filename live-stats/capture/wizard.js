@@ -419,7 +419,8 @@ function _flagEditBlock(play, num) {
   block.push(...(PENALTY_RESULT_BRANCHES[result] ?? []).map(st => withValue({
     ...st,
     id: st.id.replace(/^penalty_/, prefix),
-    config: { ...st.config, stateKey: st.config.stateKey?.replace(/^penalty_/, prefix) },
+    config: { ...st.config, stateKey: st.config.stateKey?.replace(/^penalty_/, prefix),
+      teamFrom: st.config.teamFrom?.replace(/^penalty_/, prefix) },
   })))
   if (result !== 'accepted') return block
   const enf = withValue(_flagEnforcementStep(num, play, false))
@@ -619,7 +620,9 @@ export function renderByMenu(config) {
       ? gameState.teams.away.name
       : gameState.teams.home.name
   } else if (teamFrom) {
-    const fromTeam = currentPlay[teamFrom]
+    // In edit mode the penalty's team lives in editingPlay (currentPlay is the
+    // new-play buffer). Only the penalty steps read it from there.
+    const fromTeam = (editMode && /^(flag_[12]_|penalty_)/.test(teamFrom) ? editingPlay : currentPlay)[teamFrom]
     teamName = invertTeamFrom
       ? (fromTeam === gameState.teams.home.name ? gameState.teams.away.name : gameState.teams.home.name)
       : fromTeam
@@ -1934,6 +1937,7 @@ function _onFlagStepComplete(idx, value) {
       config: {
         ...s.config,
         stateKey: s.config.stateKey?.replace(/^penalty_/, prefix),
+        teamFrom: s.config.teamFrom?.replace(/^penalty_/, prefix),
       },
     }))
     _flagSteps = _flagSteps.slice(0, idx + 1)

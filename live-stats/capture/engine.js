@@ -882,7 +882,7 @@ export const RETURN_RESULT_BRANCHES = {
 export const PENALTY_RESULT_BRANCHES = {
   accepted: [
     { id: 'penalty_by', label: 'Penalty By', component: 'BY',
-      config: { stateKey: 'penalty_by', multiple: false, optional: true } },
+      config: { stateKey: 'penalty_by', multiple: false, optional: true, teamFrom: 'penalty_team' } },
     { id: 'penalty_new_los', label: 'Balón tras la penalidad', component: 'AT',
       config: { stateKey: 'penalty_new_los',
         title: '¿Dónde quedó el balón tras la penalidad? (siguiente snap)',
