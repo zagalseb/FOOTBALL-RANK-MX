@@ -150,6 +150,17 @@ Severidad = impacto sobre las cifras que ve el usuario (box score, líderes, mar
 - **Dónde:** `stats-lib.js:2945` `LEADER_MIN_PER_TEAM_GAME = { pass: 10, rush: 5, rec: 1.5 }` (por juego del equipo, no del jugador); `buildLeaders` no aplica el 75 %.
 - **Caso:** TC-37. Rush 10/juego es el umbral NCAA nacional pero no está en el manual provisto: **verificar vigencia/fuente**.
 
+### H-19 · Penalidad aceptada antes de un cambio de posesión: la posesión no se devuelve — **MEDIA**
+- **Regla:** §1 Art.4, §14; reglamento: una falta de B aceptada que ocurrió antes del cambio de posesión devuelve el balón a A.
+- **Dónde:** `stats-lib.js` `applyFlags`/`_applyFlag` (sólo mueve `field_pos` y el down; la posesión queda como la dejó `advanceGameState`); `_penaltyFirstDown`.
+- **Qué pasa:** en una jugada con **fumble perdido** o **intercepción** y una falta de B aceptada, el estado siguiente sigue dando el balón a B. El fumble/INT se cuenta como perdido y no se acredita el primer down por penalidad. Mientras no se corrija la posesión, `_penaltyFirstDown` devuelve 0 a propósito: contar ese primer down se lo daría a un equipo que, según el estado, no tiene el balón.
+- **Caso:** TC-44 (**limitación conocida**, no regla correcta: hoy espera 0 primeros downs).
+
+### H-20 · `applyFlags` deja `distance` = 47 en el estado del kickoff tras una falta en el PAT — **BAJA**
+- **Dónde:** `stats-lib.js` `_applyFlag`, rama `repeat_down`: `distance = play.distance − net`, con `play.distance = 0` en un PAT_TRY y `net` negativo (BBB3 → AAA50 = −47).
+- **Qué pasa:** el spot, la posesión, el down y el marcador quedan bien; sólo `distance` queda en 47 en vez de 0. En un kickoff no se usa, pero se ve en el estado.
+- **Caso:** TC-48 (verifica spot/posesión/down, no `distance`).
+
 ---
 
 ## B. Reglas que requieren capturar datos nuevos (candidatas a segunda pasada con video)
