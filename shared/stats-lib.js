@@ -51,6 +51,94 @@ export function isTouchdown(teams, possession, atPos) {
   return atPos.team === opponent && atPos.yard === 0
 }
 
+// ── Yardage derived at read time (H-01) ──────────────────────────────────────
+// wizard.js only computes net_yards from `at`, and the fumble branches have no
+// `at` (fumble_recovered_at / fumble_at_result instead), so those plays are
+// stored with net_yards null. Deriving here, not at capture, also fixes games
+// already captured. Only `possession` is needed, not `teams`: a spot's distance
+// to the possessing team's target goal is 100 - yard on its own side of the
+// field and yard on the other — the same result calcNetYards gives.
+function _toGoal(possession, pos) {
+  return pos.team === possession ? 100 - pos.yard : pos.yard
+}
+function _netTo(p, pos) {
+  return _toGoal(p.possession, p.field_pos) - _toGoal(p.possession, pos)
+}
+
+// Scrimmage plays that carry yardage (§11 Art.4: a PAT try is not one).
+function _isYardagePlay(p) {
+  return p.play_type === 'RUSH' ||
+    (p.play_type === 'PASS' && ['complete', 'sack', 'scramble'].includes(p.pass_result))
+}
+
+// Yardage of a scrimmage play that ended in a fumble, or null.
+//   team      LOS to where the play ended; to the opponent's recovery when lost.
+//   fumbler   yards credited to the player who fumbled.
+//   recoverer { ref, yds }: teammate credited with yards but no attempt, in
+//             the category of the originating play (§13 Art.2).
+//   lost      possession ended with the opponent (level 1 or level 2).
+// A second fumble (fumble_result 'fumble') only moves the team's final spot;
+// crediting the second fumbler individually is H-10.
+export function fumbleYards(p) {
+  if (p.result !== 'fumble' || !_isYardagePlay(p) || !p.field_pos || !p.possession) return null
+  const rec = p.fumble_recovered_at
+  if (!rec) return null
+  const r = _netTo(p, rec)
+  // §13 Art.1 A.R.1 / §2 Art.2: recovered by the opponent — yards to the
+  // point of recovery, all to the fumbler.
+  if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) {
+    return { team: r, fumbler: r, recoverer: null, lost: true }
+  }
+
+  let end, lost = false
+  if (p.fumble_result === 'fumble') {
+    lost = !!p.fumble_2_recovery_team && p.fumble_2_recovery_team !== p.possession
+    end = lost ? p.fumble_2_recovered_at
+      : p.fumble_2_result === 'safety' ? { team: p.possession, yard: 0 }
+      : (p.fumble_2_at_result || p.fumble_2_recovered_at)
+  } else if (p.fumble_result === 'safety') {
+    end = { team: p.possession, yard: 0 }
+  } else {
+    end = p.fumble_at_result || rec
+  }
+  if (!end) return null
+  const e = _netTo(p, end)
+
+  // §13 Art.2: recovered by a teammate beyond the LOS — fumbler to the
+  // recovery, teammate the advance (A.R.1-2).
+  // §13 Art.3: recovered on/behind the LOS — (a) advanced beyond it: fumbler
+  // 0, teammate from the LOS; (b) no gain or a loss: all to the fumbler;
+  // (c) teammate adds to the loss: fumbler to the recovery, teammate the rest.
+  let fumbler
+  if (r > 0) fumbler = r
+  else if (e > 0) fumbler = 0
+  else if (e >= r) fumbler = e
+  else fumbler = r
+  return { team: e, fumbler, recoverer: { ref: p.fumble_recovered_by || null, yds: e - fumbler }, lost }
+}
+
+// Team net yards of a play: the stored net_yards, else derived (see above).
+export function playNetYards(p) {
+  if (p.net_yards != null) return p.net_yards
+  const f = fumbleYards(p)
+  if (f) return f.team
+  return p.net_yards
+}
+
+// Yards credited to the ball carrier (rusher, sacked/scrambling QB, receiver).
+function _carrierYards(p) {
+  const f = p.net_yards == null ? fumbleYards(p) : null
+  return f ? f.fumbler : playNetYards(p)
+}
+
+// Teammate who recovered the carrier's fumble, with the yards credited to him
+// (no attempt/reception). null when there is nothing to credit.
+function _fumbleRecoverer(p) {
+  if (p.net_yards != null) return null
+  const rc = fumbleYards(p)?.recoverer
+  return rc && rc.yds !== 0 ? rc : null
+}
+
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 // "1935" -> "32:15". Shared by manual_stats.html (converts on save/load) and
@@ -108,7 +196,7 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
       if (p.play_type === 'RUSH' && same(p.rush_by)) {
         const r = ensureRushing()
         r.att++
-        r.yds += p.net_yards || 0
+        r.yds += _carrierYards(p) || 0
         if (p.touchdown) r.td++
       }
 
@@ -116,8 +204,16 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
           same(p.pass_by)) {
         const r = ensureRushing()
         r.att++
-        r.yds += p.net_yards || 0
+        r.yds += _carrierYards(p) || 0
         if (p.touchdown) r.td++
+      }
+
+      // §13 Art.2-3: the teammate who recovers the fumble gets yards with no
+      // rush attempt / reception, in the category of the originating play.
+      const rc = _fumbleRecoverer(p)
+      if (rc && same(rc.ref)) {
+        if (p.pass_result === 'complete') ensureReceiving().yds += rc.yds
+        else ensureRushing().yds += rc.yds
       }
 
       // Any non-scramble/non-sack pass_result is an attempt — including
@@ -129,7 +225,7 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
         pa.att++
         if (p.pass_result === 'complete') {
           pa.comp++
-          pa.yds += p.net_yards || 0
+          pa.yds += playNetYards(p) || 0
           if (p.touchdown) pa.td++
         }
         if (p.pass_result === 'intercepted') pa.int++
@@ -138,7 +234,7 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
       if (p.play_type === 'PASS' && p.pass_result === 'complete' && same(p.received_by)) {
         const rc = ensureReceiving()
         rc.rec++
-        rc.yds += p.net_yards || 0
+        rc.yds += _carrierYards(p) || 0
         if (p.touchdown) rc.td++
       }
     }
@@ -298,7 +394,7 @@ export function _isFirstDownPlay(p) {
 }
 
 export function _effectiveNetYards(p, teams) {
-  if (!teams) return p.net_yards
+  if (!teams) return playNetYards(p)
 
   if (p.play_type === 'PENALTY') {
     if (p.penalty_result === 'accepted' && p.field_pos && p.penalty_new_los) {
@@ -308,7 +404,7 @@ export function _effectiveNetYards(p, teams) {
   }
 
   if (!p.field_pos) return p.net_yards
-  let eff = p.net_yards
+  let eff = playNetYards(p)
   for (const num of [1, 2]) {
     if (!p[`flag_${num}_infraction`]) break
     if (p[`flag_${num}_result`] !== 'accepted') continue
@@ -350,7 +446,8 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
 
     if (p.play_type === 'PASS' && p.pass_result === 'sack') {
       const def = out[otherTeam(p.possession)]
-      if (def) { def.sacksMade++; def.sacksYds += Math.abs(p.net_yards || 0) }
+      // §16 Art.4 A.R.7-10: on a strip-sack the loss runs to the spot of the recovery.
+      if (def) { def.sacksMade++; def.sacksYds += Math.abs(_carrierYards(p) || 0) }
     }
     const isTflEligible = p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'complete')
     if (isTflEligible && p.net_yards != null && p.net_yards < 0) {
@@ -2039,7 +2136,8 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
     if (p.play_type === 'PASS' && p.pass_result === 'sack' && p.sack_by) {
       credit(defTeam, p.sack_by, 'sacks', 1)
       credit(defTeam, p.sack_by, 'solo', 1) // a sack is also a solo tackle
-      credit(defTeam, p.sack_by, 'sackYds', Math.abs(p.net_yards || 0))
+      // §16 Art.4 A.R.7-10: on a strip-sack the loss runs to the spot of the recovery.
+      credit(defTeam, p.sack_by, 'sackYds', Math.abs(_carrierYards(p) || 0))
     }
 
     if (p.fumble_forced_by) credit(defTeam, p.fumble_forced_by, 'ff', 1)
@@ -2441,7 +2539,7 @@ export function computeQBProgression(plays, rosters = null) {
       ['complete', 'incomplete', 'dropped', 'broken_up', 'intercepted'].includes(p.pass_result)
     if (isAttempt) {
       qb.att++
-      if (p.pass_result === 'complete') { qb.comp++; qb.yds += (p.net_yards || 0) }
+      if (p.pass_result === 'complete') { qb.comp++; qb.yds += (playNetYards(p) || 0) }
       if (p.touchdown) qb.td++
       if (p.pass_result === 'intercepted') qb.int++
     }
@@ -2454,7 +2552,7 @@ export function computeQBProgression(plays, rosters = null) {
     qb.rows.push({
       isComplete: p.pass_result === 'complete',
       caTally: `${qb.comp}-${qb.att}`,
-      netYards: p.net_yards,
+      netYards: playNetYards(p),
       receiver: p.pass_result === 'complete' && p.received_by ? (_playerKeyLabel(p.received_by, rosters?.[p.possession] || null)?.label ?? playerShortLabel(p.received_by)) : null,
       note,
       context: typeof formatPlay === 'function' ? formatPlay(p) : p.play_type,
@@ -2509,7 +2607,7 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
     const idx = rosters?.[t] || null
 
     if (p.play_type === 'RUSH') {
-      const yds = p.net_yards || 0
+      const yds = _carrierYards(p) || 0
       const kf = _keyLabelOr(p.rush_by, idx, UNKNOWN)
       const key = kf.key
       if (!ru[t]) ru[t] = {}
@@ -2527,7 +2625,7 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
     // instead of PASSING (matches computeComparisonStats' Rush Yds and the
     // isAttempt filter computeQBProgression already used for att/comp%).
     if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack')) {
-      const yds = p.net_yards || 0
+      const yds = _carrierYards(p) || 0
       const kf = _keyLabelOr(p.pass_by, idx, UNKNOWN)
       const key = kf.key
       if (!ru[t]) ru[t] = {}
@@ -2559,7 +2657,8 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
       if (!pa[t][key]) pa[t][key] = { label: kf.label, att:0, comp:0, yds:0, td:0, long:-Infinity, sacked:0, sackedYds:0 }
       pa[t][key].att++
       if (p.pass_result === 'complete') {
-        const yds = p.net_yards || 0
+        const yds = playNetYards(p) || 0
+        const recYds = _carrierYards(p) || 0
         pa[t][key].comp++
         pa[t][key].yds += yds
         if (yds > pa[t][key].long) pa[t][key].long = yds
@@ -2569,10 +2668,28 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
           if (!re[t]) re[t] = {}
           if (!re[t][rf.key]) re[t][rf.key] = { label: rf.label, rec:0, yds:0, td:0, long:-Infinity }
           re[t][rf.key].rec++
-          re[t][rf.key].yds += yds
-          if (yds > re[t][rf.key].long) re[t][rf.key].long = yds
+          re[t][rf.key].yds += recYds
+          if (recYds > re[t][rf.key].long) re[t][rf.key].long = recYds
           if (p.touchdown) re[t][rf.key].td++
         }
+      }
+    }
+
+    // §13 Art.2-3: the teammate who recovers the fumble gets yards with no
+    // rush attempt / reception, in the category of the originating play.
+    // `long` is left alone: it is the longest attempt, and he made none.
+    const rc = _fumbleRecoverer(p)
+    if (rc) {
+      const kf = _keyLabelOr(rc.ref, idx, UNKNOWN)
+      if (p.pass_result === 'complete') {
+        if (!re[t]) re[t] = {}
+        if (!re[t][kf.key]) re[t][kf.key] = { label: kf.label, rec:0, yds:0, td:0, long:-Infinity }
+        re[t][kf.key].yds += rc.yds
+      } else {
+        if (!ru[t]) ru[t] = {}
+        if (!ru[t][kf.key]) ru[t][kf.key] = { label: kf.label, att:0, yds:0, td:0, gained:0, long:-Infinity }
+        ru[t][kf.key].yds += rc.yds
+        if (rc.yds > 0) ru[t][kf.key].gained += rc.yds
       }
     }
   }
