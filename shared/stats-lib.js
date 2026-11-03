@@ -2576,23 +2576,13 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
 // in viewer.html, same as SimpleStatTable/ManualOffenseTeamCard/
 // TeamLeadersCard/BoxScoreLeaderLine; only the pure row/lookup logic moved.
 
-// Classic NCAA/NFL passer rating (the "old" 0-158.3 formula), NOT ESPN's
-// Total QBR — QBR is a proprietary model (win probability, garbage-time
-// discounting, etc.) we don't have the inputs to reproduce, so this table
-// uses the public formula instead:
-//   a = clamp((Comp/Att - 0.3) * 5, 0, 2.375)
-//   b = clamp((Yds/Att - 3) * 0.25, 0, 2.375)
-//   c = clamp((TD/Att) * 20, 0, 2.375)
-//   d = clamp(2.375 - (Int/Att) * 25, 0, 2.375)
-//   rating = (a + b + c + d) / 6 * 100
+// NCAA pass-efficiency rating (NCAA Football Statisticians' Manual 2011, B.I. 16):
+//   (8.4 * Yds + 100 * Comp + 330 * TD - 200 * Int) / Att
+// No per-factor caps (unlike the NFL formula), so there is no fixed range:
+// it can go below 0 or well above 158.3. Callers must not assume a maximum.
 export function _passerRating(comp, att, yds, td, int) {
   if (!att) return null
-  const clamp = v => Math.max(0, Math.min(2.375, v))
-  const a = clamp((comp / att - 0.3) * 5)
-  const b = clamp((yds / att - 3) * 0.25)
-  const c = clamp((td / att) * 20)
-  const d = clamp(2.375 - (int / att) * 25)
-  return ((a + b + c + d) / 6) * 100
+  return (8.4 * yds + 100 * comp + 330 * td - 200 * int) / att
 }
 
 // Highest non-zero value of `field` among a team's player_game_stats_manual
