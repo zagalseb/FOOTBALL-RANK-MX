@@ -116,8 +116,8 @@ const STEPS_BY_TYPE = {
     { id: 'play_type',          label: 'Penalty' },
     { id: 'penalty_infraction', label: 'Infraction', component: 'PENALTY_CODE',
       config: { stateKey: 'penalty_infraction' } },
-    { id: 'penalty_team',       label: 'Team',       component: 'TEAM',
-      config: { stateKey: 'penalty_team' } },
+    { id: 'penalty_team',       label: 'Cometió la falta', component: 'TEAM',
+      config: { stateKey: 'penalty_team', perspective: 'offense' } },
     { id: 'penalty_result',     label: 'Result',     component: 'PENALTY_RESULT',
       config: { stateKey: 'penalty_result' } },
   ],
@@ -927,11 +927,40 @@ export function renderResultMenu(config) {
 }
 
 export function renderTeamSelector(config) {
-  const { stateKey, onComplete } = config
+  const { stateKey, onComplete, perspective } = config
   _setContext('TEAM')
 
   const home = gameState.teams.home.name
   const away = gameState.teams.away.name
+
+  // perspective 'offense' (penalty steps): offense/defense of the play instead
+  // of home/away. The stored value is still the team name.
+  if (perspective === 'offense') {
+    const off = editMode ? editContext.possession : gameState.possession
+    const def = off === home ? away : home
+    KEYBOARD_CONTEXTS.TEAM = {
+      Escape: goBack,
+      a: () => onComplete(off),
+      d: () => onComplete(def),
+    }
+    _container().innerHTML = `
+      <div class="wizard-area__title">¿Quién cometió la falta?</div>
+      <div class="result-menu">
+        <button class="result-btn result-btn--accent" data-team="${off}">
+          <span class="result-btn__label">Ataque (${off})</span>
+          <span class="result-btn__kbd">A</span>
+        </button>
+        <button class="result-btn result-btn--muted" data-team="${def}">
+          <span class="result-btn__label">Defensa (${def})</span>
+          <span class="result-btn__kbd">D</span>
+        </button>
+      </div>
+    `
+    _container().querySelectorAll('.result-btn').forEach(btn => {
+      btn.addEventListener('click', () => onComplete(btn.dataset.team))
+    })
+    return
+  }
 
   KEYBOARD_CONTEXTS.TEAM = {
     Escape: goBack,
@@ -1870,8 +1899,8 @@ function _buildFlagSteps(num) {
   return [
     { id: `${p}infraction`, label: 'Infraction', component: 'PENALTY_CODE',
       config: { stateKey: `${p}infraction` } },
-    { id: `${p}team`,       label: 'Team',        component: 'TEAM',
-      config: { stateKey: `${p}team` } },
+    { id: `${p}team`,       label: 'Cometió la falta', component: 'TEAM',
+      config: { stateKey: `${p}team`, perspective: 'offense' } },
     { id: `${p}result`,     label: 'Result',      component: 'PENALTY_RESULT',
       config: { stateKey: `${p}result` } },
   ]
@@ -2170,7 +2199,11 @@ function _flagStepValueLabel(step) {
   }
   if (!val) return null
   if (step.component === 'PENALTY_CODE') return `${val.code} ${val.label ?? ''}`.trim()
-  if (step.component === 'TEAM') return val
+  if (step.component === 'TEAM') {
+    if (!step.config?.perspective) return val
+    const off = editMode ? editContext.possession : gameState.possession
+    return `${val} (${val === off ? 'ataque' : 'defensa'})`
+  }
   if (step.component === 'PENALTY_RESULT') return PENALTY_RESULT_OPTIONS.find(o => o.key === val)?.label || val
   if (step.component === 'PENALTY_DOWN') return PENALTY_DOWN_RESULT_OPTIONS.find(o => o.key === val)?.label || val
   return null
@@ -2184,7 +2217,7 @@ function _playerLabel(p) {
 
 function _stepValueLabel(step) {
   const val = step.value
-  if (step.id?.startsWith('flag_')) {
+  if (step.id?.startsWith('flag_') || step.config?.perspective) {
     const flagLabel = _flagStepValueLabel(step)
     if (flagLabel) return flagLabel
   }
