@@ -2769,6 +2769,12 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
       }
     }
   }
+  // -Infinity is only the accumulation seed (a long can be negative). A row
+  // with no attempt/completion/reception (sack-only passer, recoverer-only
+  // rusher/receiver) leaves it untouched; JSON.stringify would emit null.
+  for (const m of [pa, ru, re]) for (const t in m) for (const k in m[t]) {
+    if (m[t][k].long === -Infinity) m[t][k].long = 0
+  }
   return { passers: pa, rushers: ru, receivers: re }
 }
 
