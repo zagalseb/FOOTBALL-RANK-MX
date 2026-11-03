@@ -23,7 +23,15 @@
 //     once Phase 1-3 move those functions for real (the import above finds
 //     them and this fallback is never reached).
 //
-// Usage: node debug/snapshot_stats.mjs <label>:<game_id> [<label>:<game_id> ...]
+// Data source. By default the five REST responses a game needs are read from
+// debug/fixtures/<game_id>.json, frozen, so a snapshot only changes when the
+// code changes (the reference games are live rows in Supabase that operators
+// keep editing). Flags:
+//   --live                  read from Supabase instead
+//   --freeze [--max-seq N]  read from Supabase and (over)write the fixture;
+//                           --max-seq keeps only plays with seq <= N
+//
+// Usage: node debug/snapshot_stats.mjs [--live|--freeze [--max-seq N]] <label>:<game_id> [...]
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -34,6 +42,7 @@ import { resolvePlayerKey } from '../shared/stats-lib.js'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
 const OUT_DIR = path.join(HERE, 'snapshots')
+const FIXTURES_DIR = path.join(HERE, 'fixtures')
 
 const SB_URL = 'https://rlttycaajdsqovxjdjvx.supabase.co'
 const SB_HEADERS = {
@@ -242,14 +251,52 @@ function viewSpecialTeams(st) {
   return { punting: viewRows(st.punting), kickoffs: viewRows(st.kickoffs), fgs: st.fgs, kickReturns: viewRows(st.kickReturns), puntReturns: viewRows(st.puntReturns) }
 }
 
-async function snapshotGame(gameId) {
+// The five REST responses a game needs, from Supabase.
+async function fetchGameData(gameId) {
   const teamFields = 'nombre_corto,abreviatura,Apodo,Escuela,color_principal,color_texto,logo_url'
-  const [gArr, pArr, tmArr, pmArr] = await Promise.all([
+  const [games, plays, teamStats, playerStats] = await Promise.all([
     sbFetch(`games?select=*,home:home_team_id(${teamFields}),away:away_team_id(${teamFields})&id=eq.${encodeURIComponent(gameId)}&limit=1`),
     sbFetch(`plays?select=*&game_id=eq.${encodeURIComponent(gameId)}&order=seq.asc`),
     sbFetch(`team_game_stats_manual?select=*&game_id=eq.${encodeURIComponent(gameId)}`),
     sbFetch(`player_game_stats_manual?select=*,player:player_id(id,number,nombre,apellido,team_id,position)&game_id=eq.${encodeURIComponent(gameId)}`),
   ])
+  const g = games[0]
+  if (!g) throw new Error(`game ${gameId} not found`)
+  const ids = [g.home_team_id, g.away_team_id]
+  const roster = await sbFetch(`players?select=id,team_id,number,nombre,apellido&team_id=in.(${ids.join(',')})`)
+  return { games, plays, teamStats, playerStats, roster }
+}
+
+function fixturePath(gameId) { return path.join(FIXTURES_DIR, `${gameId}.json`) }
+
+function loadFixture(gameId) {
+  const file = fixturePath(gameId)
+  if (!fs.existsSync(file)) throw new Error(`No fixture for ${gameId} (${path.relative(ROOT, file)}). Use --freeze to create it, or --live.`)
+  return JSON.parse(fs.readFileSync(file, 'utf8')).data
+}
+
+function writeFixture(gameId, data, note) {
+  fs.mkdirSync(FIXTURES_DIR, { recursive: true })
+  const meta = { gameId, frozenAt: new Date().toISOString(), source: 'Supabase REST (schema covercero), same queries as viewer.html', ...note }
+  fs.writeFileSync(fixturePath(gameId), JSON.stringify({ meta, data }, null, 2) + '\n')
+}
+
+async function snapshotGame(gameId, opts) {
+  let data
+  if (opts.freeze) {
+    data = await fetchGameData(gameId)
+    let note = {}
+    if (opts.maxSeq != null) {
+      const excluded = data.plays.filter(p => p.seq > opts.maxSeq)
+      data.plays = data.plays.filter(p => p.seq <= opts.maxSeq)
+      note = { maxSeq: opts.maxSeq, excludedPlays: excluded.map(p => ({ seq: p.seq, id: p.id, submitted_at: p.submitted_at })) }
+    }
+    writeFixture(gameId, data, note)
+    console.log(`  froze ${path.relative(ROOT, fixturePath(gameId))} (${data.plays.length} plays)`)
+  } else {
+    data = opts.live ? await fetchGameData(gameId) : loadFixture(gameId)
+  }
+  const gArr = data.games, pArr = data.plays, tmArr = data.teamStats, pmArr = data.playerStats
   const game = gArr[0] || null
   if (!game) throw new Error(`game ${gameId} not found`)
   const plays = (pArr || []).map(flattenPlay)
@@ -265,7 +312,7 @@ async function snapshotGame(gameId) {
   const penalties = fn.computePenalties(plays, homeAbbr)
 
   const teamIds = { [homeAbbr]: game.home_team_id, [awayAbbr]: game.away_team_id }
-  const rosterRows = await sbFetch(`players?select=id,team_id,number,nombre,apellido&team_id=in.(${Object.values(teamIds).join(',')})`)
+  const rosterRows = data.roster
   const indexes = Object.fromEntries(Object.entries(teamIds).map(([abbr, tid]) =>
     [abbr, fn.buildRosterIndex(tid, rosterRows.filter(r => r.team_id === tid))]))
   const roster = collectRoster(plays, homeAbbr, awayAbbr, indexes)
@@ -330,16 +377,24 @@ async function snapshotGame(gameId) {
 }
 
 async function main() {
-  const args = process.argv.slice(2)
+  const argv = process.argv.slice(2)
+  const opts = { live: false, freeze: false, maxSeq: null }
+  const args = []
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--live') opts.live = true
+    else if (argv[i] === '--freeze') opts.freeze = true
+    else if (argv[i] === '--max-seq') opts.maxSeq = Number(argv[++i])
+    else args.push(argv[i])
+  }
   if (!args.length) {
-    console.error('Usage: node debug/snapshot_stats.mjs <label>:<game_id> [...]')
+    console.error('Usage: node debug/snapshot_stats.mjs [--live|--freeze [--max-seq N]] <label>:<game_id> [...]')
     process.exit(1)
   }
   fs.mkdirSync(OUT_DIR, { recursive: true })
   for (const arg of args) {
     const [label, gameId] = arg.split(':')
-    console.log(`→ ${label} (${gameId})`)
-    const snap = await snapshotGame(gameId)
+    console.log(`→ ${label} (${gameId})${opts.freeze ? ' [freeze]' : opts.live ? ' [live]' : ' [fixture]'}`)
+    const snap = await snapshotGame(gameId, opts)
     console.log(`  function source: ${snap.meta.functionSource}`)
     const outFile = path.join(OUT_DIR, `${label}.json`)
     fs.writeFileSync(outFile, JSON.stringify(snap, null, 2))

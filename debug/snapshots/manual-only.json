@@ -2,7 +2,7 @@
   "meta": {
     "gameId": "f75f4008-75b0-4455-911e-1995d52cf605",
     "homeAbbr": "AT",
-    "awayAbbr": "AB",
+    "awayAbbr": "ABS",
     "semana": "1",
     "status": "final",
     "playCount": 0,
@@ -34,7 +34,7 @@
       "tflMade": 0,
       "tflYds": 0
     },
-    "AB": {
+    "ABS": {
       "passYds": 0,
       "rushYds": 0,
       "totalPlays": 0,
@@ -65,7 +65,7 @@
   "computePlayerStats": [],
   "computeDefenseStats": {
     "AT": {},
-    "AB": {}
+    "ABS": {}
   },
   "computeSpecialTeamsStats": {
     "punting": [],
@@ -81,7 +81,7 @@
       "intYds": 0,
       "fumYds": 0
     },
-    "AB": {
+    "ABS": {
       "intYds": 0,
       "fumYds": 0
     }
@@ -89,11 +89,11 @@
   "computeTurnoverStatsByPlayer": {
     "interceptions": {
       "AT": {},
-      "AB": {}
+      "ABS": {}
     },
     "fumbleReturns": {
       "AT": {},
-      "AB": {}
+      "ABS": {}
     }
   },
   "computeQBProgression": [],
@@ -108,13 +108,13 @@
   },
   "computeAllPurposeMap": {
     "AT": {},
-    "AB": {}
+    "ABS": {}
   },
   "manualPathFunctions": {
     "AT": {
       "passer": {
         "player": {
-          "id": "d3ea8172-1679-4bed-99d3-78cb6c8f8671",
+          "id": "d4ef27da-5073-49f3-bd09-068ae7ac3050",
           "nombre": "Mirko",
           "number": 17,
           "team_id": "641143d3-4969-4384-bb3b-2b872906d5b8",
@@ -125,17 +125,63 @@
       },
       "rusher": {
         "player": {
-          "id": "d3ea8172-1679-4bed-99d3-78cb6c8f8671",
-          "nombre": "Mirko",
-          "number": 17,
+          "id": "0bc41ca1-8a7c-414a-b2c5-e3a62df0b844",
+          "nombre": "Angel",
+          "number": 31,
           "team_id": "641143d3-4969-4384-bb3b-2b872906d5b8",
-          "apellido": "Martos",
-          "position": "QB"
+          "apellido": "Alvarado",
+          "position": "RB"
         },
-        "val": 70
+        "val": 138
       },
-      "receiver": null,
+      "receiver": {
+        "player": {
+          "id": "f3084f54-d466-4b6a-867f-44a94b19087d",
+          "nombre": "Patricio",
+          "number": 83,
+          "team_id": "641143d3-4969-4384-bb3b-2b872906d5b8",
+          "apellido": "Abrego",
+          "position": "WR"
+        },
+        "val": 80
+      },
       "passingRows": [
+        [
+          "#13 J. Cobas",
+          2,
+          5,
+          "40.0%",
+          17,
+          0,
+          0,
+          "—",
+          "—",
+          "68.6"
+        ],
+        [
+          "#18 A. Fernandez",
+          0,
+          3,
+          "0.0%",
+          0,
+          0,
+          0,
+          "—",
+          "—",
+          "0.0"
+        ],
+        [
+          "#8 R. Fernandez",
+          2,
+          3,
+          "66.7%",
+          41,
+          0,
+          0,
+          "—",
+          "—",
+          "181.5"
+        ],
         [
           "#17 M. Martos",
           17,
@@ -146,31 +192,371 @@
           0,
           "—",
           "—",
-          "144.7"
+          "214.2"
         ]
       ],
       "rushingRows": [
         [
-          "#17 M. Martos",
-          0,
+          "#31 A. Alvarado",
+          8,
           "—",
-          70,
-          "0.0",
+          138,
+          "17.3",
+          2,
+          "—"
+        ],
+        [
+          "#20 J. Chaib",
+          4,
+          "—",
+          90,
+          "22.5",
+          0,
+          "—"
+        ],
+        [
+          "#13 J. Cobas",
+          1,
+          "—",
+          8,
+          "8.0",
+          0,
+          "—"
+        ],
+        [
+          "#18 A. Fernandez",
+          2,
+          "—",
+          11,
+          "5.5",
+          0,
+          "—"
+        ],
+        [
+          "#23 N. Garcia",
+          3,
+          "—",
+          13,
+          "4.3",
+          0,
+          "—"
+        ],
+        [
+          "#17 M. Martos",
+          5,
+          "—",
+          29,
+          "5.8",
+          0,
+          "—"
+        ],
+        [
+          "#40 I. Neaves",
+          3,
+          "—",
+          10,
+          "3.3",
+          0,
+          "—"
+        ],
+        [
+          "#26 C. Rodriguez",
+          4,
+          "—",
+          26,
+          "6.5",
+          0,
+          "—"
+        ],
+        [
+          "#24 H. Saldana",
+          1,
+          "—",
+          4,
+          "4.0",
           0,
           "—"
         ]
       ],
-      "receivingRows": []
+      "receivingRows": [
+        [
+          "#83 P. Abrego",
+          4,
+          80,
+          "20.0",
+          1,
+          "—"
+        ],
+        [
+          "#31 A. Alvarado",
+          2,
+          21,
+          "10.5",
+          0,
+          "—"
+        ],
+        [
+          "#20 J. Chaib",
+          1,
+          11,
+          "11.0",
+          0,
+          "—"
+        ],
+        [
+          "#6 C. Espinosa",
+          5,
+          59,
+          "11.8",
+          2,
+          "—"
+        ],
+        [
+          "#81 E. Goico",
+          3,
+          44,
+          "14.7",
+          0,
+          "—"
+        ],
+        [
+          "#10 I. Hernandez",
+          1,
+          36,
+          "36.0",
+          0,
+          "—"
+        ],
+        [
+          "#3 A. Herrera",
+          2,
+          33,
+          "16.5",
+          0,
+          "—"
+        ],
+        [
+          "#14 E. Mercado",
+          2,
+          47,
+          "23.5",
+          1,
+          "—"
+        ],
+        [
+          "#24 H. Saldana",
+          1,
+          5,
+          "5.0",
+          0,
+          "—"
+        ]
+      ]
     },
-    "AB": {
-      "passer": null,
-      "rusher": null,
-      "receiver": null,
-      "passingRows": [],
-      "rushingRows": [],
-      "receivingRows": []
+    "ABS": {
+      "passer": {
+        "player": {
+          "id": "b92ed9af-d1dd-4113-b546-92a987850596",
+          "nombre": "Emilio",
+          "number": 17,
+          "team_id": "6391e8d4-89dc-408c-833d-63c46ffed7ae",
+          "apellido": "Delgadillo",
+          "position": "QB"
+        },
+        "val": 29
+      },
+      "rusher": {
+        "player": {
+          "id": "49dd6814-c262-4d4b-ad39-d26a5d464d29",
+          "nombre": "Luis",
+          "number": 29,
+          "team_id": "6391e8d4-89dc-408c-833d-63c46ffed7ae",
+          "apellido": "Martin",
+          "position": "RB"
+        },
+        "val": 35
+      },
+      "receiver": {
+        "player": {
+          "id": "754cd481-5acc-4a3a-a53e-c0922091b4e7",
+          "nombre": "Harold Alexis",
+          "number": 1,
+          "team_id": "6391e8d4-89dc-408c-833d-63c46ffed7ae",
+          "apellido": "Garibay",
+          "position": "WR"
+        },
+        "val": 21
+      },
+      "passingRows": [
+        [
+          "#17 E. Delgadillo",
+          6,
+          12,
+          "50.0%",
+          29,
+          0,
+          0,
+          "—",
+          "—",
+          "70.3"
+        ],
+        [
+          "#10 E. Sanchez",
+          4,
+          6,
+          "66.7%",
+          21,
+          0,
+          1,
+          "—",
+          "—",
+          "62.7"
+        ]
+      ],
+      "rushingRows": [
+        [
+          "#28 J. Acevedo",
+          1,
+          "—",
+          -2,
+          "-2.0",
+          0,
+          "—"
+        ],
+        [
+          "#17 E. Delgadillo",
+          3,
+          "—",
+          21,
+          "7.0",
+          0,
+          "—"
+        ],
+        [
+          "#25 J. Falcon",
+          1,
+          "—",
+          6,
+          "6.0",
+          0,
+          "—"
+        ],
+        [
+          "#26 E. Gutierrez",
+          4,
+          "—",
+          20,
+          "5.0",
+          0,
+          "—"
+        ],
+        [
+          "#4 O. Hurtado",
+          6,
+          "—",
+          19,
+          "3.2",
+          0,
+          "—"
+        ],
+        [
+          "#5 Y. Kobeh",
+          6,
+          "—",
+          34,
+          "5.7",
+          0,
+          "—"
+        ],
+        [
+          "#24 C. Lagos",
+          1,
+          "—",
+          -6,
+          "-6.0",
+          0,
+          "—"
+        ],
+        [
+          "#83 A. Mercado",
+          1,
+          "—",
+          6,
+          "6.0",
+          0,
+          "—"
+        ],
+        [
+          "#21 P. Palacios",
+          9,
+          "—",
+          30,
+          "3.3",
+          1,
+          "—"
+        ],
+        [
+          "#29 L. Martin",
+          4,
+          "—",
+          35,
+          "8.8",
+          0,
+          "—"
+        ]
+      ],
+      "receivingRows": [
+        [
+          "#2 A. Aguilar",
+          2,
+          0,
+          "0.0",
+          0,
+          "—"
+        ],
+        [
+          "#88 J. Aldaz",
+          2,
+          11,
+          "5.5",
+          0,
+          "—"
+        ],
+        [
+          "#81 I. Figueroa",
+          1,
+          5,
+          "5.0",
+          0,
+          "—"
+        ],
+        [
+          "#1 H. Garibay",
+          2,
+          21,
+          "10.5",
+          0,
+          "—"
+        ],
+        [
+          "#4 O. Hurtado",
+          1,
+          2,
+          "2.0",
+          0,
+          "—"
+        ],
+        [
+          "#9 A. Victoria",
+          2,
+          11,
+          "5.5",
+          0,
+          "—"
+        ]
+      ]
     }
   },
   "teamGameStatsManualRowCount": 2,
-  "playerGameStatsManualRowCount": 1
+  "playerGameStatsManualRowCount": 32
 }

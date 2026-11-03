@@ -62,3 +62,27 @@ el roster de MTY). Puede ser una captura en el lado equivocado. No se corrige aq
 
 - Final MTY vs AT: `temporada = '2025'` (migración 2026-10-06).
 - CCM vs CU y AT vs AB: `temporada = '2026'` (migración 2026-10-05).
+
+## Fixtures congelados (2026-11-02)
+
+Los tres partidos de referencia son filas vivas de Supabase que los operadores siguen editando
+(el 2026-11-03 04:01 UTC se añadió la jugada 62 al Final y su `status` pasó de `final` a
+`scheduled`). Para que un snapshot cambie **sólo cuando cambia el código**, las respuestas REST
+que usa cada partido están congeladas en `debug/fixtures/<game_id>.json`
+(`games`, `plays`, `team_game_stats_manual`, `player_game_stats_manual` y el roster).
+**Los fixtures no se versionan**: `debug/fixtures/` está en `.gitignore` (datos reales, el repo es
+público), así que viven sólo en la máquina de quien los congeló. En un clon nuevo, el script pide
+`--freeze` (o `--live`) antes de poder correr.
+
+- `node debug/snapshot_stats.mjs <label>:<game_id>` lee de los fixtures (por defecto).
+- `--live` lee de Supabase. `--freeze [--max-seq N]` lee de Supabase y reescribe el fixture.
+- El fixture del Final (c0a8) se congeló con `--max-seq 61`: **sin la jugada 62** (captura de
+  prueba posterior, `e9e041bc-…`, MTY 2ª y 10, pase de Sarabia a Elizondo de 25 yds), para que
+  coincida con la base tomada antes del lote 3. Su `games.status` en el fixture es `scheduled`.
+- Los snapshots de este directorio se regeneraron una sola vez desde los fixtures. Contra la base
+  anterior al lote 3 sólo cambian: Final, AT `firstDowns` 7 → 6 (c0a8·31, NF tras fair catch); CCM vs CU,
+  el pase de 2dd8·18 (PI aceptada capturada con `stats_count` null) deja de contar (−1 intento,
+  −1 jugada, −15 yds de pase del QB #3); y `meta.status` del Final.
+- `debug/numeric_diff.py` compara contra `baseline_legacy` (era C4) y ya no pasa: los snapshots
+  ahora incluyen las correcciones NCAA de los lotes 1 a 3 (H-01 a H-07, H-13, H-15), que esa
+  lista de excepciones no contempla.

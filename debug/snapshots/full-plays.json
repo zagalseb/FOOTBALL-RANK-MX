@@ -3,8 +3,8 @@
     "gameId": "c0a826d4-5dfa-4279-942e-b3ecff24361c",
     "homeAbbr": "MTY",
     "awayAbbr": "AT",
-    "semana": "F",
-    "status": "live",
+    "semana": "TEST",
+    "status": "scheduled",
     "playCount": 61,
     "functionSource": "stats-lib.js (fully migrated)"
   },
@@ -36,14 +36,14 @@
     },
     "AT": {
       "passYds": 31,
-      "rushYds": 146,
+      "rushYds": 144,
       "totalPlays": 25,
       "passCompletions": 2,
       "passAttempts": 5,
       "rushPlays": 20,
-      "sackAdjRushYds": 153,
+      "sackAdjRushYds": 151,
       "sackAdjRushPlays": 19,
-      "firstDowns": 7,
+      "firstDowns": 6,
       "thirdAtt": 6,
       "thirdConv": 2,
       "fourthAtt": 0,
@@ -289,9 +289,9 @@
         },
         "rushing": {
           "att": 5,
-          "yds": 3,
+          "yds": 1,
           "td": 0,
-          "avg": 0.6
+          "avg": 0.2
         }
       }
     },
@@ -714,8 +714,8 @@
   ],
   "computeDefenseStats": {
     "MTY": {
-      "#55 E. Roiz": {
-        "label": "#55 E. Roiz",
+      "#55 Eduardo Roiz Roiz": {
+        "label": "#55 Eduardo Roiz Roiz",
         "solo": 2,
         "ast": 0,
         "sacks": 0,
@@ -932,8 +932,8 @@
         "qbh": 0,
         "pbu": 0
       },
-      "#22 L. Cavazos": {
-        "label": "#22 L. Cavazos",
+      "#22 Luis Ángel Cavazos": {
+        "label": "#22 Luis Ángel Cavazos",
         "solo": 1,
         "ast": 0,
         "sacks": 0,
@@ -1313,7 +1313,7 @@
           "isComplete": true,
           "caTally": "1-1",
           "netYards": 6,
-          "receiver": "#20 J. Chaib",
+          "receiver": "#20 Jorge Luis Chaib",
           "note": "",
           "context": "1st & 10 at MTY 43: #10 S. Resendiz pass complete to #20 J. Chaib for 6 yards to MTY 37 (tackle: #2 M. Martínez)"
         },
@@ -1442,12 +1442,12 @@
         },
         "#10 S. Resendiz": {
           "att": 5,
-          "yds": 3,
+          "yds": 1,
           "td": 0,
           "gained": 11,
           "long": 6
         },
-        "#20 J. Chaib": {
+        "#20 Jorge Luis Chaib": {
           "att": 1,
           "yds": 4,
           "td": 0,
@@ -1506,7 +1506,7 @@
         }
       },
       "AT": {
-        "#20 J. Chaib": {
+        "#20 Jorge Luis Chaib": {
           "rec": 1,
           "yds": 6,
           "td": 0,
@@ -1621,7 +1621,7 @@
         "frir": 13,
         "total": 13
       },
-      "#20 J. Chaib": {
+      "#20 Jorge Luis Chaib": {
         "run": 4,
         "rcv": 6,
         "kr": 0,
@@ -1638,12 +1638,12 @@
         "total": 7
       },
       "#10 S. Resendiz": {
-        "run": 3,
+        "run": 1,
         "rcv": 0,
         "kr": 0,
         "pr": 0,
         "frir": 0,
-        "total": 3
+        "total": 1
       }
     }
   },

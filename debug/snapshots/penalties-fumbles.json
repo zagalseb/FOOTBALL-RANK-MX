@@ -18,7 +18,7 @@
       "rushPlays": 5,
       "sackAdjRushYds": 20,
       "sackAdjRushPlays": 4,
-      "firstDowns": 3,
+      "firstDowns": 2,
       "thirdAtt": 2,
       "thirdConv": 0,
       "fourthAtt": 0,
@@ -35,13 +35,13 @@
       "tflYds": 0
     },
     "CU": {
-      "passYds": 103,
-      "rushYds": 2,
-      "totalPlays": 6,
+      "passYds": 88,
+      "rushYds": 0,
+      "totalPlays": 5,
       "passCompletions": 2,
-      "passAttempts": 4,
+      "passAttempts": 3,
       "rushPlays": 2,
-      "sackAdjRushYds": 2,
+      "sackAdjRushYds": 0,
       "sackAdjRushPlays": 2,
       "firstDowns": 3,
       "thirdAtt": 0,
@@ -257,12 +257,12 @@
       "number": 3,
       "stats": {
         "passing": {
-          "att": 4,
+          "att": 3,
           "comp": 2,
           "yds": 88,
           "td": 1,
           "int": 0,
-          "compAtt": "2-4"
+          "compAtt": "2-3"
         }
       }
     },
@@ -272,9 +272,9 @@
       "stats": {
         "rushing": {
           "att": 2,
-          "yds": 2,
+          "yds": 0,
           "td": 0,
-          "avg": 1
+          "avg": 0
         }
       }
     },
@@ -386,8 +386,8 @@
       }
     },
     "CU": {
-      "#54": {
-        "label": "#54",
+      "#54 V. Barrientos": {
+        "label": "#54 V. Barrientos",
         "solo": 2,
         "ast": 0,
         "sacks": 0,
@@ -398,8 +398,8 @@
         "qbh": 0,
         "pbu": 0
       },
-      "#94": {
-        "label": "#94",
+      "#94 J. Soriano": {
+        "label": "#94 J. Soriano",
         "solo": 1,
         "ast": 0,
         "sacks": 1,
@@ -410,8 +410,8 @@
         "qbh": 0,
         "pbu": 0
       },
-      "#99": {
-        "label": "#99",
+      "#99 J. Valdez": {
+        "label": "#99 J. Valdez",
         "solo": 0,
         "ast": 0,
         "sacks": 0,
@@ -422,8 +422,8 @@
         "qbh": 1,
         "pbu": 0
       },
-      "#12": {
-        "label": "#12",
+      "#12 C. Cardona": {
+        "label": "#12 C. Cardona",
         "solo": 1,
         "ast": 0,
         "sacks": 0,
@@ -434,8 +434,8 @@
         "qbh": 0,
         "pbu": 0
       },
-      "#16": {
-        "label": "#16",
+      "#16 I. Aguilar": {
+        "label": "#16 I. Aguilar",
         "solo": 1,
         "ast": 0,
         "sacks": 0,
@@ -472,7 +472,7 @@
     "kickoffs": [
       {
         "team": "CU",
-        "label": "#24",
+        "label": "#24 D. Ceballos",
         "no": 2,
         "yds": 130,
         "tb": 1
@@ -500,7 +500,7 @@
   "computeFumbleStats": [
     {
       "team": "CU",
-      "label": "#11",
+      "label": "#11 R. Licea",
       "no": 1,
       "lost": 1
     }
@@ -522,15 +522,7 @@
       "CU": {}
     },
     "fumbleReturns": {
-      "CCM": {
-        "#94 H. Minarro": {
-          "label": "#94 H. Minarro",
-          "no": 1,
-          "yds": 0,
-          "td": 0,
-          "long": 0
-        }
-      },
+      "CCM": {},
       "CU": {}
     }
   },
@@ -596,7 +588,7 @@
     },
     {
       "team": "CU",
-      "label": "#3",
+      "label": "#3 L. Garza",
       "rows": [
         {
           "isComplete": false,
@@ -610,7 +602,7 @@
           "isComplete": true,
           "caTally": "1-2",
           "netYards": 13,
-          "receiver": "#18",
+          "receiver": "#18 J. Ponce",
           "note": "",
           "context": "2nd & 10 at CU 12: #3 pass complete to #18 for 13 yards to CU 25 (tackle: #0)"
         },
@@ -618,29 +610,29 @@
           "isComplete": true,
           "caTally": "1-2",
           "netYards": 0,
-          "receiver": "#18",
+          "receiver": "#18 J. Ponce",
           "note": "",
           "context": "2nd & 8 at CU 27: #3 pass complete to #18 for 0 yards to CCM 50 (tackle: #0) | FLAG: HO CU on #72 (accepted) → CU 17"
         },
         {
           "isComplete": false,
-          "caTally": "1-3",
-          "netYards": null,
+          "caTally": "1-2",
+          "netYards": 0,
           "receiver": null,
           "note": "",
           "context": "2nd & 15 at CU 22: #3 pass INCOMPLETE intended for #18 | FLAG: PI CCM on #0 (accepted) → CU 37"
         },
         {
           "isComplete": true,
-          "caTally": "2-4",
+          "caTally": "2-3",
           "netYards": 75,
-          "receiver": "#18",
+          "receiver": "#18 J. Ponce",
           "note": "TD",
           "context": "1st & 10 at CU 25: #3 pass complete to #18 for 75 yards TOUCHDOWN"
         }
       ],
       "comp": 2,
-      "att": 4,
+      "att": 3,
       "yds": 88,
       "td": 1,
       "int": 0
@@ -682,8 +674,8 @@
         }
       },
       "CU": {
-        "#3": {
-          "att": 4,
+        "#3 L. Garza": {
+          "att": 3,
           "comp": 2,
           "yds": 88,
           "td": 1,
@@ -718,9 +710,9 @@
         }
       },
       "CU": {
-        "#11": {
+        "#11 R. Licea": {
           "att": 2,
-          "yds": 2,
+          "yds": 0,
           "td": 0,
           "gained": 2,
           "long": 2
@@ -737,7 +729,7 @@
         }
       },
       "CU": {
-        "#18": {
+        "#18 J. Ponce": {
           "rec": 2,
           "yds": 88,
           "td": 1,
@@ -782,21 +774,13 @@
       }
     },
     "CU": {
-      "#18": {
+      "#18 J. Ponce": {
         "run": 0,
         "rcv": 88,
         "kr": 0,
         "pr": 0,
         "frir": 0,
         "total": 88
-      },
-      "#11": {
-        "run": 2,
-        "rcv": 0,
-        "kr": 0,
-        "pr": 0,
-        "frir": 0,
-        "total": 2
       }
     }
   },
