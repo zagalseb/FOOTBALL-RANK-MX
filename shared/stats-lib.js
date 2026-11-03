@@ -181,6 +181,25 @@ function _fumbleRecoverer(p) {
 // PENALTY_DOWN_RESULT_OPTIONS offers.
 const _NO_PLAY_DOWN_RESULTS = ['repeat_down', 'loss_of_down', 'first_down']
 
+// §3 Art.10 A.R.1-3: intentional grounding is a "0-yard penalty"; the loss
+// is charged to the passer as a rush. VERIFICAR VIGENCIA: from the 2011
+// manual.
+export const INTENTIONAL_GROUNDING_PENALTY_YARDS = 0
+
+// Number (1 or 2) of the accepted intentional grounding flag on a pass play,
+// by the passing team, or 0.
+function _groundingFlag(p) {
+  if (p.play_type !== 'PASS') return 0
+  return [1, 2].find(n => p[`flag_${n}_result`] === 'accepted' && p[`flag_${n}_infraction`]?.code === 'IG' &&
+    (!p[`flag_${n}_team`] || p[`flag_${n}_team`] === p.possession)) || 0
+}
+
+// The QB never threw a legal pass: a scramble, a sack or intentional grounding
+// is a rush by the passer (pass_by), never a pass attempt (NCAA; §3 Art.10).
+function _isQBRush(p) {
+  return p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack' || !!_groundingFlag(p))
+}
+
 // Where an accepted flag was enforced from, or null if it is not accepted:
 //   'previous'   the previous spot: the play is void (§14 Art.3, 5, 6).
 //   'end'        the end of the play: it counts (§14 Art.2, 4; dead-ball fouls).
@@ -200,9 +219,16 @@ export function flagEnforcement(p, num) {
 // { voided, net_yards, touchdown } of a play with an accepted flag, else null.
 export function flagOutcome(p) {
   if (!p || p.play_type === 'PENALTY') return null
-  const enf = [1, 2].map(n => flagEnforcement(p, n))
-  if (!enf.some(Boolean)) return null
+  const ig = _groundingFlag(p)
+  const enf = [1, 2].map(n => (n === ig ? null : flagEnforcement(p, n)))
+  if (!ig && !enf.some(Boolean)) return null
   if (enf.includes('previous')) return { voided: true, net_yards: 0, touchdown: false }
+  // §3 Art.10: intentional grounding counts as a rush by the passer to the
+  // spot of the foul (the flag's new_los: loss of down at the spot).
+  if (ig) {
+    const spot = p[`flag_${ig}_foul_spot`] || p[`flag_${ig}_new_los`]
+    return { voided: false, net_yards: spot && p.field_pos && p.possession ? _netTo(p, spot) : null, touchdown: false }
+  }
   const foulSpot = [1, 2].filter((n, i) => enf[i] === 'foul_spot').map(n => p[`flag_${n}_foul_spot`]).find(Boolean)
   const end = foulSpot || p.at
   if (end && p.field_pos && p.possession) {
@@ -289,8 +315,7 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
         if (p.touchdown) r.td++
       }
 
-      if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack') &&
-          same(p.pass_by)) {
+      if (_isQBRush(p) && same(p.pass_by)) {
         const r = ensureRushing()
         r.att++
         r.yds += _carrierYards(p) || 0
@@ -310,11 +335,10 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
         else ensureRushing().td++
       }
 
-      // Any non-scramble/non-sack pass_result is an attempt — including
+      // Any pass that isn't a QB rush is an attempt — including
       // 'dropped'/'broken_up' — same rule as viewer.html:1975, not just
       // complete/incomplete/intercepted.
-      if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack' &&
-          same(p.pass_by)) {
+      if (p.play_type === 'PASS' && !_isQBRush(p) && same(p.pass_by)) {
         const pa = ensurePassing()
         pa.att++
         if (p.pass_result === 'complete') {
@@ -496,7 +520,8 @@ export function _firstDownsOnPlay(p, seriesStartYardline = null) {
   // recovering a fumble. §1 Art.5: an own-team recovery that makes the line
   // to gain is a first down (fumbleYards().team runs to the end of the play).
   const lost = fumbleYards(p)?.lost === true
-  const byYards = p.stats_count !== false && !lost && reached
+  // Intentional grounding carries loss of down: never a first down.
+  const byYards = p.stats_count !== false && !lost && !_groundingFlag(p) && reached
   return (byYards ? 1 : 0) + (_penaltyFirstDown(p, byYards) ? 1 : 0)
 }
 
@@ -629,7 +654,7 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       const y = playNetYards(p) || 0
       t.rushYds += y; t.rushPlays++
       t.sackAdjRushYds += y; t.sackAdjRushPlays++
-    } else if (p.play_type === 'PASS' && (p.pass_result === 'sack' || p.pass_result === 'scramble')) {
+    } else if (_isQBRush(p)) {
       const y = playNetYards(p) || 0
       t.rushYds += y; t.rushPlays++
       if (p.pass_result === 'scramble') { t.sackAdjRushYds += y; t.sackAdjRushPlays++ }
@@ -727,12 +752,13 @@ export function computePenalties(plays, homeAbbr) {
   function pushPenalty(p, num, team, infraction, by, result, newLos) {
     if (!team || !infraction) return
     const base = newLos ? _penaltyBase(p, num) : null
+    const grounding = num && num === _groundingFlag(p)
     out.push({
       seq: p.seq, team, quarter: p.quarter, clock: p.clock,
       code: infraction.code, label: infraction.label,
       player: by ? playerShortLabel(by) : null,
       result: result || '—',
-      yards: base == null ? null : Math.abs(_toGoal(p.possession, newLos) - base),
+      yards: grounding ? INTENTIONAL_GROUNDING_PENALTY_YARDS : (base == null ? null : Math.abs(_toGoal(p.possession, newLos) - base)),
       context: formatPlay(p),
     })
   }
@@ -2741,7 +2767,7 @@ export function computeQBProgression(plays, rosters = null) {
     // A play voided by an accepted penalty (stats_count: false, set by
     // wizard.js at save time) is excluded from the tally entirely — it's
     // still shown below as a row for context, just not counted.
-    const isAttempt = p.stats_count !== false &&
+    const isAttempt = p.stats_count !== false && !_isQBRush(p) &&
       ['complete', 'incomplete', 'dropped', 'broken_up', 'intercepted'].includes(p.pass_result)
     if (isAttempt) {
       qb.att++
@@ -2754,6 +2780,7 @@ export function computeQBProgression(plays, rosters = null) {
     if (playTouchdown(p)) note = 'TD'
     else if (p.pass_result === 'intercepted') note = 'INT'
     else if (p.pass_result === 'sack') note = 'SACK'
+    else if (_groundingFlag(p)) note = 'IG'
 
     qb.rows.push({
       isComplete: p.pass_result === 'complete',
@@ -2834,7 +2861,7 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
     // thrown either way, so both are folded into the RUSHING breakdown
     // instead of PASSING (matches computeComparisonStats' Rush Yds and the
     // isAttempt filter computeQBProgression already used for att/comp%).
-    if (p.play_type === 'PASS' && (p.pass_result === 'scramble' || p.pass_result === 'sack')) {
+    if (_isQBRush(p)) {
       const yds = _carrierYards(p) || 0
       const kf = _keyLabelOr(p.pass_by, idx, UNKNOWN)
       const key = kf.key
@@ -2860,7 +2887,7 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
       }
     }
 
-    if (p.play_type === 'PASS' && p.pass_result !== 'scramble' && p.pass_result !== 'sack') {
+    if (p.play_type === 'PASS' && !_isQBRush(p)) {
       const kf = _keyLabelOr(p.pass_by, idx, UNKNOWN)
       const key = kf.key
       if (!pa[t]) pa[t] = {}
