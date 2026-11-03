@@ -501,6 +501,10 @@ export function _isFirstDownPlay(p, seriesStartYardline = null) {
   return byYards || byPenalty
 }
 
+// Field position gained on the play, penalties included: LOS -> the next LOS
+// (an accepted flag's new_los). Drive yardage (B.I.10, viewer.html's drive
+// rows) uses this. Team rushing/passing and explosives use playNetYards: the
+// offense's own yards, never a penalty's (§5 Art.1-2, H-06).
 export function _effectiveNetYards(p, teams) {
   p = resolvePlay(p)
   if (!teams) return playNetYards(p)
@@ -585,11 +589,11 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
     }
 
     if (p.play_type === 'RUSH') {
-      const y = _effectiveNetYards(p, teams) || 0
+      const y = playNetYards(p) || 0
       t.rushYds += y; t.rushPlays++
       t.sackAdjRushYds += y; t.sackAdjRushPlays++
     } else if (p.play_type === 'PASS' && (p.pass_result === 'sack' || p.pass_result === 'scramble')) {
-      const y = _effectiveNetYards(p, teams) || 0
+      const y = playNetYards(p) || 0
       t.rushYds += y; t.rushPlays++
       if (p.pass_result === 'scramble') { t.sackAdjRushYds += y; t.sackAdjRushPlays++ }
     } else if (p.play_type === 'PASS' && ['complete', 'incomplete', 'dropped', 'broken_up', 'intercepted'].includes(p.pass_result)) {
@@ -599,7 +603,7 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       // never gains yards, so passYds stays scoped to the original 3.
       t.passAttempts++
       if (p.pass_result !== 'dropped' && p.pass_result !== 'broken_up') {
-        t.passYds += (_effectiveNetYards(p, teams) || 0)
+        t.passYds += (playNetYards(p) || 0)
       }
       if (p.pass_result === 'complete') t.passCompletions++
     }
@@ -2733,11 +2737,13 @@ export function computeExplosivePlays(plays, teams) {
   const passing = []
   const rushing = []
   for (const p of plays) {
-    const eff = _effectiveNetYards(p, teams)
+    // The offense's own yards (playNetYards), never a penalty's: a 15-yard
+    // completion plus roughing the passer is a 15-yard play (H-06). A play
+    // voided by a flag has 0 and never qualifies.
+    const eff = playNetYards(p)
     if (eff == null) continue
-    // Carry the already-computed effective yardage along on a shallow copy
-    // (_effYards) instead of recomputing it for sort/display — same value
-    // the threshold check above just used, not the raw (pre-penalty) net_yards.
+    // Carried on a shallow copy (_effYards) for sort/display — the same value
+    // the threshold check uses.
     if (p.play_type === 'PASS' && p.pass_result === 'complete' && eff >= 15) passing.push({ ...p, _effYards: eff })
     // A scramble is a rushing play (NCAA convention, see computeComparisonStats)
     // so it's judged against the same 10-yard rushing threshold as a RUSH play.
