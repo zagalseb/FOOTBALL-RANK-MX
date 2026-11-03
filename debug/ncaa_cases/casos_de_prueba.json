@@ -7,7 +7,7 @@
       "net_yards_touchdown_stats_count": "Las jugadas fueron pasadas por una réplica de wizard.js (_renderSubmit/_confirmSubmit): net_yards y touchdown se derivan sólo de `at`; un flag aceptado con down_result y timing != dead anula la jugada (net_yards=0, stats_count=false).",
       "grupos": "a = corregible con datos que ya se capturan; b = requiere capturar datos nuevos (segunda pasada con video); a+b = parte corregible y parte no."
     },
-    "total": 43,
+    "total": 44,
     "cumplen_hoy": 1,
     "no_cumplen_hoy": 40
   },
@@ -3013,6 +3013,75 @@
         "firstDowns": 1,
         "thirdAtt": 1,
         "thirdConv": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-48",
+      "regla_ncaa": "Falta de B aplicada en el kickoff tras el try (§14 Art.4 A.R.3, B.I.4): se captura en el PAT_TRY y se mide desde la yarda del kickoff (KICKOFF_YARD, 35 del que patea); el resultado del try no cambia",
+      "fuente_manual": "Manual p.16 §14 Art.4 A.R.3",
+      "grupo": "a",
+      "severidad": "BAJA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computePenalties (_penaltyBase) / advanceGameState / applyFlags",
+      "entrada": {
+        "descripcion": "Caso propio (decisión lote 3, opción A): PAT de A desde BBB3, bueno. Falta personal de B aplicada en el kickoff: flag en el PAT_TRY, enforced 'end', new_los AAA50 (15 yds desde la AAA35).",
+        "jugadas": [
+          {
+            "play_type": "PAT_TRY",
+            "possession": "AAA",
+            "field_pos": {
+              "team": "BBB",
+              "yard": 3
+            },
+            "down": 0,
+            "distance": 0,
+            "pat_type": "kick",
+            "kicked_by": {
+              "number": 5,
+              "nombre": "",
+              "apellido": ""
+            },
+            "pat_kick_result": "good",
+            "flag_1_infraction": {
+              "code": "PF",
+              "label": "PF"
+            },
+            "flag_1_team": "BBB",
+            "flag_1_result": "accepted",
+            "flag_1_new_los": {
+              "team": "AAA",
+              "yard": 50
+            },
+            "flag_1_down_result": "repeat_down",
+            "flag_1_timing": "live",
+            "flag_1_enforced": "end"
+          }
+        ]
+      },
+      "salida_esperada": {
+        "penaltyYds": 15,
+        "scoreHome": 1,
+        "next": {
+          "possession": "AAA",
+          "field_pos": {
+            "team": "AAA",
+            "yard": 50
+          },
+          "down": 0
+        }
+      },
+      "resultado_actual_codigo": {
+        "penaltyYds": 47,
+        "scoreHome": 1,
+        "next": {
+          "possession": "AAA",
+          "field_pos": {
+            "team": "AAA",
+            "yard": 50
+          },
+          "down": 0
+        }
       },
       "cumple_hoy": false
     }

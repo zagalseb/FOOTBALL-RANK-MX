@@ -644,27 +644,54 @@ function _puntTerminalSpot(p) {
   return null
 }
 
+// End of a scrimmage play, in yards to the offense's goal: where `at` (or the
+// derived end of a fumble/safety) left the ball; the LOS when the play gained
+// no ground of its own (incomplete pass).
+function _endToGoal(p) {
+  return _toGoal(p.possession, p.field_pos) - (playNetYards(p) ?? 0)
+}
+
+// Spot a penalty's yards are measured from, in yards to the offense's goal
+// (B.I.4: the real distance from the spot of enforcement). num is the flag
+// number, null for a standalone PENALTY play. null = unknown: no yards.
+function _penaltyBase(p, num) {
+  const g = pos => _toGoal(p.possession, pos)
+  const enforced = num ? flagEnforcement(p, num) : null
+  if (enforced === 'foul_spot') {
+    const spot = p[`flag_${num}_foul_spot`]
+    return spot ? g(spot) : null
+  }
+  if (enforced === 'end') {
+    // §14 Art.4 A.R.3: a foul enforced on the kickoff is captured on the try;
+    // the kickoff is from the kicking team's own KICKOFF_YARD.
+    if (p.play_type === 'PAT_TRY') return g({ team: p.possession, yard: KICKOFF_YARD })
+    // On a TD play the succeeding spot is that kickoff, which this play does
+    // not record: unknown (the wizard asks to capture it on the try).
+    if (p.play_type === 'RUSH' || p.play_type === 'PASS') return playTouchdown(p) ? null : _endToGoal(p)
+  }
+  // Punts: from where the kick ended, except an explicit previous-spot
+  // enforcement (roughing the kicker). Plays captured before flag_N_enforced
+  // keep the terminal spot they always used.
+  if (p.play_type === 'PUNT' && !(enforced === 'previous' && p[`flag_${num}_enforced`])) {
+    const terminal = _puntTerminalSpot(p)
+    if (terminal) return g(terminal)
+  }
+  return p.field_pos ? g(p.field_pos) : null
+}
+
 export function computePenalties(plays, homeAbbr) {
   plays = _resolvePlays(plays)
-  const absYd = (team, yard) => (team === homeAbbr ? yard : 100 - yard)
   const out = []
 
-  function pushPenalty(p, team, infraction, by, result, newLos) {
+  function pushPenalty(p, num, team, infraction, by, result, newLos) {
     if (!team || !infraction) return
-    let yards = null
-    let base = p.field_pos
-    if (p.play_type === 'PUNT') {
-      base = _puntTerminalSpot(p) || p.field_pos
-    }
-    if (base && newLos) {
-      yards = Math.abs(absYd(newLos.team, newLos.yard) - absYd(base.team, base.yard))
-    }
+    const base = newLos ? _penaltyBase(p, num) : null
     out.push({
       seq: p.seq, team, quarter: p.quarter, clock: p.clock,
       code: infraction.code, label: infraction.label,
       player: by ? playerShortLabel(by) : null,
       result: result || '—',
-      yards,
+      yards: base == null ? null : Math.abs(_toGoal(p.possession, newLos) - base),
       context: formatPlay(p),
     })
   }
@@ -672,12 +699,12 @@ export function computePenalties(plays, homeAbbr) {
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue
     if (p.play_type === 'PENALTY') {
-      pushPenalty(p, p.penalty_team, p.penalty_infraction, p.penalty_by, p.penalty_result, p.penalty_new_los)
+      pushPenalty(p, null, p.penalty_team, p.penalty_infraction, p.penalty_by, p.penalty_result, p.penalty_new_los)
     }
     for (const num of [1, 2]) {
       const inf = p[`flag_${num}_infraction`]
       if (!inf) continue
-      pushPenalty(p, p[`flag_${num}_team`], inf, p[`flag_${num}_by`], p[`flag_${num}_result`], p[`flag_${num}_new_los`])
+      pushPenalty(p, num, p[`flag_${num}_team`], inf, p[`flag_${num}_by`], p[`flag_${num}_result`], p[`flag_${num}_new_los`])
     }
   }
 

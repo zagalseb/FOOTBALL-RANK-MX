@@ -159,6 +159,10 @@ const P_ = {
     return { adamsYds: rushOf([second], A, 12)?.yds ?? 0, firstDowns: cmp([second])[A].firstDowns, thirdAtt: third.thirdAtt, thirdConv: third.thirdConv } },
   'TC-43': () => { const r = (yl, d, to) => mk({ play_type: 'RUSH', possession: A, field_pos: pos(B, yl), down: d, distance: yl, rush_by: Adams, result: 'tackle', at: pos(B, to) })
     const c = cmp([r(8, 1, 6), r(6, 2, 5), r(5, 3, 0)])[A]; return { firstDowns: c.firstDowns, thirdAtt: c.thirdAtt, thirdConv: c.thirdConv } },
+  'TC-48': () => { const p = mk({ play_type: 'PAT_TRY', possession: A, field_pos: pos(B, 3), down: 0, distance: 0, pat_type: 'kick', kicked_by: P(5), pat_kick_result: 'good',
+      ...flag(1, 'PF', B, pos(A, 50), 'repeat_down'), flag_1_enforced: 'end' })
+    const st = adv(p, state0({ field_pos: pos(B, 3), down: 0, distance: 0 }))
+    return { penaltyYds: L.computePenalties([p], A)[0]?.yards ?? null, scoreHome: st.score.home, next: { possession: st.possession, field_pos: st.field_pos, down: st.down } } },
   'TC-41': () => ({ punterRows: L.computeSpecialTeamsStats([punt({ punt_result: 'downed', punt_downed_at: pos(B, 5), ...flag(1, 'RK', B, pos(B, 35), 'first_down') })], A, B, teams).punting.length }),
 }
 
