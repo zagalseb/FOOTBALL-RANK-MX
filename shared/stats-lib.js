@@ -480,9 +480,11 @@ export function driveEndLabel(plays, isLastDrive, teams) {
   return null
 }
 
+// First downs the offense earned on the play: 0, 1 or 2 (§1 Art.2: one by
+// yardage and another by penalty).
 // seriesStartYardline: yardline_100 of the 1st down that started this series
 // (null when unknown — the TD then counts, as before).
-export function _isFirstDownPlay(p, seriesStartYardline = null) {
+export function _firstDownsOnPlay(p, seriesStartYardline = null) {
   p = resolvePlay(p)
   const yds = playNetYards(p)
   // §1 Art.1: a TD is a first down only in a series that started 10 or more
@@ -495,10 +497,45 @@ export function _isFirstDownPlay(p, seriesStartYardline = null) {
   // to gain is a first down (fumbleYards().team runs to the end of the play).
   const lost = fumbleYards(p)?.lost === true
   const byYards = p.stats_count !== false && !lost && reached
-  const byPenalty = p.flag_1_down_result === 'first_down' ||
-    p.flag_2_down_result === 'first_down' ||
-    p.penalty_down_result === 'first_down'
-  return byYards || byPenalty
+  return (byYards ? 1 : 0) + (_penaltyFirstDown(p, byYards) ? 1 : 0)
+}
+
+export function _isFirstDownPlay(p, seriesStartYardline = null) {
+  return _firstDownsOnPlay(p, seriesStartYardline) > 0
+}
+
+// §1 Art.1-2, 6: a first down by penalty — a foul by the defense, accepted
+// with down_result first_down — only when the offense keeps the ball.
+function _penaltyFirstDown(p, byYards) {
+  if (p.play_type === 'PENALTY') {
+    return p.penalty_down_result === 'first_down' && !!p.penalty_team && p.penalty_team !== p.possession
+  }
+  const nums = [1, 2].filter(n => flagEnforcement(p, n) && p[`flag_${n}_down_result`] === 'first_down' &&
+    !!p[`flag_${n}_team`] && p[`flag_${n}_team`] !== p.possession)
+  if (!nums.length) return false
+  // A kick: the kicking team keeps the ball only when the foul is enforced
+  // from the previous spot (roughing the kicker). Plays captured before
+  // flag_N_enforced can't tell that from a foul after the kick (the receiving
+  // team's new series), so they never count.
+  if (p.play_type === 'PUNT' || p.play_type === 'KICK') return nums.some(n => p[`flag_${n}_enforced`] === 'previous')
+  if (p.play_type !== 'RUSH' && p.play_type !== 'PASS') return false
+  if (p.stats_count !== false) {
+    // The play stands and the opponent has the ball. KNOWN LIMITATION (H-19,
+    // TC-44): a defensive foul accepted before the change of possession gives
+    // the ball back to the offense, but applyFlags doesn't return possession,
+    // so no first down is counted here either.
+    if (fumbleYards(p)?.lost === true || p.pass_result === 'intercepted') return false
+    // On a TD the foul is enforced on the kickoff (captured on the try).
+    if (playTouchdown(p)) return false
+  }
+  if (!byYards) return true
+  // The yardage already made a first down: the penalty makes another only if
+  // on its own it reaches the line to gain of the new series (10, or the goal).
+  const end = _endToGoal(p)
+  return nums.some(n => {
+    const newLos = p[`flag_${n}_new_los`]
+    return !!newLos && end - _toGoal(p.possession, newLos) >= Math.min(10, end)
+  })
 }
 
 // Field position gained on the play, penalties included: LOS -> the next LOS
@@ -545,7 +582,7 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue
     if (p.down === 1 && p.yardline_100 != null && out[p.possession]) seriesStart[p.possession] = p.yardline_100
-    const firstDown = _isFirstDownPlay(p, seriesStart[p.possession] ?? null)
+    const firstDowns = _firstDownsOnPlay(p, seriesStart[p.possession] ?? null)
 
     // intsThrown mirrors viewer.html's Comparación team summary panel split
     // (PASS-CAI) — kept in sync here even though no Box Score row reads it
@@ -573,7 +610,7 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards) }
     }
 
-    if (out[p.possession] && firstDown) out[p.possession].firstDowns++
+    if (out[p.possession]) out[p.possession].firstDowns += firstDowns
 
     if (p.stats_count === false) continue
     const t = out[p.possession]
@@ -583,7 +620,7 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       t.totalPlays++
       // B.I.8 A.R.1: a TD converts 3rd/4th down even when it isn't a first
       // down under §1 Art.1 (3rd and goal from inside the 10).
-      const converted = firstDown || playTouchdown(p)
+      const converted = firstDowns > 0 || playTouchdown(p)
       if (p.down === 3) { t.thirdAtt++; if (converted) t.thirdConv++ }
       if (p.down === 4) { t.fourthAtt++; if (converted) t.fourthConv++ }
     }

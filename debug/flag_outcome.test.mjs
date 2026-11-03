@@ -5,7 +5,7 @@
 // Run: node --test debug/flag_outcome.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { flagOutcome, resolvePlay, calcNetYards, isTouchdown } from '../shared/stats-lib.js'
+import { flagOutcome, resolvePlay, calcNetYards, isTouchdown, _firstDownsOnPlay } from '../shared/stats-lib.js'
 
 const teams = { home: { name: 'AAA' }, away: { name: 'BBB' } }
 
@@ -80,5 +80,15 @@ test('producción: sólo 2dd8·18 cambia de anulación (PI capturado antes de la
     } else {
       assert.equal(r, p, id)   // same object: nothing changes
     }
+  }
+})
+
+test('producción: primeros downs iguales a la regla anterior salvo c0a8·31 (NF tras fair catch: la serie es de MTY)', () => {
+  // Before lote 3: 1 when any flag had down_result first_down, on top of the yardage rule.
+  const before = { '2dd8·16': 0, '2dd8·18': 1, 'b10e·5': 0, 'c0a8·31': 1 }
+  const after  = { '2dd8·16': 0, '2dd8·18': 1, 'b10e·5': 0, 'c0a8·31': 0 }
+  for (const id of Object.keys(prod)) {
+    assert.equal(_firstDownsOnPlay(prod[id]), after[id], id)
+    if (id !== 'c0a8·31') assert.equal(after[id], before[id], id)
   }
 })
