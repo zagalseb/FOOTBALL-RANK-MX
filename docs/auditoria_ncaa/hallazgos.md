@@ -209,3 +209,22 @@ Severidad = impacto sobre las cifras que ve el usuario (box score, líderes, mar
 - 3ª down: FG excluido, primer down por penalidad excluido, conversión con falta posterior (dead).
 - Punts a touchback medidos hasta la goal line; retorno de punt/kickoff medido desde el punto de recepción (puede ser negativo); retorno de FG bloqueado no entra a punt returns.
 - Marcador de TD, FG, PAT 1 y 2 pts, 2 pts defensivos; PAT penalizado.
+
+## F. Notas para la Fase B del flujo de penalidades (lote 3) — decididas, **sin implementar**
+
+La Fase A (etiquetas de spot, Ataque/Defensa, roster de Penalty By) ya está. La Fase B reemplazará las preguntas de New LOS, down y "¿Desde dónde?" por una pantalla de confirmación con valores por defecto derivados (spot de aplicación ± yardas del código). Decisiones tomadas para esa fase:
+
+1. **Down por defecto "pierde el down" también en FP** (illegal forward pass), además de IG. El resto de los códigos propone el down según la línea a ganar (primer down si el balón la alcanza, repetir si no), sin lista de códigos de primer down automático; el operador lo cambia con una tecla.
+2. **Preselección de equipo sólo en códigos de snap** (faltas antes del snap, que sólo existen "desde el spot anterior"): DG, FS, FO, MO, PR, SH (ataque) y EN, OD (defensa). El resto de los códigos (HO, PF, UC, PI, FN…) siempre pregunta Ataque/Defensa, porque pueden ser de cualquiera.
+3. **Tabla de yardas reducida a los códigos que aparecen en los juegos capturados**; el resto pide las yardas a mano (sin valor por defecto). Conteo en Supabase (`covercero.plays`, flags y jugadas PENALTY, 2026-11-03):
+
+   | Código | Usos | En flag | En jugada PENALTY | Juegos |
+   |---|---|---|---|---|
+   | FS (false start) | 3 | 0 | 3 | 3 |
+   | HO (holding) | 3 | 3 | 0 | 3 |
+   | RP (roughing the passer) | 2 | 2 | 0 | 1 |
+   | DG (delay of game) | 1 | 0 | 1 | 1 |
+   | NF (non-contact) | 1 | 1 | 0 | 1 |
+   | PI (pass interference) | 1 | 1 | 0 | 1 |
+
+   Los otros 32 códigos de `PENALTIES_LIST` no aparecen en ningún juego. **Cautela:** las 113 jugadas están en 7 juegos, todos `semana = 'TEST'`; sólo 10 jugadas llevan flag o son PENALTY. Es una muestra de pruebas, no una distribución de partidos reales: hay que revisar el conteo cuando haya juegos reales capturados antes de dar por cerrada la lista. NF y PI quedan fuera de la tabla por defecto hasta validar su yardaje con el reglamento ONEFA (NF: se desconoce qué cubre; PI: spot y yardas en verificar vigencia, §3 Art.8).
