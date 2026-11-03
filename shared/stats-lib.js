@@ -114,7 +114,27 @@ export function fumbleYards(p) {
   else if (e > 0) fumbler = 0
   else if (e >= r) fumbler = e
   else fumbler = r
-  return { team: e, fumbler, recoverer: { ref: p.fumble_recovered_by || null, yds: e - fumbler }, lost }
+  // §13 Art.2 A.R.3-4: a teammate who recovers in the opponent's end zone
+  // scores the TD, in the category of the originating play.
+  const td = !lost && end.team !== p.possession && end.yard === 0
+  const scorer = td ? ((p.fumble_result === 'fumble' ? p.fumble_2_recovered_by : p.fumble_recovered_by) || null) : null
+  return { team: e, fumbler, recoverer: { ref: p.fumble_recovered_by || null, yds: e - fumbler }, lost, td, scorer }
+}
+
+// The play scored a touchdown for the offense: the stored flag (from `at`),
+// or an own-team fumble recovery in the end zone (H-04). The latter has no
+// `at`, so touchdown is false in the DB; a voided play keeps net_yards 0.
+export function playTouchdown(p) {
+  if (p.touchdown === true) return true
+  return p.net_yards == null && fumbleYards(p)?.td === true
+}
+
+// Who gets the TD of an own fumble recovery in the end zone ({ ref } or null);
+// the carrier who fumbled does not (his raw `touchdown` is false).
+function _fumbleScorer(p) {
+  if (p.net_yards != null) return null
+  const f = fumbleYards(p)
+  return f?.td ? { ref: f.scorer } : null
 }
 
 // Team net yards of a play: the stored net_yards, else derived (see above).
@@ -220,6 +240,11 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
         if (p.pass_result === 'complete') ensureReceiving().yds += rc.yds
         else ensureRushing().yds += rc.yds
       }
+      const sc = _fumbleScorer(p)
+      if (sc && same(sc.ref)) {
+        if (p.pass_result === 'complete') ensureReceiving().td++
+        else ensureRushing().td++
+      }
 
       // Any non-scramble/non-sack pass_result is an attempt — including
       // 'dropped'/'broken_up' — same rule as viewer.html:1975, not just
@@ -231,7 +256,7 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
         if (p.pass_result === 'complete') {
           pa.comp++
           pa.yds += playNetYards(p) || 0
-          if (p.touchdown) pa.td++
+          if (playTouchdown(p)) pa.td++  // §13 Art.2 A.R.4: still a TD pass
         }
         if (p.pass_result === 'intercepted') pa.int++
       }
@@ -379,7 +404,7 @@ export function driveEndLabel(plays, isLastDrive, teams) {
   }
   const turnover = _turnoverScore(last, teams)
   if (turnover) return turnover
-  if (last.touchdown) return 'TD'
+  if (playTouchdown(last)) return 'TD'
   if (last.play_type === 'KICK' && last.kick_type === 'field_goal' && last.fg_result === 'good') return 'FG'
   if (last.play_type === 'PUNT') return 'PUNT'
   if (last.pass_result === 'intercepted') return 'INT'
@@ -395,7 +420,7 @@ export function _isFirstDownPlay(p, seriesStartYardline = null) {
   const yds = playNetYards(p)
   // §1 Art.1: a TD is a first down only in a series that started 10 or more
   // yards from the goal line (not on 1st and goal from inside the 10).
-  const reached = p.touchdown === true
+  const reached = playTouchdown(p)
     ? !(seriesStartYardline != null && seriesStartYardline < 10)
     : (yds != null && p.distance != null && yds >= p.distance)
   // §1 Art.4: no first down by yardage when the play ends with the opponent
@@ -485,7 +510,7 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       t.totalPlays++
       // B.I.8 A.R.1: a TD converts 3rd/4th down even when it isn't a first
       // down under §1 Art.1 (3rd and goal from inside the 10).
-      const converted = firstDown || p.touchdown === true
+      const converted = firstDown || playTouchdown(p)
       if (p.down === 3) { t.thirdAtt++; if (converted) t.thirdConv++ }
       if (p.down === 4) { t.fourthAtt++; if (converted) t.fourthConv++ }
     }
@@ -2077,7 +2102,10 @@ function _advanceFumble(state, play, prefix, teams) {
     state.down     = 0
     state.distance = 0
     if (fumbleAtResult) state.field_pos = { ...fumbleAtResult }
-    if (possessionChanged) _addPoints(state, recoveryTeam, 6, teams)
+    // Whoever ends up with the ball scores: the opponent on a return, or the
+    // offense on its own recovery in the end zone (§13 Art.2 A.R.3-4). A play
+    // voided by an accepted flag (stats_count false) scores nothing (§14 Art.5).
+    if (play.stats_count !== false) _addPoints(state, state.possession, 6, teams)
     return
   }
 
@@ -2573,12 +2601,12 @@ export function computeQBProgression(plays, rosters = null) {
     if (isAttempt) {
       qb.att++
       if (p.pass_result === 'complete') { qb.comp++; qb.yds += (playNetYards(p) || 0) }
-      if (p.touchdown) qb.td++
+      if (playTouchdown(p)) qb.td++
       if (p.pass_result === 'intercepted') qb.int++
     }
 
     let note = ''
-    if (p.touchdown) note = 'TD'
+    if (playTouchdown(p)) note = 'TD'
     else if (p.pass_result === 'intercepted') note = 'INT'
     else if (p.pass_result === 'sack') note = 'SACK'
 
@@ -2695,7 +2723,7 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
         pa[t][key].comp++
         pa[t][key].yds += yds
         if (yds > pa[t][key].long) pa[t][key].long = yds
-        if (p.touchdown) pa[t][key].td++
+        if (playTouchdown(p)) pa[t][key].td++  // §13 Art.2 A.R.4: still a TD pass
         if (p.received_by) {
           const rf = _keyLabelOr(p.received_by, idx, UNKNOWN)
           if (!re[t]) re[t] = {}
@@ -2723,6 +2751,21 @@ export function buildOffenseMaps(plays, homeAbbr, awayAbbr, rosters = null) {
         if (!ru[t][kf.key]) ru[t][kf.key] = { label: kf.label, att:0, yds:0, td:0, gained:0, long:-Infinity }
         ru[t][kf.key].yds += rc.yds
         if (rc.yds > 0) ru[t][kf.key].gained += rc.yds
+      }
+    }
+    // §13 Art.2 A.R.3-4: the TD goes to the teammate who recovered in the end
+    // zone (zero yards, no attempt), never also to the carrier who fumbled.
+    const sc = _fumbleScorer(p)
+    if (sc) {
+      const kf = _keyLabelOr(sc.ref, idx, UNKNOWN)
+      if (p.pass_result === 'complete') {
+        if (!re[t]) re[t] = {}
+        if (!re[t][kf.key]) re[t][kf.key] = { label: kf.label, rec:0, yds:0, td:0, long:-Infinity }
+        re[t][kf.key].td++
+      } else {
+        if (!ru[t]) ru[t] = {}
+        if (!ru[t][kf.key]) ru[t][kf.key] = { label: kf.label, att:0, yds:0, td:0, gained:0, long:-Infinity }
+        ru[t][kf.key].td++
       }
     }
   }
