@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — Setup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg2: #13161b;
+      --bg3: #1a1e25;
+      --border: #252a33;
+      --border2: #2e3540;
+      --text: #e8eaed;
+      --text2: #8a95a3;
+      --text3: #4a5568;
+      --accent: #3b82f6;
+      --accent-bg: rgba(59,130,246,0.12);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.12);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234,179,8,0.12);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.12);
+      --orange: #f97316;
+      --orange-bg: rgba(249,115,22,0.12);
+      --purple: #a855f7;
+      --purple-bg: rgba(168,85,247,0.12);
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .topbar__brand {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .topbar__brand span { color: var(--accent); }
+
+    .topbar__sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .topbar__divider {
+      width: 1px;
+      height: 20px;
+      background: var(--border2);
+    }
+
+    .topbar__back {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text2);
+      text-decoration: none;
+      white-space: nowrap;
+      transition: color 0.15s;
+    }
+
+    .topbar__back:hover { color: var(--text); }
+
+    .topbar__tabs {
+      margin-left: auto;
+      display: flex;
+      gap: 2px;
+    }
+
+    .tab {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      padding: 16px 14px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab--active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── LAYOUT ── */
+    .content {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 28px 20px 60px;
+    }
+
+    .panel { display: none; }
+    .panel--active { display: block; }
+
+    .panel-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+
+    .card__title {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text3);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    /* ── FORM ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+
+    .field--wide { grid-column: 1 / -1; }
+
+    .field-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text3);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .input, select.input {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-bg);
+    }
+
+    .input--color-pair { display: flex; gap: 6px; align-items: center; }
+    .input--color-pair input[type="color"] {
+      width: 36px; height: 34px; padding: 2px; background: var(--bg3);
+      border: 1px solid var(--border2); border-radius: 6px; cursor: pointer; flex-shrink: 0;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .form-error {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--red);
+      background: var(--red-bg);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      display: none;
+    }
+
+    .form-error--visible { display: block; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .btn:active { transform: scale(0.97); }
+
+    .btn--primary { background: var(--accent); color: #fff; }
+    .btn--primary:hover { opacity: 0.88; }
+
+    .btn--danger { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .btn--danger:hover { opacity: 0.85; }
+
+    .btn--ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+    .btn--ghost:hover { color: var(--text); border-color: var(--text3); }
+
+    .btn--sm { padding: 5px 11px; font-size: 11px; }
+
+    /* ── TABLE ── */
+    .setup-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .setup-table th {
+      background: var(--bg3);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text3);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .setup-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      font-size: 13px;
+    }
+
+    .setup-table tr:last-child td { border-bottom: none; }
+    .setup-table tbody tr { background: var(--bg2); transition: background 0.1s; }
+    .setup-table tbody tr:hover { background: var(--bg3); }
+    .setup-table tbody tr.row--clickable { cursor: pointer; }
+
+    .setup-table .num-cell { font-family: var(--mono); color: var(--text2); width: 44px; }
+    .setup-table .actions-cell { text-align: right; white-space: nowrap; width: 1%; }
+    .setup-table .actions-cell .btn { margin-left: 6px; }
+
+    .team-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .team-chip__dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    .matchup { display: flex; align-items: center; gap: 6px; }
+    .matchup__vs { font-family: var(--mono); font-size: 10px; color: var(--text3); padding: 0 2px; }
+
+    .status-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+
+    .status-badge--live { background: var(--red-bg); color: var(--red); }
+    .status-badge--final { background: var(--green-bg); color: var(--green); }
+    .status-badge--scheduled { background: var(--bg3); color: var(--text2); }
+
+    .empty-state {
+      padding: 30px 16px;
+      text-align: center;
+      color: var(--text3);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 100;
+      max-width: 90vw;
+    }
+
+    .toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast--success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .toast--error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* ── CSV IMPORT ── */
+    .import-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .import-badge--new    { background: var(--green-bg);  color: var(--green); }
+    .import-badge--update { background: var(--yellow-bg); color: var(--yellow); }
+    .import-badge--error  { background: var(--red-bg);    color: var(--red); }
+
+    .import-summary {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text2);
+    }
+  </style>
+</head>
+<body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <span class="topbar__brand">COVER<span>CERO</span></span>
+    <span class="topbar__sub">Setup</span>
+    <div class="topbar__divider"></div>
+    <a class="topbar__back" href="games.html">← Regresar a menú</a>
+    <nav class="topbar__tabs" id="setup-tabs">
+      <button class="tab tab--active" data-panel="roster">Roster</button>
+      <button class="tab" data-panel="games">Partidos</button>
+      <button class="tab" data-panel="teams">Equipos</button>
+    </nav>
+  </header>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <!-- ── SECCIÓN 1 — ROSTER ─────────────────────────────────────────────── -->
+    <section class="panel panel--active" id="panel-roster">
+      <div class="panel-title">Roster de jugadores</div>
+
+      <div class="card">
+        <div class="card__title">Equipo</div>
+        <select class="input" id="roster-team-select">
+          <option value="">Selecciona un equipo…</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div class="card__title">Temporada</div>
+        <select class="input" id="roster-season-select" style="max-width:200px"></select>
+      </div>
+
+      <div class="card" id="roster-import-card" style="display:none">
+        <div class="card__title">Importar roster desde CSV</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:10px">
+          Formato: <code>number,nombre,apellido,position</code> (con fila de encabezado). Columna opcional: <code>nombre_completo</code>
+        </div>
+        <div class="field" style="max-width:320px;margin-bottom:10px">
+          <label class="field-label" for="roster-import-year">Año de la temporada (obligatorio)</label>
+          <input class="input" type="number" id="roster-import-year" min="2000" max="2100" placeholder="Ej. 2026" autocomplete="off">
+        </div>
+        <input class="input" type="file" accept=".csv,text/csv" id="roster-csv-input" style="max-width:320px">
+        <div id="roster-import-preview" style="margin-top:14px"></div>
+      </div>
+
+      <div id="roster-content"></div>
+    </section>
+
+    <!-- ── SECCIÓN 2 — PARTIDOS ───────────────────────────────────────────── -->
+    <section class="panel" id="panel-games">
+      <div class="panel-title" id="games-form-title">Crear partido</div>
+
+      <div class="card">
+        <div class="form-error" id="games-form-error"></div>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field-label">Local</label>
+            <select class="input" id="game-home-select"></select>
+          </div>
+          <div class="field">
+            <label class="field-label">Visitante</label>
+            <select class="input" id="game-away-select"></select>
+          </div>
+          <div class="field">
+            <label class="field-label">Semana</label>
+            <select class="input" id="game-semana-select"></select>
+          </div>
+          <div class="field">
+            <label class="field-label">Status</label>
+            <select class="input" id="game-status-select">
+              <option value="scheduled">Programado</option>
+              <option value="live">En vivo</option>
+              <option value="final">Final</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">Fecha / hora (kickoff)</label>
+            <input class="input" type="datetime-local" id="game-kickoff-input">
+          </div>
+          <div class="field field--wide">
+            <label class="field-label">Sede</label>
+            <input class="input" type="text" id="game-sede-input" placeholder="Estadio, ciudad…">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--primary" id="game-save-btn">Guardar partido</button>
+          <button class="btn btn--ghost" id="game-cancel-btn" style="display:none">Cancelar edición</button>
+        </div>
+      </div>
+
+      <div class="card__title" style="margin-bottom:10px">Partidos existentes</div>
+      <div id="games-list"></div>
+    </section>
+
+    <!-- ── SECCIÓN 3 — EQUIPOS ────────────────────────────────────────────── -->
+    <section class="panel" id="panel-teams">
+      <div class="panel-title">Datos de equipo</div>
+
+      <div class="card">
+        <div class="card__title">Equipo</div>
+        <select class="input" id="team-select">
+          <option value="">Selecciona un equipo…</option>
+        </select>
+      </div>
+
+      <div class="card" id="team-form-card" style="display:none">
+        <div class="form-error" id="team-form-error"></div>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field-label">Nombre corto</label>
+            <input class="input" type="text" id="team-nombre-input">
+          </div>
+          <div class="field">
+            <label class="field-label">Abreviatura</label>
+            <input class="input" type="text" id="team-abrev-input" maxlength="6">
+          </div>
+          <div class="field">
+            <label class="field-label">Color principal</label>
+            <div class="input--color-pair">
+              <input type="color" id="team-color1-picker">
+              <input class="input" type="text" id="team-color1-input" placeholder="#3b82f6">
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">Color de texto</label>
+            <div class="input--color-pair">
+              <input type="color" id="team-color2-picker">
+              <input class="input" type="text" id="team-color2-input" placeholder="#ffffff">
+            </div>
+          </div>
+          <div class="field field--wide">
+            <label class="field-label">Logo URL</label>
+            <input class="input" type="text" id="team-logo-input" placeholder="https://…">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--primary" id="team-save-btn">Guardar equipo</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { rosterDuplicate, similarRosterPlayers, normName, TEMPORADA_ACTIVA, TEMPORADAS_DISPONIBLES, classifyRosterImport } from '../../shared/stats-lib.js'
+    // getAuthHeaders() carries the signed-in operator's session token — used
+    // for all writes below (games/players/teams INSERT/UPDATE/DELETE now
+    // require role=authenticated). Reads (sbGet) stay on the static anon
+    // SB_HEADERS — SELECT is still public.
+    import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
+
+    const WEEK_OPTIONS = ['1','2','3','4','5','6','7','8','9','10','QF','SF','F','TEST']
+    const WEEK_LABEL    = { QF: 'Cuartos de Final', SF: 'Semifinales', F: 'Final', TEST: 'TEST' }
+
+    let teams   = []
+    let games   = []
+    let roster  = []           // players of rosterTeamId in rosterSeason (what the screen shows)
+    let rosterAll = []         // every season of rosterTeamId
+    let rosterSeason = TEMPORADA_ACTIVA
+    let rosterTeamId  = null
+    let editingGameId = null
+    let editingPlayerId = null
+    let importRows = []
+    let importText = ''
+
+    // ── Supabase helpers ─────────────────────────────────────────────────────
+
+    async function sbGet(path) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    }
+
+    async function sbWrite(method, path, body) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+        method,
+        headers: {
+          ...(await getAuthHeaders()),
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: body != null ? JSON.stringify(body) : undefined,
+      })
+      if (!res.ok) throw new Error(await extractError(res))
+      if (method === 'DELETE') return null
+      const rows = await res.json()
+      return Array.isArray(rows) ? rows[0] : rows
+    }
+
+    async function extractError(res) {
+      try {
+        const j = await res.json()
+        if (j.code === '23505') return 'Ya existe un registro con esos datos (restricción única en la base).'
+        return j.message || `HTTP ${res.status}`
+      } catch {
+        return `HTTP ${res.status}`
+      }
+    }
+
+    // ── Toast ─────────────────────────────────────────────────────────────────
+
+    let toastTimer = null
+    function showToast(msg, type = 'success') {
+      const el = document.getElementById('toast')
+      el.textContent = msg
+      el.className = `toast toast--visible toast--${type}`
+      clearTimeout(toastTimer)
+      toastTimer = setTimeout(() => { el.classList.remove('toast--visible') }, 3200)
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    }
+
+    // ── Tabs ──────────────────────────────────────────────────────────────────
+
+    document.getElementById('setup-tabs').addEventListener('click', e => {
+      const btn = e.target.closest('.tab')
+      if (!btn) return
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('tab--active'))
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('panel--active'))
+      btn.classList.add('tab--active')
+      document.getElementById(`panel-${btn.dataset.panel}`).classList.add('panel--active')
+    })
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // SECCIÓN 1 — ROSTER
+    // ══════════════════════════════════════════════════════════════════════════
+
+    function populateTeamSelects() {
+      const opts = teams
+        .slice()
+        .sort((a, b) => (a.nombre_corto || '').localeCompare(b.nombre_corto || ''))
+        .map(t => `<option value="${t.id}">${esc(t.nombre_corto)} (${esc(t.abreviatura)})</option>`)
+        .join('')
+
+      populateSeasonSelect()
+      document.getElementById('roster-team-select').innerHTML =
+        '<option value="">Selecciona un equipo…</option>' + opts
+      document.getElementById('team-select').innerHTML =
+        '<option value="">Selecciona un equipo…</option>' + opts
+      document.getElementById('game-home-select').innerHTML = opts
+      document.getElementById('game-away-select').innerHTML = opts
+    }
+
+    document.getElementById('roster-team-select').addEventListener('change', async e => {
+      rosterTeamId = e.target.value || null
+      editingPlayerId = null
+      resetImportState()
+      document.getElementById('roster-import-card').style.display = rosterTeamId ? 'block' : 'none'
+      document.getElementById('roster-import-year').value = ''
+      populateSeasonSelect()
+      if (!rosterTeamId) {
+        document.getElementById('roster-content').innerHTML = ''
+        return
+      }
+      await loadRoster()
+    })
+
+    // Season selector: default is the active season; everything listed, edited,
+    // added or imported on this screen belongs to the selected season.
+    function populateSeasonSelect() {
+      const seasons = [...new Set([TEMPORADA_ACTIVA, ...TEMPORADAS_DISPONIBLES])].sort()
+      const sel = document.getElementById('roster-season-select')
+      sel.innerHTML = seasons.map(t => `<option value="${t}"${t === rosterSeason ? ' selected' : ''}>${t}</option>`).join('')
+    }
+
+    function applyRosterSeason() {
+      roster = rosterAll.filter(p => String(p.temporada) === String(rosterSeason))
+    }
+
+    document.getElementById('roster-season-select').addEventListener('change', e => {
+      rosterSeason = e.target.value
+      editingPlayerId = null
+      resetImportState()
+      applyRosterSeason()
+      if (rosterTeamId) renderRoster()
+    })
+
+    async function loadRoster() {
+      try {
+        rosterAll = await sbGet(`players?team_id=eq.${encodeURIComponent(rosterTeamId)}&order=number.asc`)
+        applyRosterSeason()
+        renderRoster()
+      } catch (err) {
+        console.error(err)
+        showToast('Error al cargar el roster', 'error')
+      }
+    }
+
+    function renderRoster() {
+      const container = document.getElementById('roster-content')
+
+      const rows = roster.map(p => {
+        if (p.id === editingPlayerId) {
+          return `
+            <tr data-id="${p.id}">
+              <td><input class="input" type="number" min="0" max="99" value="${p.number}" id="edit-number" style="width:64px"></td>
+              <td><input class="input" type="text" value="${esc(p.nombre || '')}" id="edit-nombre"></td>
+              <td><input class="input" type="text" value="${esc(p.apellido || '')}" id="edit-apellido"></td>
+              <td><input class="input" type="text" value="${esc(p.nombre_completo || '')}" id="edit-nombre-completo" placeholder="en cualquier orden"></td>
+              <td><input class="input" type="text" value="${esc(p.position || '')}" id="edit-position" style="width:100px"></td>
+              <td class="actions-cell">
+                <button class="btn btn--primary btn--sm" data-action="save-player" data-id="${p.id}">Guardar</button>
+                <button class="btn btn--ghost btn--sm" data-action="cancel-edit-player">Cancelar</button>
+              </td>
+            </tr>`
+        }
+        return `
+          <tr data-id="${p.id}">
+            <td class="num-cell">#${p.number}</td>
+            <td>${esc(p.nombre || '—')}</td>
+            <td>${esc(p.apellido || '—')}</td>
+            <td>${esc(p.nombre_completo || '—')}</td>
+            <td>${esc(p.position || '—')}</td>
+            <td class="actions-cell">
+              <button class="btn btn--ghost btn--sm" data-action="edit-player" data-id="${p.id}">Editar</button>
+              <button class="btn btn--danger btn--sm" data-action="delete-player" data-id="${p.id}">Eliminar</button>
+            </td>
+          </tr>`
+      }).join('')
+
+      container.innerHTML = `
+        <table class="setup-table">
+          <thead>
+            <tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Nombre completo</th><th>Posición</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${rows || `<tr><td colspan="6"><div class="empty-state">sin roster ${rosterSeason}</div></td></tr>`}
+          </tbody>
+        </table>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card__title">Agregar jugador</div>
+          <div class="form-error" id="player-form-error"></div>
+          <div class="form-grid">
+            <div class="field">
+              <label class="field-label">Número</label>
+              <input class="input" type="number" min="0" max="99" id="new-player-number">
+            </div>
+            <div class="field">
+              <label class="field-label">Nombre</label>
+              <input class="input" type="text" id="new-player-nombre">
+            </div>
+            <div class="field">
+              <label class="field-label">Apellido</label>
+              <input class="input" type="text" id="new-player-apellido">
+            </div>
+            <div class="field">
+              <label class="field-label">Nombre completo (opcional, en cualquier orden)</label>
+              <input class="input" type="text" id="new-player-nombre-completo">
+            </div>
+            <div class="field">
+              <label class="field-label">Posición</label>
+              <input class="input" type="text" id="new-player-position" placeholder="QB, WR, LB…">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn--primary" id="add-player-btn">Agregar jugador</button>
+          </div>
+        </div>
+      `
+
+      document.getElementById('add-player-btn').addEventListener('click', addPlayer)
+    }
+
+    async function addPlayer() {
+      const errorEl  = document.getElementById('player-form-error')
+      errorEl.classList.remove('form-error--visible')
+
+      const numberInput   = document.getElementById('new-player-number')
+      const nombreInput   = document.getElementById('new-player-nombre')
+      const apellidoInput = document.getElementById('new-player-apellido')
+      const posInput      = document.getElementById('new-player-position')
+
+      const number   = parseInt(numberInput.value, 10)
+      const nombre   = nombreInput.value.trim()
+      const apellido = apellidoInput.value.trim()
+      const nombreCompleto = document.getElementById('new-player-nombre-completo').value.trim()
+      const position = posInput.value.trim()
+
+      if (isNaN(number) || number < 0 || number > 99) {
+        errorEl.textContent = 'Ingresa un número de jugador válido (0-99).'
+        errorEl.classList.add('form-error--visible')
+        return
+      }
+
+      // Duplicate rule by identity (B4): numbers may repeat with different names.
+      const dup = rosterDuplicate({ number, nombre, apellido, temporada: rosterSeason }, roster)
+      if (dup) {
+        errorEl.textContent = dup.message
+        errorEl.classList.add('form-error--visible')
+        return
+      }
+
+      // rosterDuplicate only stops an identical identity. Same number + a similar name is probably
+      // the same person written differently: a second roster row would split (or double) his stats.
+      const similar = similarRosterPlayers({ number, nombre, apellido, nombre_completo: nombreCompleto, temporada: rosterSeason }, roster)
+      if (similar.length && !confirm(`Ya hay en este equipo (temporada ${rosterSeason}) un jugador con ese número y un nombre parecido: ${similar.map(similarTag).join(', ')}.\n\nSi es la misma persona, edita ese jugador en lugar de crear otro: dos filas de la misma persona duplican sus stats.\n\n¿Crear de todos modos como un jugador distinto?`)) return
+
+      try {
+        const created = await sbWrite('POST', 'players', {
+          team_id: rosterTeamId,
+          temporada: rosterSeason,
+          number,
+          nombre: nombre,
+          apellido: apellido,
+          nombre_completo: nombreCompleto || null,
+          position: position || null,
+        })
+        rosterAll.push(created)
+        applyRosterSeason()
+        renderRoster()
+        showToast(`Jugador #${number} agregado`)
+      } catch (err) {
+        errorEl.textContent = err.message
+        errorEl.classList.add('form-error--visible')
+      }
+    }
+
+    document.getElementById('roster-content').addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-action]')
+      if (!btn) return
+      const action = btn.dataset.action
+      const id = btn.dataset.id
+
+      if (action === 'edit-player') {
+        editingPlayerId = id
+        renderRoster()
+      }
+
+      if (action === 'cancel-edit-player') {
+        editingPlayerId = null
+        renderRoster()
+      }
+
+      if (action === 'save-player') {
+        const number   = parseInt(document.getElementById('edit-number').value, 10)
+        const nombre   = document.getElementById('edit-nombre').value.trim()
+        const apellido = document.getElementById('edit-apellido').value.trim()
+        const nombreCompleto = document.getElementById('edit-nombre-completo').value.trim()
+        const position = document.getElementById('edit-position').value.trim()
+
+        if (isNaN(number) || number < 0 || number > 99) {
+          showToast('Número de jugador inválido', 'error')
+          return
+        }
+        const dupEdit = rosterDuplicate({ id, number, nombre, apellido, temporada: rosterSeason }, roster)
+        if (dupEdit) {
+          showToast(dupEdit.message, 'error')
+          return
+        }
+
+        try {
+          const updated = await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(id)}`, {
+            number, nombre, apellido, nombre_completo: nombreCompleto || null, position: position || null,
+          })
+          rosterAll = rosterAll.map(p => p.id === id ? updated : p)
+          applyRosterSeason()
+          editingPlayerId = null
+          renderRoster()
+          showToast('Jugador actualizado')
+        } catch (err) {
+          showToast(err.message, 'error')
+        }
+      }
+
+      if (action === 'delete-player') {
+        const player = roster.find(p => p.id === id)
+        const fullName = [player?.nombre, player?.apellido].filter(Boolean).join(' ')
+        if (!confirm(`¿Eliminar al jugador #${player?.number}${fullName ? ' ' + fullName : ''}?`)) return
+        try {
+          await sbWrite('DELETE', `players?id=eq.${encodeURIComponent(id)}`)
+          rosterAll = rosterAll.filter(p => p.id !== id)
+          applyRosterSeason()
+          renderRoster()
+          showToast('Jugador eliminado')
+        } catch (err) {
+          showToast(err.message, 'error')
+        }
+      }
+    })
+
+    // ── Importar roster (CSV) ────────────────────────────────────────────────
+
+    function resetImportState() {
+      importRows = []
+      importText = ''
+      const fileInput = document.getElementById('roster-csv-input')
+      if (fileInput) fileInput.value = ''
+      const previewEl = document.getElementById('roster-import-preview')
+      if (previewEl) previewEl.innerHTML = ''
+    }
+
+    // Minimal RFC4180 parser (handles quoted fields with embedded commas/quotes).
+    // No CDN dependency added on purpose — this file has no build step and no
+    // deps beyond fonts + the Supabase config module, and the format is fixed
+    // to 4 simple columns, so a small manual parser is lower footprint than
+    // pulling in PapaParse for this.
+    function parseCSV(text) {
+      const rows = []
+      let row = [], field = '', inQuotes = false
+      const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+      for (let i = 0; i < norm.length; i++) {
+        const c = norm[i]
+        if (inQuotes) {
+          if (c === '"') {
+            if (norm[i + 1] === '"') { field += '"'; i++ }
+            else inQuotes = false
+          } else field += c
+        } else {
+          if (c === '"') inQuotes = true
+          else if (c === ',') { row.push(field); field = '' }
+          else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+          else field += c
+        }
+      }
+      if (field.length || row.length) { row.push(field); rows.push(row) }
+      return rows.filter(r => !(r.length === 1 && r[0].trim() === ''))
+    }
+
+    // The import year is typed by the operator; there is no default. Rows are
+    // classified against that season only (classifyRosterImport in stats-lib).
+    function importYear() {
+      const v = document.getElementById('roster-import-year').value.trim()
+      return /^\d{4}$/.test(v) ? v : null
+    }
+
+    function buildImportRows(text) {
+      const clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text
+      const raw = parseCSV(clean)
+      if (!raw.length) return { error: 'El archivo está vacío.' }
+
+      const header = raw[0].map(h => h.trim().toLowerCase())
+      const idx = {
+        number:   header.indexOf('number'),
+        nombre:   header.indexOf('nombre'),
+        apellido: header.indexOf('apellido'),
+        nombre_completo: header.indexOf('nombre_completo'),
+        position: header.indexOf('position'),
+      }
+      if (idx.number === -1) return { error: 'El CSV debe tener una columna "number" en el encabezado.' }
+
+      const dataRows = raw.slice(1).filter(r => r.some(c => c.trim() !== ''))
+      if (!dataRows.length) return { error: 'El CSV no tiene filas de datos.' }
+
+      const parsed = dataRows.map(cols => ({
+        numberRaw: (cols[idx.number] ?? '').trim(),
+        nombre:    idx.nombre   >= 0 ? (cols[idx.nombre]   ?? '').trim() : '',
+        apellido:  idx.apellido >= 0 ? (cols[idx.apellido] ?? '').trim() : '',
+        nombre_completo: idx.nombre_completo >= 0 ? (cols[idx.nombre_completo] ?? '').trim() : '',
+        position: idx.position >= 0 ? (cols[idx.position] ?? '').trim() : '',
+      }))
+      const year = importYear()
+      if (!year) return { error: 'Indica el año de la temporada antes de importar.' }
+      return { rows: classifyRosterImport(parsed, rosterAll, year) }
+    }
+
+    function diffCell(oldVal, newVal) {
+      const o = oldVal || '—'
+      const n = newVal || '—'
+      if ((oldVal || '') === (newVal || '')) return esc(n)
+      return `<span style="color:var(--text3);text-decoration:line-through">${esc(o)}</span> → ${esc(n)}`
+    }
+
+    // "#3 Omar Rios" for the same-number / similar-name warnings.
+    const similarTag = s => `#${s.player.number} ${[s.player.nombre, s.player.apellido].filter(Boolean).join(' ')}`
+
+    function renderImportPreview() {
+      const el = document.getElementById('roster-import-preview')
+      if (!importRows.length) { el.innerHTML = ''; return }
+
+      const newCount    = importRows.filter(r => r.status === 'new').length
+      const updateCount = importRows.filter(r => r.status === 'update').length
+      const errorCount  = importRows.filter(r => r.status === 'error').length
+      const validCount  = newCount + updateCount
+      const year = importYear()
+
+      const rowsHtml = importRows.map(r => {
+        if (r.status === 'error') {
+          return `<tr>
+            <td class="num-cell">${esc(r.numberRaw || '—')}</td>
+            <td colspan="4" style="color:var(--text3)">${esc(r.reason)}</td>
+            <td><span class="import-badge import-badge--error">Error</span></td>
+          </tr>`
+        }
+        if (r.status === 'update') {
+          return `<tr>
+            <td class="num-cell">#${r.number}</td>
+            <td>${diffCell(r.old.nombre, r.nombre)}</td>
+            <td>${diffCell(r.old.apellido, r.apellido)}</td>
+            <td>${r.nombre_completo ? diffCell(r.old.nombre_completo, r.nombre_completo) : esc(r.old.nombre_completo || '—')}</td>
+            <td>${diffCell(r.old.position, r.position)}</td>
+            <td><span class="import-badge import-badge--update">Actualizar</span></td>
+          </tr>`
+        }
+        const similar = similarRosterPlayers({ number: r.number, nombre: r.nombre, apellido: r.apellido, nombre_completo: r.nombre_completo, temporada: year }, rosterAll)
+        return `<tr>
+          <td class="num-cell">#${r.number}</td>
+          <td>${esc(r.nombre || '—')}</td>
+          <td>${esc(r.apellido || '—')}</td>
+          <td>${esc(r.nombre_completo || '—')}</td>
+          <td>${esc(r.position || '—')}</td>
+          <td><span class="import-badge import-badge--new">Nuevo</span>${similar.length ? `<div class="form-error form-error--visible" style="margin-top:4px">Mismo número y nombre parecido a ${similar.map(x => esc(similarTag(x))).join(', ')}: ¿es la misma persona?</div>` : ''}</td>
+        </tr>`
+      }).join('')
+
+      el.innerHTML = `
+        <table class="setup-table">
+          <thead><tr><th>#</th><th>Nombre</th><th>Apellido</th><th>Nombre completo</th><th>Posición</th><th>Status</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div class="form-actions" style="margin-top:12px">
+          <span class="import-summary">${newCount} nuevo${newCount !== 1 ? 's' : ''} · ${updateCount} actualizar · ${errorCount} error${errorCount !== 1 ? 'es' : ''}</span>
+          ${validCount > 0 && year ? `<span class="import-summary">${validCount} jugador${validCount !== 1 ? 'es' : ''} se guardar${validCount !== 1 ? 'án' : 'á'} en temporada ${year}</span>
+          <button class="btn btn--primary" id="roster-import-confirm-btn">Confirmar Import</button>` : ''}
+        </div>`
+
+      const confirmBtn = document.getElementById('roster-import-confirm-btn')
+      if (confirmBtn) confirmBtn.addEventListener('click', confirmImport)
+    }
+
+    async function confirmImport() {
+      const btn = document.getElementById('roster-import-confirm-btn')
+      const year = importYear()
+      const validRows = importRows.filter(r => r.status === 'new' || r.status === 'update')
+      if (!validRows.length || !year) return
+
+      const toInsert = validRows.filter(r => r.status === 'new').map(r => ({
+        team_id: rosterTeamId,
+        temporada: year,
+        number: r.number,
+        nombre: r.nombre,
+        apellido: r.apellido,
+        nombre_completo: r.nombre_completo || null,
+        position: r.position || null,
+      }))
+      // Never update a row outside the import season, even if an id were stale.
+      const toUpdate = validRows.filter(r => r.status === 'update' &&
+        rosterAll.some(p => p.id === r.id && String(p.temporada) === year))
+      const insertedCount = validRows.filter(r => r.status === 'new').length
+      const updatedCount  = validRows.filter(r => r.status === 'update').length
+      const errorCount    = importRows.length - validRows.length
+
+      // New rows that share a number and part of a name with someone already in the roster.
+      const similarNew = validRows.filter(r => r.status === 'new').map(r => ({
+        r, hits: similarRosterPlayers({ number: r.number, nombre: r.nombre, apellido: r.apellido, nombre_completo: r.nombre_completo, temporada: year }, rosterAll),
+      })).filter(x => x.hits.length)
+      const similarNote = similarNew.length
+        ? `\n\nOJO: ${similarNew.length} jugador${similarNew.length !== 1 ? 'es' : ''} nuevo${similarNew.length !== 1 ? 's' : ''} comparte${similarNew.length !== 1 ? 'n' : ''} número y parte del nombre con alguien del roster (¿la misma persona?):\n` +
+          similarNew.slice(0, 8).map(x => `• #${x.r.number} ${[x.r.nombre, x.r.apellido].filter(Boolean).join(' ')} ≈ ${x.hits.map(similarTag).join(', ')}`).join('\n') + (similarNew.length > 8 ? '\n…' : '')
+        : ''
+
+      if (!confirm(`${validRows.length} jugador${validRows.length !== 1 ? 'es' : ''} se guardarán en temporada ${year} (${insertedCount} nuevo${insertedCount !== 1 ? 's' : ''}, ${updatedCount} actualizado${updatedCount !== 1 ? 's' : ''}).${similarNote}\n\n¿Continuar?`)) return
+
+      btn.disabled = true
+      btn.textContent = 'Importando…'
+      try {
+        // Explicit writes, no on_conflict: new rows are inserted, existing rows are
+        // updated by their players.id (the team_id,number unique key is not relied on).
+        if (toInsert.length) await sbWrite('POST', 'players', toInsert)
+        for (const r of toUpdate) {
+          // nombre_completo only when the CSV has the column AND the cell is non-empty,
+          // so an import without it (or with blanks) never wipes an existing value.
+          await sbWrite('PATCH', `players?id=eq.${encodeURIComponent(r.id)}`, {
+            nombre: r.nombre, apellido: r.apellido, position: r.position || null,
+            ...(r.nombre_completo ? { nombre_completo: r.nombre_completo } : {}),
+          })
+        }
+        showToast(`${insertedCount} insertados, ${updatedCount} actualizados, ${errorCount} con error (no importados)`)
+        resetImportState()
+        await loadRoster()
+      } catch (err) {
+        showToast(err.message, 'error')
+        btn.disabled = false
+        btn.textContent = 'Confirmar Import'
+      }
+    }
+
+    document.getElementById('roster-import-year').addEventListener('input', () => {
+      if (!importText) return
+      const result = buildImportRows(importText)
+      importRows = result.error ? [] : result.rows
+      const previewEl = document.getElementById('roster-import-preview')
+      if (result.error) {
+        previewEl.innerHTML = `<div class="form-error form-error--visible">${esc(result.error)}</div>`
+        return
+      }
+      renderImportPreview()
+    })
+
+    document.getElementById('roster-csv-input').addEventListener('change', async e => {
+      const file = e.target.files[0]
+      const previewEl = document.getElementById('roster-import-preview')
+      if (!file) return
+      try {
+        importText = await file.text()
+        const result = buildImportRows(importText)
+        if (result.error) {
+          importRows = []
+          previewEl.innerHTML = `<div class="form-error form-error--visible">${esc(result.error)}</div>`
+          return
+        }
+        importRows = result.rows
+        renderImportPreview()
+      } catch (err) {
+        console.error(err)
+        previewEl.innerHTML = `<div class="form-error form-error--visible">No se pudo leer el archivo.</div>`
+      }
+    })
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // SECCIÓN 2 — PARTIDOS
+    // ══════════════════════════════════════════════════════════════════════════
+
+    function populateSemanaSelect() {
+      document.getElementById('game-semana-select').innerHTML = WEEK_OPTIONS
+        .map(w => `<option value="${w}">${WEEK_LABEL[w] || 'Semana ' + w}</option>`)
+        .join('')
+    }
+
+    async function loadGames() {
+      try {
+        games = await sbGet(
+          `games?select=*,home:home_team_id(nombre_corto,abreviatura,color_principal),away:away_team_id(nombre_corto,abreviatura,color_principal)` +
+          `&order=kickoff.desc.nullslast`
+        )
+        renderGamesList()
+      } catch (err) {
+        console.error(err)
+        showToast('Error al cargar los partidos', 'error')
+      }
+    }
+
+    function teamChip(team) {
+      if (!team) return '<span style="color:var(--text3)">—</span>'
+      const color = team.color_principal || '#4a5568'
+      const abbr  = team.abreviatura || team.nombre_corto || '?'
+      return `<span class="team-chip"><span class="team-chip__dot" style="background:${esc(color)}"></span>${esc(abbr)}</span>`
+    }
+
+    function statusBadge(status) {
+      const cls   = status === 'live' ? 'status-badge--live' : status === 'final' ? 'status-badge--final' : 'status-badge--scheduled'
+      const label = status === 'live' ? 'EN VIVO' : status === 'final' ? 'FINAL' : 'PROGRAMADO'
+      return `<span class="status-badge ${cls}">${label}</span>`
+    }
+
+    function formatKickoff(iso) {
+      if (!iso) return '—'
+      const d = new Date(iso)
+      const DAYS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+      const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+      return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} · ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+    }
+
+    function renderGamesList() {
+      const container = document.getElementById('games-list')
+      if (!games.length) {
+        container.innerHTML = `<div class="empty-state">No hay partidos registrados todavía.</div>`
+        return
+      }
+      container.innerHTML = `
+        <table class="setup-table">
+          <thead>
+            <tr><th>Sem.</th><th>Fecha</th><th>Partido</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            ${games.map(g => `
+              <tr class="row--clickable" data-id="${g.id}">
+                <td>${esc(WEEK_LABEL[g.semana] ? g.semana : (g.semana || '—'))}</td>
+                <td>${formatKickoff(g.kickoff)}</td>
+                <td><div class="matchup">${teamChip(g.away)}<span class="matchup__vs">@</span>${teamChip(g.home)}</div></td>
+                <td>${statusBadge(g.status)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`
+
+      container.querySelectorAll('tr.row--clickable').forEach(row => {
+        row.addEventListener('click', () => loadGameIntoForm(row.dataset.id))
+      })
+    }
+
+    function localDatetimeValue(iso) {
+      if (!iso) return ''
+      const d = new Date(iso)
+      const pad = n => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }
+
+    function loadGameIntoForm(id) {
+      const g = games.find(x => x.id === id)
+      if (!g) return
+      editingGameId = id
+      document.getElementById('games-form-title').textContent = 'Editar partido'
+      document.getElementById('game-home-select').value  = g.home_team_id
+      document.getElementById('game-away-select').value  = g.away_team_id
+      document.getElementById('game-semana-select').value = g.semana || '1'
+      document.getElementById('game-status-select').value = g.status || 'scheduled'
+      document.getElementById('game-kickoff-input').value = localDatetimeValue(g.kickoff)
+      document.getElementById('game-sede-input').value    = g.sede || ''
+      document.getElementById('game-cancel-btn').style.display = 'inline-block'
+      document.getElementById('game-save-btn').textContent = 'Guardar cambios'
+      document.getElementById('panel-games').scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
+    function resetGameForm() {
+      editingGameId = null
+      document.getElementById('games-form-title').textContent = 'Crear partido'
+      document.getElementById('game-home-select').selectedIndex = 0
+      document.getElementById('game-away-select').selectedIndex = 0
+      document.getElementById('game-semana-select').selectedIndex = 0
+      document.getElementById('game-status-select').value = 'scheduled'
+      document.getElementById('game-kickoff-input').value = ''
+      document.getElementById('game-sede-input').value = ''
+      document.getElementById('game-cancel-btn').style.display = 'none'
+      document.getElementById('game-save-btn').textContent = 'Guardar partido'
+      document.getElementById('games-form-error').classList.remove('form-error--visible')
+    }
+
+    document.getElementById('game-cancel-btn').addEventListener('click', resetGameForm)
+
+    document.getElementById('game-save-btn').addEventListener('click', async () => {
+      const errorEl = document.getElementById('games-form-error')
+      errorEl.classList.remove('form-error--visible')
+
+      const homeId = document.getElementById('game-home-select').value
+      const awayId = document.getElementById('game-away-select').value
+      const semana = document.getElementById('game-semana-select').value
+      const status = document.getElementById('game-status-select').value
+      const kickoffLocal = document.getElementById('game-kickoff-input').value
+      const sede = document.getElementById('game-sede-input').value.trim()
+
+      if (!homeId || !awayId) {
+        errorEl.textContent = 'Selecciona ambos equipos.'
+        errorEl.classList.add('form-error--visible')
+        return
+      }
+      if (homeId === awayId) {
+        errorEl.textContent = 'El equipo local y visitante no pueden ser el mismo.'
+        errorEl.classList.add('form-error--visible')
+        return
+      }
+
+      const body = {
+        home_team_id: homeId,
+        away_team_id: awayId,
+        semana,
+        status,
+        kickoff: kickoffLocal ? new Date(kickoffLocal).toISOString() : null,
+        sede: sede || null,
+      }
+
+      try {
+        if (editingGameId) {
+          await sbWrite('PATCH', `games?id=eq.${encodeURIComponent(editingGameId)}`, body)
+          showToast('Partido actualizado')
+        } else {
+          await sbWrite('POST', 'games', body)
+          showToast('Partido creado')
+        }
+        resetGameForm()
+        await loadGames()
+      } catch (err) {
+        errorEl.textContent = err.message
+        errorEl.classList.add('form-error--visible')
+      }
+    })
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // SECCIÓN 3 — EQUIPOS
+    // ══════════════════════════════════════════════════════════════════════════
+
+    function syncColorFields(pickerId, textId) {
+      const picker = document.getElementById(pickerId)
+      const text    = document.getElementById(textId)
+      picker.addEventListener('input', () => { text.value = picker.value })
+      text.addEventListener('input', () => {
+        if (/^#[0-9a-fA-F]{6}$/.test(text.value)) picker.value = text.value
+      })
+    }
+    syncColorFields('team-color1-picker', 'team-color1-input')
+    syncColorFields('team-color2-picker', 'team-color2-input')
+
+    document.getElementById('team-select').addEventListener('change', e => {
+      const id = e.target.value
+      const card = document.getElementById('team-form-card')
+      if (!id) { card.style.display = 'none'; return }
+
+      const team = teams.find(t => t.id === id)
+      if (!team) return
+
+      card.style.display = 'block'
+      document.getElementById('team-form-error').classList.remove('form-error--visible')
+      document.getElementById('team-nombre-input').value = team.nombre_corto || ''
+      document.getElementById('team-abrev-input').value  = team.abreviatura || ''
+      const c1 = /^#[0-9a-fA-F]{6}$/.test(team.color_principal || '') ? team.color_principal : '#4a5568'
+      const c2 = /^#[0-9a-fA-F]{6}$/.test(team.color_texto || '') ? team.color_texto : '#ffffff'
+      document.getElementById('team-color1-input').value  = team.color_principal || ''
+      document.getElementById('team-color1-picker').value = c1
+      document.getElementById('team-color2-input').value  = team.color_texto || ''
+      document.getElementById('team-color2-picker').value = c2
+      document.getElementById('team-logo-input').value    = team.logo_url || ''
+    })
+
+    document.getElementById('team-save-btn').addEventListener('click', async () => {
+      const id = document.getElementById('team-select').value
+      const errorEl = document.getElementById('team-form-error')
+      errorEl.classList.remove('form-error--visible')
+      if (!id) return
+
+      const nombre_corto  = document.getElementById('team-nombre-input').value.trim()
+      const abreviatura   = document.getElementById('team-abrev-input').value.trim()
+      const color_principal = document.getElementById('team-color1-input').value.trim()
+      const color_texto     = document.getElementById('team-color2-input').value.trim()
+      const logo_url         = document.getElementById('team-logo-input').value.trim()
+
+      if (!nombre_corto || !abreviatura) {
+        errorEl.textContent = 'Nombre corto y abreviatura son obligatorios.'
+        errorEl.classList.add('form-error--visible')
+        return
+      }
+
+      try {
+        const updated = await sbWrite('PATCH', `teams?id=eq.${encodeURIComponent(id)}`, {
+          nombre_corto,
+          abreviatura,
+          color_principal: color_principal || null,
+          color_texto: color_texto || null,
+          logo_url: logo_url || null,
+        })
+        teams = teams.map(t => t.id === id ? { ...t, ...updated } : t)
+        populateTeamSelects()
+        document.getElementById('team-select').value = id
+        showToast('Equipo actualizado')
+      } catch (err) {
+        errorEl.textContent = err.message
+        errorEl.classList.add('form-error--visible')
+      }
+    })
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+
+    async function init() {
+      populateSemanaSelect()
+      try {
+        teams = await sbGet('teams?select=*&order=nombre_corto.asc')
+        populateTeamSelects()
+      } catch (err) {
+        console.error(err)
+        showToast('Error al cargar los equipos', 'error')
+      }
+      await loadGames()
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — Advanced Stats</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg2: #13161b;
+      --bg3: #1a1e25;
+      --border: #252a33;
+      --border2: #2e3540;
+      --text: #e8eaed;
+      --text2: #8a95a3;
+      --text3: #4a5568;
+      --accent: #3b82f6;
+      --accent-bg: rgba(59,130,246,0.12);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.12);
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    [hidden] { display: none !important; }
+
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; line-height: 1.4; }
+
+    .topbar {
+      background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px;
+      display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 10;
+    }
+    .topbar__brand { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: 0.04em; white-space: nowrap; }
+    .topbar__brand span { color: var(--accent); }
+    .topbar__sub { font-family: var(--mono); font-size: 11px; color: var(--text2); letter-spacing: 0.08em; text-transform: uppercase; }
+    .topbar__divider { width: 1px; height: 20px; background: var(--border2); }
+    .topbar__back { font-family: var(--mono); font-size: 12px; color: var(--text2); text-decoration: none; white-space: nowrap; transition: color 0.15s; }
+    .topbar__back:hover { color: var(--text); }
+
+    .content { max-width: 720px; margin: 0 auto; padding: 28px 20px 80px; }
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 20px; }
+    .card--disabled { opacity: 0.45; pointer-events: none; }
+    .card__title { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+
+    .input {
+      background: var(--bg3); border: 1px solid var(--border2); border-radius: 6px; color: var(--text);
+      font-family: var(--sans); font-size: 13px; padding: 8px 10px; outline: none; width: 100%;
+    }
+    .input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+
+    .choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+    .choice {
+      display: flex; flex-direction: column; gap: 4px; text-align: left;
+      background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px;
+      color: var(--text2); font-family: var(--mono); padding: 12px 14px; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .choice:hover { color: var(--text); border-color: var(--text3); }
+    .choice--active { background: var(--accent-bg); border-color: var(--accent); color: var(--text); }
+    .choice__name { font-weight: 700; font-size: 13px; }
+    .choice__desc { font-size: 11px; color: var(--text3); font-family: var(--sans); }
+
+    .go-row { display: flex; justify-content: flex-end; }
+    .btn {
+      font-family: var(--mono); font-size: 12px; font-weight: 700; padding: 10px 20px; border-radius: 6px;
+      border: none; cursor: pointer; background: var(--accent); color: #fff; text-decoration: none; display: inline-block;
+    }
+    .btn:hover { opacity: 0.88; }
+    .empty { font-family: var(--mono); font-size: 12px; color: var(--text3); }
+    .error { font-family: var(--mono); font-size: 12px; color: var(--red); background: var(--red-bg); border-radius: 6px; padding: 8px 12px; }
+  </style>
+</head>
+<body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
+
+  <header class="topbar">
+    <span class="topbar__brand">COVER<span>CERO</span></span>
+    <span class="topbar__sub">Advanced Stats</span>
+    <div class="topbar__divider"></div>
+    <a class="topbar__back" href="games.html">← Regresar a menú</a>
+  </header>
+
+  <main class="content">
+    <div class="card" id="card-game">
+      <div class="card__title">1 · Partido</div>
+      <select class="input" id="game-select"><option value="">Cargando partidos…</option></select>
+    </div>
+
+    <div class="card card--disabled" id="card-type">
+      <div class="card__title">2 · Tipo de dato a capturar</div>
+      <div class="choice-grid" id="type-grid"></div>
+    </div>
+
+    <div class="card card--disabled" id="card-team" hidden>
+      <div class="card__title">3 · Equipo</div>
+      <div class="choice-grid" id="team-grid"></div>
+    </div>
+
+    <div class="go-row"><a class="btn" id="go" href="#" hidden>Abrir →</a></div>
+  </main>
+
+  <script type="module">
+    import { SUPABASE_HEADERS as SB_HEADERS, SUPABASE_URL as SB_URL } from '../../shared/supabase/supabase_config.js'
+
+    // Each entry is one kind of advanced capture. To add another, append an
+    // object here and give it a page — nothing else in this file changes.
+    //   needsTeam: show the home/away picker before opening
+    //   href(gameId, side): URL of the capture page (side is null if !needsTeam)
+    const ADVANCED_TYPES = [
+      {
+        id: 'qbmap',
+        label: 'QB Map',
+        description: 'Launch y target de cada pase, revisando el video',
+        needsTeam: true,
+        href: (gameId, side) => `QBMAP.html?game=${encodeURIComponent(gameId)}&side=${side}`,
+      },
+      {
+        id: 'qbmap_view',
+        label: 'QB Map — Visor',
+        description: 'Pases capturados en perspectiva desde atrás del QB',
+        needsTeam: false,   // the viewer has its own team picker
+        href: gameId => `qbmap_view.html?game=${encodeURIComponent(gameId)}`,
+      },
+    ]
+
+    const WEEK_LABEL = { QF: 'Cuartos de Final', SF: 'Semifinales', F: 'Final', TEST: 'TEST' }
+    const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    const $ = id => document.getElementById(id)
+
+    let games = [], game = null, type = null, side = null
+
+    function gameLabel(g) {
+      const home = g.home?.abreviatura || '?', away = g.away?.abreviatura || '?'
+      const semana = WEEK_LABEL[g.semana] || (g.semana ? `Sem. ${g.semana}` : 'Sin semana')
+      const score = (g.status === 'final' || g.score_home || g.score_away) ? ` (${g.score_away ?? 0}-${g.score_home ?? 0})` : ''
+      return `${away} @ ${home} — ${semana}${score}`
+    }
+
+    async function loadGames() {
+      try {
+        const res = await fetch(`${SB_URL}/rest/v1/games?select=*,home:home_team_id(id,nombre_corto,abreviatura),away:away_team_id(id,nombre_corto,abreviatura)&order=kickoff.desc.nullslast`, { headers: SB_HEADERS })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        games = await res.json()
+        $('game-select').innerHTML = '<option value="">Selecciona un partido…</option>' +
+          games.map(g => `<option value="${g.id}">${esc(gameLabel(g))}</option>`).join('')
+      } catch (err) {
+        console.error(err)
+        $('card-game').insertAdjacentHTML('beforeend', `<div class="error" style="margin-top:10px">Error al cargar partidos: ${esc(err.message)}</div>`)
+      }
+    }
+
+    function renderTypes() {
+      $('type-grid').innerHTML = ADVANCED_TYPES.map(t => `
+        <button class="choice${type?.id === t.id ? ' choice--active' : ''}" data-type="${t.id}">
+          <span class="choice__name">${esc(t.label)}</span>
+          <span class="choice__desc">${esc(t.description)}</span>
+        </button>`).join('')
+      $('type-grid').querySelectorAll('button').forEach(b => {
+        b.onclick = () => { type = ADVANCED_TYPES.find(t => t.id === b.dataset.type); side = null; refresh() }
+      })
+    }
+
+    function renderTeams() {
+      const opts = [
+        { side: 'home', label: 'Local', team: game.home },
+        { side: 'away', label: 'Visitante', team: game.away },
+      ]
+      $('team-grid').innerHTML = opts.map(o => `
+        <button class="choice${side === o.side ? ' choice--active' : ''}" data-side="${o.side}">
+          <span class="choice__name">${esc(o.team?.abreviatura || '?')}</span>
+          <span class="choice__desc">${o.label} · ${esc(o.team?.nombre_corto || '')} (su ofensiva)</span>
+        </button>`).join('')
+      $('team-grid').querySelectorAll('button').forEach(b => {
+        b.onclick = () => { side = b.dataset.side; refresh() }
+      })
+    }
+
+    function refresh() {
+      $('card-type').classList.toggle('card--disabled', !game)
+      renderTypes()
+      const needTeam = !!(game && type?.needsTeam)
+      $('card-team').hidden = !needTeam
+      $('card-team').classList.toggle('card--disabled', !needTeam)
+      if (needTeam) renderTeams()
+      const ready = game && type && (!type.needsTeam || side)
+      const go = $('go')
+      go.hidden = !ready
+      if (ready) go.href = type.href(game.id, side)
+    }
+
+    $('game-select').addEventListener('change', e => {
+      game = games.find(g => g.id === e.target.value) || null
+      side = null
+      refresh()
+    })
+
+    renderTypes()
+    refresh()
+    loadGames()
+  </script>
+</body>
+</html>

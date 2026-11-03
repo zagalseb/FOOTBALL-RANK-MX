@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cover Cero — Stats Manuales</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --bg2: #13161b;
+      --bg3: #1a1e25;
+      --border: #252a33;
+      --border2: #2e3540;
+      --text: #e8eaed;
+      --text2: #8a95a3;
+      --text3: #4a5568;
+      --accent: #3b82f6;
+      --accent-bg: rgba(59,130,246,0.12);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.12);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234,179,8,0.12);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.12);
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .topbar__brand { font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--text); letter-spacing: 0.04em; white-space: nowrap; }
+    .topbar__brand span { color: var(--accent); }
+    .topbar__sub { font-family: var(--mono); font-size: 11px; color: var(--text2); letter-spacing: 0.08em; text-transform: uppercase; }
+    .topbar__divider { width: 1px; height: 20px; background: var(--border2); }
+    .topbar__back { font-family: var(--mono); font-size: 12px; color: var(--text2); text-decoration: none; white-space: nowrap; transition: color 0.15s; }
+    .topbar__back:hover { color: var(--text); }
+
+    /* ── LAYOUT ── */
+    .content { max-width: 1080px; margin: 0 auto; padding: 28px 20px 80px; }
+
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 20px; }
+    .card__title { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 14px; }
+    .card--disabled { opacity: 0.45; pointer-events: none; }
+
+    /* ── FORM ── */
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field--wide { grid-column: 1 / -1; }
+    .field-label { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .input, select.input {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-bg); }
+
+    .form-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    .form-error {
+      font-family: var(--mono); font-size: 12px; color: var(--red);
+      background: var(--red-bg); border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: none;
+    }
+    .form-error--visible { display: block; }
+
+    .form-warning {
+      font-family: var(--mono); font-size: 12px; color: var(--yellow);
+      background: var(--yellow-bg); border: 1px solid rgba(234,179,8,0.3);
+      border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; display: none;
+    }
+    .form-warning--visible { display: block; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      font-family: var(--mono); font-size: 12px; font-weight: 700;
+      padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer;
+      letter-spacing: 0.03em; transition: opacity 0.15s, transform 0.1s; white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn--primary { background: var(--accent); color: #fff; }
+    .btn--primary:hover { opacity: 0.88; }
+    .btn--ghost { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+    .btn--ghost:hover { color: var(--text); border-color: var(--text3); }
+    .btn--danger { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .btn--danger:hover { opacity: 0.85; }
+    .btn--sm { padding: 5px 11px; font-size: 11px; }
+
+    /* ── TEAM SIDE PICKER ── */
+    .side-picker { display: flex; gap: 10px; }
+    .side-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--bg3); border: 1px solid var(--border2); border-radius: 8px;
+      color: var(--text2); font-family: var(--mono); font-weight: 700; font-size: 13px;
+      padding: 12px; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .side-btn:hover { color: var(--text); border-color: var(--text3); }
+    .side-btn--active { background: var(--accent-bg); border-color: var(--accent); color: var(--text); }
+    .side-btn__dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── TABLE ── */
+    .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+    .stats-table { width: 100%; border-collapse: collapse; min-width: 920px; }
+    .stats-table th, .stats-table td { padding: 7px 9px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+    .stats-table thead tr:first-child th {
+      background: var(--bg3); font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; text-align: center;
+      border-bottom: 1px solid var(--border2);
+    }
+    .stats-table thead tr:last-child th {
+      background: var(--bg3); font-family: var(--mono); font-size: 10px; font-weight: 600;
+      color: var(--text3); text-align: center;
+    }
+    .stats-table tbody tr { background: var(--bg2); }
+    .stats-table tbody tr:hover { background: var(--bg3); }
+    .stats-table tbody tr:last-child td { border-bottom: none; }
+    .stats-table .player-cell {
+      min-width: 190px; white-space: normal;
+      position: sticky; left: 0; z-index: 2;
+      background: var(--bg2);
+    }
+    .stats-table thead th.player-cell { z-index: 3; }
+    .stats-table tbody tr:hover .player-cell { background: var(--bg3); }
+    .stats-table .stat-input { width: 52px; text-align: center; padding: 6px 4px; }
+    .stats-table .row-actions-cell { text-align: right; width: 1%; }
+    .stats-table .group-divider { border-left: 1px solid #fff; }
+
+    .new-player-row td { background: var(--bg3); padding: 10px 9px; }
+    .new-player-inline { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+    .new-player-inline .field { min-width: 90px; }
+    .new-player-inline .field--name { min-width: 130px; }
+
+    .empty-state { padding: 24px 16px; text-align: center; color: var(--text3); font-family: var(--mono); font-size: 12px; }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
+      font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 10px 18px;
+      border-radius: 8px; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+      z-index: 100; max-width: 90vw;
+    }
+    .toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast--success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .toast--error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+    /* ── PREVIEW (mismo patrón visual del importador CSV en setup.html) ── */
+    .import-badge { font-family: var(--mono); font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; letter-spacing: 0.05em; white-space: nowrap; }
+    .import-badge--new    { background: var(--green-bg);  color: var(--green); }
+    .import-badge--update { background: var(--yellow-bg); color: var(--yellow); }
+    .import-badge--error  { background: var(--red-bg);    color: var(--red); }
+    .import-summary { font-family: var(--mono); font-size: 12px; color: var(--text2); }
+    .setup-table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .setup-table th { background: var(--bg3); font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    .setup-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13px; }
+    .setup-table tr:last-child td { border-bottom: none; }
+    .setup-table tbody tr { background: var(--bg2); }
+  </style>
+</head>
+<body>
+  <script type="module" src="../../shared/supabase/auth_gate.js"></script>
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <span class="topbar__brand">COVER<span>CERO</span></span>
+    <span class="topbar__sub">Stats Manuales</span>
+    <div class="topbar__divider"></div>
+    <a class="topbar__back" href="games.html">← Regresar a menú</a>
+  </header>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <!-- ── PARTIDO ─────────────────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="card__title">1. Partido</div>
+      <div class="form-grid">
+        <div class="field field--wide">
+          <label class="field-label">Selecciona un partido existente</label>
+          <select class="input" id="game-select">
+            <option value="">Selecciona un partido…</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--ghost btn--sm" id="toggle-new-game-btn">+ Crear partido nuevo</button>
+      </div>
+
+      <div id="new-game-card" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <div class="form-error" id="new-game-error"></div>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field-label">Local</label>
+            <select class="input" id="ng-home-select"></select>
+          </div>
+          <div class="field">
+            <label class="field-label">Visitante</label>
+            <select class="input" id="ng-away-select"></select>
+          </div>
+          <div class="field">
+            <label class="field-label">Temporada</label>
+            <input class="input" type="text" id="ng-temporada-input" placeholder="Ej. 2025">
+          </div>
+          <div class="field">
+            <label class="field-label">Semana</label>
+            <select class="input" id="ng-semana-select"></select>
+          </div>
+          <div class="field">
+            <label class="field-label">Marcador local (final)</label>
+            <input class="input" type="number" min="0" id="ng-score-home-input">
+          </div>
+          <div class="field">
+            <label class="field-label">Marcador visitante (final)</label>
+            <input class="input" type="number" min="0" id="ng-score-away-input">
+          </div>
+          <div class="field field--wide">
+            <label class="field-label">Sede</label>
+            <input class="input" type="text" id="ng-sede-input" placeholder="Estadio, ciudad…">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--primary" id="ng-save-btn">Crear partido</button>
+          <button class="btn btn--ghost" id="ng-cancel-btn">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── EQUIPO ──────────────────────────────────────────────────────────── -->
+    <div class="card card--disabled" id="team-picker-card">
+      <div class="card__title">2. Equipo</div>
+      <div class="side-picker" id="side-picker">
+        <div class="empty-state" style="flex:1">Selecciona un partido primero.</div>
+      </div>
+    </div>
+
+    <!-- ── STATS DE JUGADOR ────────────────────────────────────────────────── -->
+    <div class="card card--disabled" id="player-stats-card">
+      <div class="card__title">3. Stats de jugador — <span id="player-stats-team-label">—</span></div>
+      <div class="table-scroll">
+        <table class="stats-table" id="player-table">
+          <thead>
+            <tr>
+              <th rowspan="2" class="player-cell" style="text-align:left">Jugador</th>
+              <th colspan="5">Pase</th>
+              <th colspan="3" class="group-divider">Carrera</th>
+              <th colspan="3" class="group-divider">Recepción</th>
+              <th colspan="4" class="group-divider">Defensa</th>
+              <th rowspan="2"></th>
+            </tr>
+            <tr>
+              <th>Att</th><th>Comp</th><th>Yds</th><th>TD</th><th>Int</th>
+              <th class="group-divider">Att</th><th>Yds</th><th>TD</th>
+              <th class="group-divider">Rec</th><th>Yds</th><th>TD</th>
+              <th class="group-divider">Sacks</th><th>TFL</th><th>Int</th><th>Tkl</th>
+            </tr>
+          </thead>
+          <tbody id="player-table-body"></tbody>
+        </table>
+      </div>
+      <div class="form-actions" style="margin-top:12px">
+        <button class="btn btn--ghost btn--sm" id="add-player-row-btn">+ Agregar fila</button>
+        <button class="btn btn--primary" id="review-player-rows-btn">Revisar y guardar</button>
+      </div>
+      <div id="player-preview" style="margin-top:14px"></div>
+    </div>
+
+    <!-- ── STATS DE EQUIPO ─────────────────────────────────────────────────── -->
+    <div class="card card--disabled" id="team-stats-card">
+      <div class="card__title">4. Stats de equipo — <span id="team-stats-team-label">—</span></div>
+      <div class="form-grid">
+        <div class="field"><label class="field-label">First Downs</label><input class="input" type="number" min="0" id="ts-first_downs"></div>
+        <div class="field"><label class="field-label">Total Yds</label><input class="input" type="number" id="ts-total_yds"></div>
+        <div class="field"><label class="field-label">Pass Yds</label><input class="input" type="number" id="ts-pass_yds"></div>
+        <div class="field"><label class="field-label">Rush Yds</label><input class="input" type="number" id="ts-rush_yds"></div>
+
+        <div class="field"><label class="field-label">Penalties</label><input class="input" type="number" min="0" id="ts-penalties"></div>
+        <div class="field"><label class="field-label">Penalty Yds</label><input class="input" type="number" min="0" id="ts-penalty_yds"></div>
+
+        <div class="field"><label class="field-label">Red Zone TD</label><input class="input" type="number" min="0" id="ts-red_zone_td"></div>
+        <div class="field"><label class="field-label">Red Zone Trips</label><input class="input" type="number" min="0" id="ts-red_zone_trips"></div>
+
+        <div class="field"><label class="field-label">Turnovers</label><input class="input" type="number" min="0" id="ts-turnovers"></div>
+        <div class="field"><label class="field-label">Fumbles</label><input class="input" type="number" min="0" id="ts-fumbles"></div>
+        <div class="field"><label class="field-label">Fumbles Lost</label><input class="input" type="number" min="0" id="ts-fumbles_lost"></div>
+
+        <div class="field"><label class="field-label">Sacks (hechos)</label><input class="input" type="number" min="0" step="0.5" id="ts-sacks"></div>
+        <div class="field"><label class="field-label">Sack Yds</label><input class="input" type="number" min="0" id="ts-sack_yds"></div>
+
+        <div class="field"><label class="field-label">TFL</label><input class="input" type="number" min="0" step="0.5" id="ts-tfl"></div>
+        <div class="field"><label class="field-label">TFL Yds</label><input class="input" type="number" min="0" id="ts-tfl_yds"></div>
+
+        <div class="field"><label class="field-label">3rd Down Conv</label><input class="input" type="number" min="0" id="ts-third_down_conv"></div>
+        <div class="field"><label class="field-label">3rd Down Att</label><input class="input" type="number" min="0" id="ts-third_down_att"></div>
+
+        <div class="field"><label class="field-label">4th Down Conv</label><input class="input" type="number" min="0" id="ts-fourth_down_conv"></div>
+        <div class="field"><label class="field-label">4th Down Att</label><input class="input" type="number" min="0" id="ts-fourth_down_att"></div>
+
+        <div class="field"><label class="field-label">Time of Possession (MM:SS)</label><input class="input" type="text" placeholder="30:00" id="ts-top"></div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label class="field-label">Q1</label><input class="input" type="number" min="0" id="ts-q1"></div>
+        <div class="field"><label class="field-label">Q2</label><input class="input" type="number" min="0" id="ts-q2"></div>
+        <div class="field"><label class="field-label">Q3</label><input class="input" type="number" min="0" id="ts-q3"></div>
+        <div class="field"><label class="field-label">Q4</label><input class="input" type="number" min="0" id="ts-q4"></div>
+        <div class="field"><label class="field-label">OT</label><input class="input" type="number" min="0" id="ts-ot"></div>
+      </div>
+      <div class="form-warning" id="team-stats-quarter-warning"></div>
+      <div class="form-error" id="team-stats-error"></div>
+      <div class="form-actions">
+        <button class="btn btn--primary" id="team-stats-save-btn">Guardar stats de equipo</button>
+      </div>
+    </div>
+
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module">
+    import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { rosterDuplicate, getGameTemporada } from '../../shared/stats-lib.js'
+    import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
+    import { secondsToMMSS } from '../../shared/stats-lib.js'
+
+    const WEEK_OPTIONS = ['1','2','3','4','5','6','7','8','9','10','QF','SF','F','TEST']
+    const WEEK_LABEL   = { QF: 'Cuartos de Final', SF: 'Semifinales', F: 'Final', TEST: 'TEST' }
+
+    const PLAYER_STAT_FIELDS = [
+      { key: 'pass_att',  step: 1 }, { key: 'pass_comp', step: 1 }, { key: 'pass_yds', step: 1 },
+      { key: 'pass_td',   step: 1 }, { key: 'pass_int',  step: 1 },
+      { key: 'rush_att',  step: 1 }, { key: 'rush_yds',  step: 1 }, { key: 'rush_td', step: 1 },
+      { key: 'rec',       step: 1 }, { key: 'rec_yds',   step: 1 }, { key: 'rec_td',  step: 1 },
+      { key: 'sacks',     step: 0.5 }, { key: 'tfl',     step: 0.5 }, { key: 'ints',    step: 1 },
+      { key: 'tackles',   step: 0.5 },
+    ]
+
+    const TEAM_STAT_FIELDS = [
+      'first_downs','total_yds','pass_yds','rush_yds',
+      'penalties','penalty_yds','red_zone_td','red_zone_trips',
+      'turnovers','fumbles','fumbles_lost',
+      'sacks','sack_yds','tfl','tfl_yds',
+      'third_down_conv','third_down_att','fourth_down_conv','fourth_down_att',
+      'q1','q2','q3','q4','ot',
+    ]
+
+    let teams   = []
+    let games   = []
+    let selectedGameId = null
+    let selectedTeamSide = null // 'home' | 'away'
+    let selectedTeamId   = null
+    let roster  = []
+    let playerRows = []   // { rowId, statsId, playerId, addingNewPlayer }
+    let rowIdSeq = 1
+    let teamStatsRowId = null
+
+    // ── Supabase helpers (mismo patrón que setup.html) ──────────────────────────
+
+    async function sbGet(path) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    }
+
+    async function sbWrite(method, path, body) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+        method,
+        headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: body != null ? JSON.stringify(body) : undefined,
+      })
+      if (!res.ok) throw new Error(await extractError(res))
+      if (method === 'DELETE') return null
+      const rows = await res.json()
+      return Array.isArray(rows) ? rows[0] : rows
+    }
+
+    async function sbUpsert(path, body, onConflict) {
+      const res = await fetch(`${SB_URL}/rest/v1/${path}?on_conflict=${encodeURIComponent(onConflict)}`, {
+        method: 'POST',
+        headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=representation' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(await extractError(res))
+      return res.json()
+    }
+
+    async function extractError(res) {
+      try {
+        const j = await res.json()
+        if (j.code === '23505') return 'Ya existe un registro con esos datos (restricción única en la base).'
+        return j.message || `HTTP ${res.status}`
+      } catch { return `HTTP ${res.status}` }
+    }
+
+    let toastTimer = null
+    function showToast(msg, type = 'success') {
+      const el = document.getElementById('toast')
+      el.textContent = msg
+      el.className = `toast toast--visible toast--${type}`
+      clearTimeout(toastTimer)
+      toastTimer = setTimeout(() => { el.classList.remove('toast--visible') }, 3200)
+    }
+
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    }
+
+    function playerLabel(p) {
+      const name = [p.nombre, p.apellido].filter(Boolean).join(' ')
+      return `#${p.number}${name ? ' ' + name : ''}`
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 1. PARTIDO
+    // ══════════════════════════════════════════════════════════════════════════
+
+    function populateTeamSelects() {
+      const opts = teams
+        .slice()
+        .sort((a, b) => (a.nombre_corto || '').localeCompare(b.nombre_corto || ''))
+        .map(t => `<option value="${t.id}">${esc(t.nombre_corto)} (${esc(t.abreviatura)})</option>`)
+        .join('')
+      document.getElementById('ng-home-select').innerHTML = opts
+      document.getElementById('ng-away-select').innerHTML = opts
+    }
+
+    function populateSemanaSelect() {
+      document.getElementById('ng-semana-select').innerHTML = WEEK_OPTIONS
+        .map(w => `<option value="${w}">${WEEK_LABEL[w] || 'Semana ' + w}</option>`)
+        .join('')
+    }
+
+    function gameOptionLabel(g) {
+      const home = g.home?.abreviatura || '?'
+      const away = g.away?.abreviatura || '?'
+      const semana = WEEK_LABEL[g.semana] || (g.semana ? `Sem. ${g.semana}` : 'Sin semana')
+      const temporada = g.temporada ? ` · ${g.temporada}` : ''
+      const score = (g.status === 'final' || g.score_home || g.score_away) ? ` (${g.score_away ?? 0}-${g.score_home ?? 0})` : ''
+      return `${away} @ ${home} — ${semana}${temporada}${score}`
+    }
+
+    async function loadGames() {
+      try {
+        games = await sbGet(
+          `games?select=*,home:home_team_id(id,nombre_corto,abreviatura,color_principal),away:away_team_id(id,nombre_corto,abreviatura,color_principal)` +
+          `&order=kickoff.desc.nullslast`
+        )
+        const sel = document.getElementById('game-select')
+        const prev = sel.value
+        sel.innerHTML = '<option value="">Selecciona un partido…</option>' +
+          games.map(g => `<option value="${g.id}">${esc(gameOptionLabel(g))}</option>`).join('')
+        if (prev && games.some(g => g.id === prev)) sel.value = prev
+      } catch (err) {
+        console.error(err)
+        showToast('Error al cargar los partidos', 'error')
+      }
+    }
+
+    document.getElementById('toggle-new-game-btn').addEventListener('click', () => {
+      document.getElementById('new-game-card').style.display = 'block'
+    })
+    document.getElementById('ng-cancel-btn').addEventListener('click', () => {
+      document.getElementById('new-game-card').style.display = 'none'
+    })
+
+    document.getElementById('ng-save-btn').addEventListener('click', async () => {
+      const errorEl = document.getElementById('new-game-error')
+      errorEl.classList.remove('form-error--visible')
+
+      const homeId    = document.getElementById('ng-home-select').value
+      const awayId    = document.getElementById('ng-away-select').value
+      const temporada = document.getElementById('ng-temporada-input').value.trim()
+      const semana    = document.getElementById('ng-semana-select').value
+      const scoreHome = document.getElementById('ng-score-home-input').value
+      const scoreAway = document.getElementById('ng-score-away-input').value
+      const sede      = document.getElementById('ng-sede-input').value.trim()
+
+      if (!homeId || !awayId) {
+        errorEl.textContent = 'Selecciona ambos equipos.'
+        errorEl.classList.add('form-error--visible')
+        return
+      }
+      if (homeId === awayId) {
+        errorEl.textContent = 'El equipo local y visitante no pueden ser el mismo.'
+        errorEl.classList.add('form-error--visible')
+        return
+      }
+
+      const body = {
+        home_team_id: homeId,
+        away_team_id: awayId,
+        temporada: temporada || null,
+        semana,
+        // Este formulario es para partidos históricos con marcador ya conocido
+        // — se crean directamente como 'final', sin pasar por scheduled/live.
+        status: 'final',
+        score_home: scoreHome === '' ? 0 : parseInt(scoreHome, 10),
+        score_away: scoreAway === '' ? 0 : parseInt(scoreAway, 10),
+        sede: sede || null,
+      }
+
+      try {
+        const created = await sbWrite('POST', 'games', body)
+        showToast('Partido creado')
+        document.getElementById('new-game-card').style.display = 'none'
+        await loadGames()
+        document.getElementById('game-select').value = created.id
+        await onGameSelected(created.id)
+      } catch (err) {
+        errorEl.textContent = err.message
+        errorEl.classList.add('form-error--visible')
+      }
+    })
+
+    document.getElementById('game-select').addEventListener('change', e => onGameSelected(e.target.value || null))
+
+    async function onGameSelected(gameId) {
+      selectedGameId   = gameId
+      selectedTeamSide = null
+      selectedTeamId   = null
+      resetPlayerSection()
+      resetTeamStatsSection()
+
+      const teamPickerCard = document.getElementById('team-picker-card')
+      if (!gameId) {
+        teamPickerCard.classList.add('card--disabled')
+        document.getElementById('side-picker').innerHTML = '<div class="empty-state" style="flex:1">Selecciona un partido primero.</div>'
+        return
+      }
+
+      const game = games.find(g => g.id === gameId)
+      if (!game) return
+
+      teamPickerCard.classList.remove('card--disabled')
+      document.getElementById('side-picker').innerHTML = `
+        <button class="side-btn" data-side="away">
+          <span class="side-btn__dot" style="background:${esc(game.away?.color_principal || '#4a5568')}"></span>
+          ${esc(game.away?.abreviatura || '?')} (Visitante)
+        </button>
+        <button class="side-btn" data-side="home">
+          <span class="side-btn__dot" style="background:${esc(game.home?.color_principal || '#4a5568')}"></span>
+          ${esc(game.home?.abreviatura || '?')} (Local)
+        </button>`
+
+      document.getElementById('side-picker').querySelectorAll('.side-btn').forEach(btn => {
+        btn.addEventListener('click', () => selectTeamSide(btn.dataset.side))
+      })
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 2. EQUIPO
+    // ══════════════════════════════════════════════════════════════════════════
+
+    async function selectTeamSide(side) {
+      selectedTeamSide = side
+      const game = games.find(g => g.id === selectedGameId)
+      selectedTeamId = side === 'home' ? game.home_team_id : game.away_team_id
+
+      document.querySelectorAll('#side-picker .side-btn').forEach(btn => {
+        btn.classList.toggle('side-btn--active', btn.dataset.side === side)
+      })
+
+      const teamAbbr = (side === 'home' ? game.home?.abreviatura : game.away?.abreviatura) || '?'
+      document.getElementById('player-stats-team-label').textContent = teamAbbr
+      document.getElementById('team-stats-team-label').textContent   = teamAbbr
+
+      await Promise.all([loadPlayerStatsSection(), loadTeamStatsSection()])
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 3. STATS DE JUGADOR
+    // ══════════════════════════════════════════════════════════════════════════
+
+    function resetPlayerSection() {
+      playerRows = []
+      document.getElementById('player-stats-card').classList.add('card--disabled')
+      document.getElementById('player-table-body').innerHTML = ''
+      document.getElementById('player-preview').innerHTML = ''
+    }
+
+    // Season of the selected game (games.temporada, or the kickoff year): the roster
+    // and any new player belong to it, never to the active season.
+    function selectedGameSeason() {
+      return getGameTemporada(games.find(g => g.id === selectedGameId))
+    }
+
+    async function loadPlayerStatsSection() {
+      document.getElementById('player-preview').innerHTML = ''
+      try {
+        const season = selectedGameSeason()
+        const rows = await sbGet(`players?team_id=eq.${encodeURIComponent(selectedTeamId)}&order=number.asc`)
+        roster = rows.filter(p => season == null || String(p.temporada) === String(season))
+        const existing = await sbGet(
+          `player_game_stats_manual?game_id=eq.${encodeURIComponent(selectedGameId)}&select=*`
+        )
+        const rosterIds = new Set(roster.map(p => p.id))
+        const existingForTeam = existing.filter(r => rosterIds.has(r.player_id))
+
+        playerRows = existingForTeam.map(r => ({
+          rowId: rowIdSeq++, statsId: r.id, playerId: r.player_id, addingNewPlayer: false, values: r,
+        }))
+        if (!playerRows.length) playerRows.push({ rowId: rowIdSeq++, statsId: null, playerId: null, addingNewPlayer: false, values: {} })
+
+        document.getElementById('player-stats-card').classList.remove('card--disabled')
+        renderPlayerTable()
+      } catch (err) {
+        console.error(err)
+        showToast('Error al cargar stats de jugador', 'error')
+      }
+    }
+
+    function playerSelectOptions(currentPlayerId) {
+      const opts = roster
+        .map(p => `<option value="${p.id}"${p.id === currentPlayerId ? ' selected' : ''}>${esc(playerLabel(p))}</option>`)
+        .join('')
+      return `<option value="">Selecciona…</option>${opts}<option value="__new__">+ Agregar jugador nuevo…</option>`
+    }
+
+    function renderPlayerTable() {
+      const tbody = document.getElementById('player-table-body')
+      if (!playerRows.length) {
+        tbody.innerHTML = `<tr><td colspan="17"><div class="empty-state">Sin filas — agrega una.</div></td></tr>`
+        return
+      }
+
+      tbody.innerHTML = playerRows.map(row => {
+        const GROUP_DIVIDER_FIELDS = new Set(['rush_att', 'rec', 'sacks'])
+        const statCells = PLAYER_STAT_FIELDS.map(f => `
+          <td${GROUP_DIVIDER_FIELDS.has(f.key) ? ' class="group-divider"' : ''}><input class="input stat-input" type="number" min="0" step="${f.step}"
+            data-row="${row.rowId}" data-field="${f.key}" value="${row.values?.[f.key] ?? 0}"></td>
+        `).join('')
+
+        const mainRow = `
+          <tr data-row-id="${row.rowId}">
+            <td class="player-cell">
+              <select class="input" data-row-select="${row.rowId}">${playerSelectOptions(row.playerId)}</select>
+            </td>
+            ${statCells}
+            <td class="row-actions-cell">
+              <button class="btn btn--ghost btn--sm" data-action="remove-row" data-row="${row.rowId}">✕</button>
+            </td>
+          </tr>`
+
+        const newPlayerRow = row.addingNewPlayer ? `
+          <tr class="new-player-row" data-new-player-for="${row.rowId}">
+            <td colspan="17">
+              <div class="new-player-inline">
+                <div class="field"><label class="field-label">Número</label><input class="input" type="number" min="0" max="99" style="width:70px" data-np="number" data-row="${row.rowId}"></div>
+                <div class="field field--name"><label class="field-label">Nombre</label><input class="input" type="text" data-np="nombre" data-row="${row.rowId}"></div>
+                <div class="field field--name"><label class="field-label">Apellido</label><input class="input" type="text" data-np="apellido" data-row="${row.rowId}"></div>
+                <div class="field"><label class="field-label">Posición</label><input class="input" type="text" style="width:90px" placeholder="QB, WR…" data-np="position" data-row="${row.rowId}"></div>
+                <button class="btn btn--primary btn--sm" data-action="create-inline-player" data-row="${row.rowId}">Crear</button>
+                <button class="btn btn--ghost btn--sm" data-action="cancel-inline-player" data-row="${row.rowId}">Cancelar</button>
+              </div>
+            </td>
+          </tr>` : ''
+
+        return mainRow + newPlayerRow
+      }).join('')
+    }
+
+    // renderPlayerTable() rebuilds every row's <input> from row.values, so any
+    // structural change (add/remove a row, pick a player, create one inline)
+    // would otherwise silently discard whatever the operator had already typed
+    // into every OTHER row's stat inputs. Snapshotting current DOM values back
+    // into playerRows right before each such mutation keeps them intact.
+    function captureCurrentValues() {
+      playerRows.forEach(row => {
+        const vals = {}
+        let any = false
+        PLAYER_STAT_FIELDS.forEach(f => {
+          const input = document.querySelector(`input[data-row="${row.rowId}"][data-field="${f.key}"]`)
+          if (input) { vals[f.key] = input.value; any = true }
+        })
+        if (any) row.values = { ...row.values, ...vals }
+      })
+    }
+
+    document.getElementById('add-player-row-btn').addEventListener('click', () => {
+      captureCurrentValues()
+      playerRows.push({ rowId: rowIdSeq++, statsId: null, playerId: null, addingNewPlayer: false, values: {} })
+      renderPlayerTable()
+    })
+
+    document.getElementById('player-table-body').addEventListener('change', e => {
+      const sel = e.target.closest('select[data-row-select]')
+      if (!sel) return
+      const rowId = Number(sel.dataset.rowSelect)
+      const row = playerRows.find(r => r.rowId === rowId)
+      if (!row) return
+      if (sel.value === '__new__') {
+        captureCurrentValues()
+        row.addingNewPlayer = true
+        row.playerId = null
+        renderPlayerTable()
+      } else {
+        row.playerId = sel.value || null
+        row.addingNewPlayer = false
+      }
+    })
+
+    document.getElementById('player-table-body').addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-action]')
+      if (!btn) return
+      const rowId = Number(btn.dataset.row)
+      const action = btn.dataset.action
+
+      if (action === 'remove-row') {
+        captureCurrentValues()
+        playerRows = playerRows.filter(r => r.rowId !== rowId)
+        renderPlayerTable()
+      }
+
+      if (action === 'cancel-inline-player') {
+        captureCurrentValues()
+        const row = playerRows.find(r => r.rowId === rowId)
+        if (row) row.addingNewPlayer = false
+        renderPlayerTable()
+      }
+
+      if (action === 'create-inline-player') {
+        const scope = document.querySelector(`tr[data-new-player-for="${rowId}"]`)
+        const number   = parseInt(scope.querySelector('[data-np="number"]').value, 10)
+        const nombre   = scope.querySelector('[data-np="nombre"]').value.trim()
+        const apellido = scope.querySelector('[data-np="apellido"]').value.trim()
+        const position = scope.querySelector('[data-np="position"]').value.trim()
+
+        if (isNaN(number) || number < 0 || number > 99) {
+          showToast('Ingresa un número de jugador válido (0-99).', 'error')
+          return
+        }
+        // Duplicate rule by identity (B4): numbers may repeat with different names.
+        const dup = rosterDuplicate({ number, nombre, apellido, temporada: selectedGameSeason() }, roster)
+        if (dup) {
+          showToast(dup.message, 'error')
+          return
+        }
+
+        try {
+          const created = await sbWrite('POST', 'players', {
+            team_id: selectedTeamId, temporada: selectedGameSeason(), number, nombre: nombre || null, apellido: apellido || null, position: position || null,
+          })
+          roster.push(created)
+          roster.sort((a, b) => a.number - b.number)
+          captureCurrentValues()
+          const row = playerRows.find(r => r.rowId === rowId)
+          if (row) { row.playerId = created.id; row.addingNewPlayer = false }
+          renderPlayerTable()
+          showToast(`Jugador #${number} agregado`)
+        } catch (err) {
+          showToast(err.message, 'error')
+        }
+      }
+    })
+
+    function readRowValuesFromDOM(rowId) {
+      const values = {}
+      PLAYER_STAT_FIELDS.forEach(f => {
+        const input = document.querySelector(`input[data-row="${rowId}"][data-field="${f.key}"]`)
+        const raw = input ? input.value.trim() : ''
+        values[f.key] = raw === '' ? 0 : parseFloat(raw)
+      })
+      return values
+    }
+
+    function classifyPlayerRow(row, seenPlayerIds) {
+      const values = readRowValuesFromDOM(row.rowId)
+      const hasAnyValue = Object.values(values).some(v => v !== 0)
+
+      if (!row.playerId) {
+        if (!hasAnyValue) return null // fila en blanco de relleno — se ignora
+        return { row, values, status: 'error', reason: 'Selecciona un jugador para esta fila' }
+      }
+      if (seenPlayerIds.has(row.playerId)) {
+        return { row, values, status: 'error', reason: 'Jugador duplicado en la tabla' }
+      }
+      seenPlayerIds.add(row.playerId)
+      return { row, values, status: row.statsId ? 'update' : 'new' }
+    }
+
+    let pendingPlayerPayload = []
+
+    function renderPlayerPreview(classified) {
+      const el = document.getElementById('player-preview')
+      if (!classified.length) { el.innerHTML = '<div class="empty-state">No hay filas con datos para guardar.</div>'; return }
+
+      const newCount    = classified.filter(c => c.status === 'new').length
+      const updateCount = classified.filter(c => c.status === 'update').length
+      const errorCount  = classified.filter(c => c.status === 'error').length
+      const validCount  = newCount + updateCount
+
+      const rows = classified.map(c => {
+        const player = roster.find(p => p.id === c.row.playerId)
+        const label  = player ? playerLabel(player) : '—'
+        if (c.status === 'error') {
+          return `<tr><td>${esc(label)}</td><td style="color:var(--text3)">${esc(c.reason)}</td><td><span class="import-badge import-badge--error">Error</span></td></tr>`
+        }
+        const badge = c.status === 'new' ? 'import-badge--new' : 'import-badge--update'
+        const badgeLabel = c.status === 'new' ? 'Nuevo' : 'Actualizar'
+        return `<tr><td>${esc(label)}</td><td style="color:var(--text2);font-family:var(--mono);font-size:11px">
+          Pass ${c.values.pass_yds}yds/${c.values.pass_td}td · Rush ${c.values.rush_yds}yds/${c.values.rush_td}td · Rec ${c.values.rec}/${c.values.rec_yds}yds
+          · Sacks ${c.values.sacks} · TFL ${c.values.tfl} · Int ${c.values.ints} · Tkl ${c.values.tackles}
+        </td><td><span class="import-badge ${badge}">${badgeLabel}</span></td></tr>`
+      }).join('')
+
+      el.innerHTML = `
+        <table class="setup-table">
+          <thead><tr><th>Jugador</th><th>Resumen</th><th>Status</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="form-actions" style="margin-top:12px">
+          <span class="import-summary">${newCount} nuevo${newCount !== 1 ? 's' : ''} · ${updateCount} actualizar · ${errorCount} error${errorCount !== 1 ? 'es' : ''}</span>
+          ${validCount > 0 ? `<button class="btn btn--primary" id="confirm-player-save-btn">Confirmar guardado</button>` : ''}
+        </div>`
+
+      const confirmBtn = document.getElementById('confirm-player-save-btn')
+      if (confirmBtn) confirmBtn.addEventListener('click', confirmPlayerSave)
+    }
+
+    document.getElementById('review-player-rows-btn').addEventListener('click', () => {
+      const seenPlayerIds = new Set()
+      const classified = playerRows
+        .map(row => classifyPlayerRow(row, seenPlayerIds))
+        .filter(Boolean)
+      pendingPlayerPayload = classified
+      renderPlayerPreview(classified)
+    })
+
+    async function confirmPlayerSave() {
+      const btn = document.getElementById('confirm-player-save-btn')
+      const validRows = pendingPlayerPayload.filter(c => c.status === 'new' || c.status === 'update')
+      if (!validRows.length) return
+
+      const payload = validRows.map(c => ({
+        game_id: selectedGameId,
+        player_id: c.row.playerId,
+        ...c.values,
+      }))
+
+      btn.disabled = true
+      btn.textContent = 'Guardando…'
+      try {
+        await sbUpsert('player_game_stats_manual', payload, 'game_id,player_id')
+        showToast(`${validRows.length} fila${validRows.length !== 1 ? 's' : ''} de jugador guardada${validRows.length !== 1 ? 's' : ''}`)
+        document.getElementById('player-preview').innerHTML = ''
+        await loadPlayerStatsSection()
+      } catch (err) {
+        showToast(err.message, 'error')
+        btn.disabled = false
+        btn.textContent = 'Confirmar guardado'
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // 4. STATS DE EQUIPO
+    // ══════════════════════════════════════════════════════════════════════════
+
+    function resetTeamStatsSection() {
+      teamStatsRowId = null
+      document.getElementById('team-stats-card').classList.add('card--disabled')
+      TEAM_STAT_FIELDS.forEach(k => { document.getElementById(`ts-${k}`).value = '' })
+      document.getElementById('ts-top').value = ''
+      document.getElementById('team-stats-error').classList.remove('form-error--visible')
+      document.getElementById('team-stats-quarter-warning').classList.remove('form-warning--visible')
+    }
+
+    function mmssToSeconds(str) {
+      const m = /^(\d{1,3}):([0-5]?\d)$/.exec(str.trim())
+      if (!m) return null
+      return parseInt(m[1], 10) * 60 + parseInt(m[2], 10)
+    }
+
+    // Warns (non-blocking) when Q1-Q4+OT don't add up to the final score
+    // already captured on the game — operators may be loading partial or
+    // externally-sourced data, so this never prevents saving.
+    function checkQuarterSum() {
+      const warnEl = document.getElementById('team-stats-quarter-warning')
+      const game = games.find(g => g.id === selectedGameId)
+      if (!game || !selectedTeamSide) { warnEl.classList.remove('form-warning--visible'); return }
+      const sum = ['q1', 'q2', 'q3', 'q4', 'ot']
+        .reduce((acc, k) => acc + (parseFloat(document.getElementById(`ts-${k}`).value) || 0), 0)
+      const finalScore = selectedTeamSide === 'home' ? (game.score_home ?? 0) : (game.score_away ?? 0)
+      if (sum !== finalScore) {
+        warnEl.textContent = `La suma por cuarto (${sum}) no coincide con el marcador final capturado (${finalScore}). Puedes guardar de todas formas.`
+        warnEl.classList.add('form-warning--visible')
+      } else {
+        warnEl.classList.remove('form-warning--visible')
+      }
+    }
+
+    document.querySelectorAll('#ts-q1, #ts-q2, #ts-q3, #ts-q4, #ts-ot').forEach(el => {
+      el.addEventListener('input', checkQuarterSum)
+    })
+
+    async function loadTeamStatsSection() {
+      resetTeamStatsSection()
+      try {
+        const rows = await sbGet(
+          `team_game_stats_manual?game_id=eq.${encodeURIComponent(selectedGameId)}&team_id=eq.${encodeURIComponent(selectedTeamId)}&limit=1`
+        )
+        const existing = rows[0]
+        if (existing) {
+          teamStatsRowId = existing.id
+          TEAM_STAT_FIELDS.forEach(k => { document.getElementById(`ts-${k}`).value = existing[k] ?? 0 })
+          document.getElementById('ts-top').value = secondsToMMSS(existing.time_of_possession_sec)
+        }
+        document.getElementById('team-stats-card').classList.remove('card--disabled')
+        checkQuarterSum()
+      } catch (err) {
+        console.error(err)
+        showToast('Error al cargar stats de equipo', 'error')
+      }
+    }
+
+    document.getElementById('team-stats-save-btn').addEventListener('click', async () => {
+      const errorEl = document.getElementById('team-stats-error')
+      errorEl.classList.remove('form-error--visible')
+
+      const topRaw = document.getElementById('ts-top').value.trim()
+      let topSeconds = 0
+      if (topRaw) {
+        const parsed = mmssToSeconds(topRaw)
+        if (parsed === null) {
+          errorEl.textContent = 'Time of Possession debe tener formato MM:SS (ej. 30:00).'
+          errorEl.classList.add('form-error--visible')
+          return
+        }
+        topSeconds = parsed
+      }
+
+      const body = { game_id: selectedGameId, team_id: selectedTeamId, time_of_possession_sec: topSeconds }
+      TEAM_STAT_FIELDS.forEach(k => {
+        const raw = document.getElementById(`ts-${k}`).value.trim()
+        body[k] = raw === '' ? 0 : parseFloat(raw)
+      })
+
+      const btn = document.getElementById('team-stats-save-btn')
+      btn.disabled = true
+      try {
+        await sbUpsert('team_game_stats_manual', [body], 'game_id,team_id')
+        showToast('Stats de equipo guardadas')
+        await loadTeamStatsSection()
+      } catch (err) {
+        errorEl.textContent = err.message
+        errorEl.classList.add('form-error--visible')
+      } finally {
+        btn.disabled = false
+      }
+    })
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+
+    async function init() {
+      populateSemanaSelect()
+      try {
+        teams = await sbGet('teams?select=*&order=nombre_corto.asc')
+        populateTeamSelects()
+      } catch (err) {
+        console.error(err)
+        showToast('Error al cargar los equipos', 'error')
+      }
+      await loadGames()
+    }
+
+    init()
+  </script>
+
+</body>
+</html>
