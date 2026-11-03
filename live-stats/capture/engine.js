@@ -16,7 +16,7 @@ import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
 // stats-lib.js instead, going forward.
 import {
   gameState, absYard, advanceGameState, applyFlags,
-  isTouchdown, calcNetYards, formatPlay, playerShortLabel, filterRosterBySeason } from '../../shared/stats-lib.js'
+  isTouchdown, calcNetYards, formatPlay, playerShortLabel, filterRosterBySeason, KICKOFF_YARD } from '../../shared/stats-lib.js'
 
 // ── Play storage ──────────────────────────────────────────────────────────────
 
@@ -1602,7 +1602,7 @@ export async function startGame(openingKickoffTeamId, openingKickerName) {
       throw new Error(`HTTP ${res.status}${detail ? ` — ${detail}` : ''}`)
     }
     gameState.possession = openingKickerName
-    gameState.field_pos  = { team: openingKickerName, yard: 35 }
+    gameState.field_pos  = { team: openingKickerName, yard: KICKOFF_YARD }
     if (_onSyncStatus) _onSyncStatus('saved')
   } catch (err) {
     console.error('[Supabase startGame]', err)

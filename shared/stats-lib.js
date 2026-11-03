@@ -11,12 +11,18 @@
 
 // ── Game state ────────────────────────────────────────────────────────────────
 
+// Spots fixed by rule. VERIFICAR VIGENCIA: the 2011 NCAA manual uses the 30
+// (kickoff, §11 A.R.) and the 20 (touchback); the code has always used these.
+// Every use reads them from here; the values are unchanged.
+export const KICKOFF_YARD = 35          // kickoff from the kicking team's own 35
+export const KICKOFF_TOUCHBACK_YARD = 25  // kickoff touchback, and kickoff fair catch
+
 export const gameState = {
   seq: 1,
   quarter: 1,
   clock: '15:00',
   possession: 'MTY',
-  field_pos: { team: 'MTY', yard: 35 },
+  field_pos: { team: 'MTY', yard: KICKOFF_YARD },
   down: 1,
   distance: 10,
   score: { home: 0, away: 0 },
@@ -1480,7 +1486,7 @@ export function advanceGameState(state, play, teams) {
 
     if (kickRes === 'touchback') {
       state.possession = defTeam
-      state.field_pos  = { team: defTeam, yard: 25 }
+      state.field_pos  = { team: defTeam, yard: KICKOFF_TOUCHBACK_YARD }
       state.down       = 1
       state.distance   = 10
       return
@@ -1516,7 +1522,7 @@ export function advanceGameState(state, play, teams) {
 
     if (kickRes === 'fair_catch') {
       state.possession = defTeam
-      state.field_pos  = { team: defTeam, yard: 25 }
+      state.field_pos  = { team: defTeam, yard: KICKOFF_TOUCHBACK_YARD }
       state.down       = 1
       state.distance   = 10
       return
@@ -1818,7 +1824,7 @@ export function advanceGameState(state, play, teams) {
     state.down       = 0
     state.distance   = 0
     state.possession = play.possession
-    state.field_pos  = { team: play.possession, yard: 35 }
+    state.field_pos  = { team: play.possession, yard: KICKOFF_YARD }
 
     if (patType === 'kick') {
       if (play.pat_kick_result === 'good') {
