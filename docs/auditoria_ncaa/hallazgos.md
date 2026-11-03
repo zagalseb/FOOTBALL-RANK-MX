@@ -161,6 +161,11 @@ Severidad = impacto sobre las cifras que ve el usuario (box score, líderes, mar
 - **Qué pasa:** el spot, la posesión, el down y el marcador quedan bien; sólo `distance` queda en 47 en vez de 0. En un kickoff no se usa, pero se ve en el estado.
 - **Caso:** TC-48 (verifica spot/posesión/down, no `distance`).
 
+### H-21 · Modo edición: "Presionado por" usa la posesión del estado actual del juego — **BAJA**
+- **Dónde:** `live-stats/capture/wizard.js` `renderByMenu` (`team: 'opponent'` se resuelve con `gameState.possession`), usado por el paso `flag_N_pressured_by` y por los demás pasos "del rival" (tackle, sack, etc.).
+- **Qué pasa:** al editar una jugada anterior, la lista de jugadores del presionador sale del equipo opuesto a la posesión **actual** del juego, no a la de la jugada editada. Si la posesión cambió desde entonces, se ofrece el roster equivocado.
+- **Alcance:** limitación previa de todos los pasos "del rival" en edición; `pressured_by` sólo la hereda.
+
 ---
 
 ## B. Reglas que requieren capturar datos nuevos (candidatas a segunda pasada con video)

@@ -1799,6 +1799,14 @@ function _renderSubmit(preview) {
     )
     previewPlay.touchdown = isTouchdown(gameState.teams, gameState.possession, previewPlay.at)
   }
+  // A play that still counts shows the net yards that get stored (flagOutcome,
+  // e.g. to the spot of the foul), not the raw yards to `at`. A voided play
+  // keeps showing what happened on the field.
+  const shown = flagOutcome(previewPlay)
+  if (shown && !shown.voided && shown.net_yards != null) {
+    previewPlay.net_yards = shown.net_yards
+    previewPlay.touchdown = shown.touchdown
+  }
 
   const playText = formatPlay(previewPlay)
   const kickoffNotice = _endFlagOnTouchdown(previewPlay)
