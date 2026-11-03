@@ -876,11 +876,22 @@ function _formatFlags(play) {
     const res    = play[`flag_${num}_result`] || ''
     const by     = play[`flag_${num}_by`] ? ` on ${_playerStr(play[`flag_${num}_by`])}` : ''
     const newLos = play[`flag_${num}_new_los`] ? ` → ${_posStr(play[`flag_${num}_new_los`])}` : ''
-    // timing undefined = plays captured before this field existed — treated
-    // the same as 'live' (today's default behavior), not flagged specially.
-    const isDead = play[`flag_${num}_timing`] === 'dead'
-    const label  = isDead ? 'FLAG (post-play)' : 'FLAG'
-    const note   = isDead ? ', play stands + penalty' : ''
+    let label = 'FLAG', note = ''
+    if (num === _groundingFlag(play)) {
+      note = ', passer rush to the spot, 0-yd penalty'
+    } else if (play[`flag_${num}_enforced`]) {
+      const enforced = play[`flag_${num}_enforced`]
+      if (enforced === 'end') { label = 'FLAG (end of play)'; note = ', play stands + penalty' }
+      if (enforced === 'foul_spot') {
+        const spot = play[`flag_${num}_foul_spot`]
+        label = `FLAG (spot of foul${spot ? ' ' + _posStr(spot) : ''})`
+        note = ', play stands to the spot + penalty'
+      }
+    } else if (play[`flag_${num}_timing`] === 'dead') {
+      // Plays captured before flag_N_enforced: timing undefined = 'live'.
+      label = 'FLAG (post-play)'
+      note = ', play stands + penalty'
+    }
     flags.push(`${label}: ${inf.code} ${team}${by} (${res})${note}${newLos}`)
   }
   return flags.length ? ' | ' + flags.join(' | ') : ''

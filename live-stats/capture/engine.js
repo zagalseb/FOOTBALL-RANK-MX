@@ -457,15 +457,19 @@ RESULT_OPTIONS.KICKOFF_OOB_SPOT = [
   { key: 'twenty_five', label: '25 Yardas desde el Kick', kbd: 'Y', color: '--green'  },
 ]
 
-// When a flag attached to another play (never a standalone PENALTY play) is
-// accepted: 'live' = foul happened during the play and negates its result
-// (offensive holding on a run — the play never counted); 'dead' = foul
-// happened after the play already ended (personal foul after the tackle) —
-// the play's own yards/attempt still count, only the down/distance/field
-// position for the NEXT down absorbs the penalty on top of it.
-RESULT_OPTIONS.FLAG_TIMING = [
-  { key: 'live', label: 'Durante la Jugada (anula)',   kbd: 'L', color: '--red'   },
-  { key: 'dead', label: 'Después de la Jugada (suma)', kbd: 'D', color: '--green' },
+// Where an accepted flag attached to another play (never a standalone PENALTY
+// play) was enforced from — flag_N_enforced, read by stats-lib.js
+// flagEnforcement()/flagOutcome(): 'previous' = the previous spot, the play is
+// void (offensive holding behind the line, PI); 'end' = the end of the play,
+// which counts (defensive foul on a run beyond the line, roughing the passer
+// on a completion, any foul after the play); 'foul_spot' = the spot of the
+// foul, the play counts up to there (offensive foul beyond the line; the spot
+// is asked next as flag_N_foul_spot). Replaces flag_N_timing (live/dead),
+// which plays captured before still carry.
+RESULT_OPTIONS.FLAG_ENFORCEMENT = [
+  { key: 'previous',  label: 'Spot anterior (anula la jugada)',    kbd: 'P', color: '--red'    },
+  { key: 'end',       label: 'Fin de la jugada (cuenta)',          kbd: 'F', color: '--green'  },
+  { key: 'foul_spot', label: 'Spot de la falta (cuenta hasta ahí)', kbd: 'S', color: '--yellow' },
 ]
 
 // Chosen after a PUNT play is flagged 'fake' — the wizard.js branch that

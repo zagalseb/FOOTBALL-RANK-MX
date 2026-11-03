@@ -1,4 +1,5 @@
 import { setPlayField, resetCurrentPlay, getRoster, submitPlayWithSnap, currentPlay, plays, savePlays, syncPlayUpdate, notifyPlaysChanged, RESULT_OPTIONS, RESULT_BRANCHES, FUMBLE_RESULT_BRANCHES, FUMBLE_2_RESULT_BRANCHES, PASS_RESULT_OPTIONS, PASS_RESULT_BRANCHES, RETURN_RESULT_BRANCHES, PENALTY_RESULT_OPTIONS, PENALTY_DOWN_RESULT_OPTIONS, PENALTY_RESULT_BRANCHES, PENALTIES_LIST, KICK_TYPE_OPTIONS, KICKOFF_RESULT_OPTIONS, FG_RESULT_OPTIONS, FG_MISS_OPTIONS, FG_RETURN_RESULT_OPTIONS, KICK_TYPE_BRANCHES, KICKOFF_RESULT_BRANCHES, FG_RESULT_BRANCHES, FG_BLOCKED_RETURN_BRANCHES, KICK_RETURN_RESULT_BRANCHES, FG_RET_RESULT_BRANCHES, PAT_TYPE_OPTIONS, PAT_KICK_RESULT_OPTIONS, PAT_BLOCK_RESULT_OPTIONS, PAT_TYPE_BRANCHES, PAT_KICK_RESULT_BRANCHES, PUNT_RESULT_OPTIONS, PUNT_RESULT_BRANCHES, PUNT_MUFF_RESULT_BRANCHES, PUNT_BLOCK_RETURN_BRANCHES, PUNT_RETURN_RESULT_BRANCHES, PUNT_BLOCK_RET_RESULT_BRANCHES, SNAP_FUMBLE_RECOVERY_BRANCHES, SNAP_FUMBLE_RESULT_BRANCHES, PUNT_BAD_SNAP_RECOVERY_BRANCHES, PUNT_BAD_SNAP_RESULT_BRANCHES, FG_BAD_SNAP_RECOVERY_BRANCHES, FG_BAD_SNAP_RESULT_BRANCHES, PAT_BAD_SNAP_RECOVERY_BRANCHES, PAT_BAD_SNAP_RESULT_BRANCHES, parseATInput, isTouchdown, calcNetYards, gameState, formatPlay, deriveNextPlayContext, applyGameCtrl, GAME_CTRL_OPTIONS, playerShortLabel } from './engine.js'
+import { flagOutcome, flagEnforcement, playTouchdown } from '../../shared/stats-lib.js'
 
 // ── Keyboard context system ───────────────────────────────────────────────────
 // One listener, always active. Each screen replaces entries in KEYBOARD_CONTEXTS.
@@ -169,6 +170,8 @@ let editMode      = false
 let editingPlayId = null
 let editingPlay   = null   // buffer of play_type-specific fields being edited
 let editContext   = null   // buffer of clock/quarter/down/distance/field_pos/possession
+let editOriginal  = null   // the play as stored, to tell whether anything was edited
+let editDirty     = false  // some step value changed (see _onEditStepComplete)
 let editSteps     = []
 let editCursor    = -1
 
@@ -344,6 +347,8 @@ export function renderEditPlay(play) {
   editMode      = true
   editingPlayId = play.play_id
   editingPlay   = { ...play }
+  editOriginal  = play
+  editDirty     = false
   editContext   = {
     clock:      play.clock,
     quarter:    play.quarter,
@@ -352,7 +357,7 @@ export function renderEditPlay(play) {
     field_pos:  play.field_pos ? { ...play.field_pos } : null,
     possession: play.possession,
   }
-  editSteps  = _buildEditSteps(play)
+  editSteps  = [..._buildEditSteps(play), ..._buildFlagEditSteps(play)]
   editCursor = -1
 
   const progressEl = document.getElementById('step-progress')
@@ -368,10 +373,12 @@ function _openEditStep(idx) {
 }
 
 function _onEditStepComplete(idx, value) {
+  if (JSON.stringify(editSteps[idx].value ?? null) !== JSON.stringify(value ?? null)) editDirty = true
   editSteps[idx] = { ...editSteps[idx], value }
   editingPlay[editSteps[idx].id] = value
 
   const stepId = editSteps[idx].id
+  if (/^flag_[12]_/.test(stepId)) { _onEditFlagStep(idx); return }
   if (RESULT_STEP_IDS.includes(stepId)) {
     const playType  = editingPlay.play_type
     const newBranch = resolveBranchSteps(stepId, value, playType, editingPlay.possession)
@@ -392,6 +399,64 @@ function _onEditStepComplete(idx, value) {
     }
   }
 
+  editCursor = -1
+  _renderEditSummary()
+}
+
+// A play's flags in edit mode: the same steps live capture asks, with the
+// stored values. A play captured before flag_N_enforced shows the value
+// stats-lib.js maps it to (mappedValue, display only): nothing is written
+// unless the operator picks one.
+function _buildFlagEditSteps(play) {
+  return [1, 2].filter(n => play[`flag_${n}_infraction`]).flatMap(n => _flagEditBlock(play, n))
+}
+
+function _flagEditBlock(play, num) {
+  const prefix = `flag_${num}_`
+  const withValue = st => ({ ...st, value: play[st.id] ?? null })
+  const block = _buildFlagSteps(num).map(withValue)
+  const result = play[`${prefix}result`]
+  block.push(...(PENALTY_RESULT_BRANCHES[result] ?? []).map(st => withValue({
+    ...st,
+    id: st.id.replace(/^penalty_/, prefix),
+    config: { ...st.config, stateKey: st.config.stateKey?.replace(/^penalty_/, prefix) },
+  })))
+  if (result !== 'accepted') return block
+  const enf = withValue(_flagEnforcementStep(num, play, false))
+  if (enf.id === `${prefix}enforced` && !enf.value) {
+    // Mapped only while the flag is still the one that was stored.
+    const o = editOriginal
+    const same = o && o[`${prefix}result`] === 'accepted' &&
+      o[`${prefix}infraction`]?.code === play[`${prefix}infraction`]?.code && o[`${prefix}team`] === play[`${prefix}team`]
+    if (same) enf.mappedValue = flagEnforcement(o, num)
+  }
+  block.push(enf)
+  if (play[`${prefix}enforced`] === 'foul_spot') block.push(withValue(_flagFoulSpotStep(num)))
+  return block
+}
+
+// A flag step was edited: rebuild that flag's steps from editingPlay, drop
+// the fields that no longer apply (so no orphans reach the row), and ask the
+// next required step that has no value yet.
+function _onEditFlagStep(idx) {
+  const stepId = editSteps[idx].id
+  const num = Number(stepId[5])
+  const prefix = `flag_${num}_`
+  if (stepId === `${prefix}enforced`) editingPlay[`${prefix}timing`] = editingPlay[stepId] === 'previous' ? 'live' : 'dead'
+
+  const block = _flagEditBlock(editingPlay, num)
+  const ids = new Set(block.map(st => st.id))
+  if (ids.has(`${prefix}enforced`)) ids.add(`${prefix}timing`)
+  Object.keys(editingPlay).filter(k => k.startsWith(prefix) && !ids.has(k)).forEach(k => delete editingPlay[k])
+
+  const start = editSteps.findIndex(st => st.id.startsWith(prefix))
+  let end = start
+  while (end < editSteps.length && editSteps[end].id.startsWith(prefix)) end++
+  editSteps = [...editSteps.slice(0, start), ...block, ...editSteps.slice(end)]
+
+  const pos = block.findIndex(st => st.id === stepId)
+  const next = block.findIndex((st, i) => i > pos && st.value == null && !st.mappedValue && !st.config?.optional)
+  if (next >= 0) { _openEditStep(start + next); return }
   editCursor = -1
   _renderEditSummary()
 }
@@ -468,14 +533,43 @@ function _saveEdit() {
   editContext.down       = parseInt(document.getElementById('es-down').value) || 0
   editContext.distance   = parseInt(document.getElementById('es-dist').value) || 0
 
+  // A play with flags saved with nothing edited is left exactly as stored
+  // (an old row is not rewritten with recomputed values).
+  const o = editOriginal
+  const hasFlags = [1, 2].some(n => o[`flag_${n}_infraction`])
+  const contextChanged =
+    String(editContext.clock ?? '') !== String(o.clock ?? '') ||
+    String(editContext.quarter) !== String(o.quarter) ||
+    editContext.possession !== o.possession ||
+    editContext.down !== (o.down ?? 0) || editContext.distance !== (o.distance ?? 0) ||
+    editContext.field_pos?.team !== o.field_pos?.team || editContext.field_pos?.yard !== o.field_pos?.yard
+  if (hasFlags && !editDirty && !contextChanged) {
+    _exitEditMode()
+    renderAddPlay()
+    return
+  }
+
   if (editingPlay.at) {
     editingPlay.net_yards = calcNetYards(gameState.teams, editContext.possession, editContext.field_pos, editingPlay.at)
     editingPlay.touchdown = isTouchdown(gameState.teams, editContext.possession, editingPlay.at)
+  }
+  // Same rule as a new submit (_confirmSubmit): flagOutcome() decides.
+  const outcome = flagOutcome({ ...editingPlay, ...editContext })
+  if (outcome) {
+    editingPlay.net_yards = outcome.net_yards
+    editingPlay.touchdown = outcome.touchdown
+    if (outcome.voided) editingPlay.stats_count = false
+    else delete editingPlay.stats_count
+  } else if (hasFlags) {
+    // No accepted flag left (e.g. changed to declined): nothing voids it.
+    delete editingPlay.stats_count
   }
 
   const target = plays.find(p => p.play_id === editingPlayId)
   if (target) {
     Object.assign(target, editingPlay, editContext)
+    // Fields dropped while editing a flag (see _onEditFlagStep).
+    Object.keys(target).filter(k => !(k in editingPlay) && !(k in editContext)).forEach(k => delete target[k])
     savePlays()
     syncPlayUpdate(target)
     // notifyPlaysChanged() is not called here — renderAddPlay() below fires
@@ -497,6 +591,8 @@ function _exitEditMode() {
   editingPlayId = null
   editingPlay   = null
   editContext   = null
+  editOriginal  = null
+  editDirty     = false
   editSteps     = []
   editCursor    = -1
 }
@@ -783,14 +879,17 @@ export function renderATField(config) {
   rebuild()
 }
 
+// title/preselect are optional (only the flag enforcement step uses them):
+// a preselected option is highlighted and Enter confirms it.
 export function renderResultMenu(config) {
-  const { options, onComplete } = config
+  const { options, onComplete, title, preselect } = config
   _setContext('RESULT')
 
   KEYBOARD_CONTEXTS.RESULT = { Escape: goBack }
   options.forEach(opt => {
     KEYBOARD_CONTEXTS.RESULT[opt.kbd.toLowerCase()] = () => onComplete(opt.key)
   })
+  if (preselect) KEYBOARD_CONTEXTS.RESULT.Enter = () => onComplete(preselect)
 
   const COLOR_CLASS = {
     '--yellow': 'result-btn--yellow',
@@ -803,12 +902,13 @@ export function renderResultMenu(config) {
   }
 
   _container().innerHTML = `
+    ${title ? `<div class="wizard-area__title">${title}</div>` : ''}
     <div class="result-menu">
       ${options.map(opt => `
-        <button class="result-btn ${COLOR_CLASS[opt.color] || 'result-btn--muted'}"
+        <button class="result-btn ${COLOR_CLASS[opt.color] || 'result-btn--muted'}${opt.key === preselect ? ' result-btn--preselected' : ''}"
           data-key="${opt.key}">
           <span class="result-btn__label">${opt.label}</span>
-          <span class="result-btn__kbd">${opt.kbd}</span>
+          <span class="result-btn__kbd">${opt.kbd}${opt.key === preselect ? ' / ↵' : ''}</span>
         </button>
       `).join('')}
     </div>
@@ -1447,7 +1547,10 @@ function _renderStepByComponent(step, onComplete) {
   }
 
   if (step.component === 'RESULT') {
-    renderResultMenu({ options: RESULT_OPTIONS[step.config.optionsKey], onComplete })
+    renderResultMenu({
+      options: RESULT_OPTIONS[step.config.optionsKey], onComplete,
+      title: step.config.title, preselect: step.config.preselect?.() ?? null,
+    })
     return
   }
 
@@ -1698,6 +1801,9 @@ function _renderSubmit(preview) {
   }
 
   const playText = formatPlay(previewPlay)
+  const kickoffNotice = _endFlagOnTouchdown(previewPlay)
+    ? `<div class="wizard-area__title" style="color:var(--yellow)">Aplicada en el kickoff: captúrala en el PAT</div>`
+    : ''
 
   KEYBOARD_CONTEXTS.SUBMIT = {
     Escape: () => renderAddPlay(),
@@ -1708,6 +1814,7 @@ function _renderSubmit(preview) {
   _container().innerHTML = `
     <div class="submit-screen">
       <div class="submit-play-text">${playText}</div>
+      ${kickoffNotice}
       <div class="submit-actions">
         <button class="submit-btn submit-btn--confirm" id="btn-submit">Submit <span class="submit-kbd">↵</span></button>
         <button class="submit-btn submit-btn--penalty" id="btn-penalty">Penalty <span class="submit-kbd">E</span></button>
@@ -1719,6 +1826,15 @@ function _renderSubmit(preview) {
   document.getElementById('btn-submit').addEventListener('click', () => _confirmSubmit(previewPlay))
   document.getElementById('btn-cancel').addEventListener('click', () => renderAddPlay())
   document.getElementById('btn-penalty').addEventListener('click', () => _startFlagCapture(previewPlay))
+}
+
+// A flag enforced from the end of a touchdown play is enforced on the
+// kickoff, which this play does not record (§14 Art.4 A.R.3): the operator
+// captures it on the try instead. Only that case — nothing else warns.
+function _endFlagOnTouchdown(play) {
+  if (play.play_type !== 'RUSH' && play.play_type !== 'PASS') return false
+  return [1, 2].some(n => play[`flag_${n}_result`] === 'accepted' && play[`flag_${n}_enforced`] === 'end') &&
+    playTouchdown(play)
 }
 
 function _startFlagCapture(preview) {
@@ -1779,20 +1895,98 @@ function _onFlagStepComplete(idx, value) {
     _flagSteps = _flagSteps.slice(0, idx + 1)
     _flagSteps.push(...prefixed.map(s => ({ ...s, value: null })))
 
-    // Only meaningful when the flag actually affects the play (accepted) —
-    // declined/offsetting never touch net_yards/stats_count, so there's
-    // nothing to time. Asked last, after the down_result — see FLAG_TIMING
-    // in engine.js and _flagVoidsPlay() below for how this is consumed.
-    if (value === 'accepted') {
-      _flagSteps.push({
-        id: `${prefix}timing`, label: 'Timing del Foul', component: 'RESULT',
-        config: { stateKey: `${prefix}timing`, optionsKey: 'FLAG_TIMING' },
-        value: null,
-      })
-    }
+    // Only an accepted flag affects the play; declined/offsetting ask nothing
+    // more. Asked last, after the down_result (see FLAG_ENFORCEMENT in engine.js
+    // and stats-lib.js flagOutcome() for how it is consumed).
+    if (value === 'accepted') _flagSteps.push(_flagEnforcementStep(_flagNumber))
+  }
+
+  // Where the foul was enforced from. 'foul_spot' asks for that spot next;
+  // any other choice drops it. flag_N_timing is still written, derived, so
+  // code that only knows live/dead keeps reading these plays sensibly.
+  if (stepId === `${prefix}enforced`) {
+    _flagSteps = _flagSteps.slice(0, idx + 1)
+    setPlayField(`${prefix}foul_spot`, undefined)
+    setPlayField(`${prefix}timing`, value === 'previous' ? 'live' : 'dead')
+    if (value === 'foul_spot') _flagSteps.push(_flagFoulSpotStep(_flagNumber))
   }
 
   _flagStepIdx = idx + 1
+  _renderFlagStep()
+}
+
+// Intentional grounding by the passing team (same rule as stats-lib.js
+// _groundingFlag): the play is the passer's rush to the flag's new_los, so
+// there is no enforcement spot to ask — only who pressured him (optional).
+function _isGroundingFlag(play, num) {
+  return play.play_type === 'PASS' && play[`flag_${num}_infraction`]?.code === 'IG' &&
+    play[`flag_${num}_team`] === play.possession
+}
+
+function _flagEnforcementStep(num, play = { ..._previewPlay, ...currentPlay }, suggest = true) {
+  const prefix = `flag_${num}_`
+  if (_isGroundingFlag(play, num)) {
+    return { id: `${prefix}pressured_by`, label: 'Presionado por (opcional)', component: 'BY',
+      config: { stateKey: `${prefix}pressured_by`, multiple: false, optional: true, team: 'opponent' }, value: null }
+  }
+  return {
+    id: `${prefix}enforced`, label: 'Aplicada desde', component: 'RESULT',
+    config: {
+      stateKey: `${prefix}enforced`, optionsKey: 'FLAG_ENFORCEMENT',
+      title: '¿Desde dónde se aplicó la penalidad?',
+      preselect: suggest ? () => _suggestEnforcement({ ..._previewPlay, ...currentPlay }, num) : null,
+    },
+    value: null,
+  }
+}
+
+function _flagFoulSpotStep(num) {
+  const prefix = `flag_${num}_`
+  return { id: `${prefix}foul_spot`, label: 'Spot de la falta', component: 'AT',
+    config: { stateKey: `${prefix}foul_spot` }, value: null }
+}
+
+// Fouls at the snap: always enforced from the previous spot (§14 Art.6).
+const _SNAP_FOUL_CODES = ['OD', 'OS', 'EN', 'FS', 'DG', 'FO', 'MO', 'SH', 'SU', 'PR']
+
+// Preselected enforcement for the operator to confirm, or null to force an
+// explicit choice. Only a suggestion: the operator always confirms.
+//   - Kicks (punt, kickoff, try): roughing the kicker (previous spot) and a
+//     foul after the kick (end) look the same here — no suggestion.
+//   - Defensive foul on a completed pass: during the pass (previous spot) or
+//     roughing/after the catch (end) — no suggestion.
+//   - Defensive foul on a run (rush, sack, scramble) that ended beyond the
+//     line: end of the run (§14 Art.2); on/behind the line: previous (Art.3).
+//   - Anything else, and fouls at the snap: previous spot.
+function _suggestEnforcement(play, num) {
+  if (['PUNT', 'KICK', 'PAT_TRY'].includes(play.play_type)) return null
+  if (_SNAP_FOUL_CODES.includes(play[`flag_${num}_infraction`]?.code)) return 'previous'
+  const byDefense = !!play[`flag_${num}_team`] && play[`flag_${num}_team`] !== play.possession
+  if (byDefense && play.play_type === 'PASS' && play.pass_result === 'complete') return null
+  const isRun = play.play_type === 'RUSH' ||
+    (play.play_type === 'PASS' && ['sack', 'scramble'].includes(play.pass_result))
+  if (byDefense && isRun && play.at && play.field_pos) {
+    return calcNetYards(gameState.teams, play.possession, play.field_pos, play.at) > 0 ? 'end' : 'previous'
+  }
+  return 'previous'
+}
+
+// Escape inside the flag sub-wizard: one flag step back, clearing that step
+// and every later one (branch steps included), so a half-captured flag never
+// leaves orphan flag_N_* fields. From the first step it drops this flag
+// entirely and returns to the submit screen.
+function _flagGoBack() {
+  const prefix = `flag_${_flagNumber}_`
+  if (_flagStepIdx <= 0) {
+    Object.keys(currentPlay).filter(k => k.startsWith(prefix)).forEach(k => setPlayField(k, undefined))
+    _returnToSubmit()
+    return
+  }
+  const backIdx = _flagStepIdx - 1
+  _flagSteps.slice(backIdx).forEach(s => { s.value = null; setPlayField(s.id, undefined) })
+  // Derived from flag_N_enforced (see _onFlagStepComplete).
+  if (currentPlay[`${prefix}enforced`] === undefined) setPlayField(`${prefix}timing`, undefined)
+  _flagStepIdx = backIdx
   _renderFlagStep()
 }
 
@@ -1838,45 +2032,22 @@ function _returnToSubmit() {
   _renderSubmit()
 }
 
-// down_result values that mean the down itself gets replayed/overridden —
-// same 3 options PENALTY_DOWN_RESULT_OPTIONS offers, shared by the
-// standalone PENALTY play (penalty_down_result) and by a flag attached to
-// any other play (flag_1_down_result/flag_2_down_result, same value set).
-// Any of these means the play's own result never counted, same as a real
-// stat sheet's "NO PLAY (repeat down)".
-const _NO_PLAY_DOWN_RESULTS = ['repeat_down', 'loss_of_down', 'first_down']
-
-// timing !== 'dead' covers both 'live' and missing/undefined — plays
-// captured before this field existed keep voiding exactly as before
-// (non-retroactive default, same reasoning as stats_count originally).
-// Only an explicit 'dead' (foul happened after the play already ended)
-// skips the zeroing — the play's own result stood on its own merit before
-// the foul, and net_yards/stats_count must preserve it.
-function _flagVoidsPlay(play) {
-  for (const num of [1, 2]) {
-    if (play[`flag_${num}_result`] === 'accepted' &&
-        _NO_PLAY_DOWN_RESULTS.includes(play[`flag_${num}_down_result`]) &&
-        play[`flag_${num}_timing`] !== 'dead') {
-      return true
-    }
-  }
-  return false
-}
-
 function _confirmSubmit(previewPlay) {
-  if (_flagVoidsPlay(previewPlay)) {
-    // The play's own net_yards/touchdown were computed from its raw AT,
-    // blind to any flag (applyFlags() only ever corrects a transient
-    // gameState-derivation object, never the persisted row — see engine.js
-    // applyFlags/deriveNextPlayContext). Overriding here, at the one place
-    // that actually writes the row, is the origin fix: 0/false/not-counted
-    // from the moment this play is saved, not a read-time patch.
+  // The play's own net_yards/touchdown were computed from its raw AT, blind
+  // to any flag. stats-lib.js flagOutcome() is the rule (the same one every
+  // read applies, so games already captured follow later fixes too); storing
+  // its result here keeps the row itself consistent. Plays without an
+  // accepted flag get null and are stored exactly as before.
+  const outcome = flagOutcome(previewPlay)
+  if (outcome?.voided) {
     setPlayField('net_yards', 0)
     setPlayField('touchdown', false)
     setPlayField('stats_count', false)
   } else {
-    if (previewPlay.net_yards != null) setPlayField('net_yards', previewPlay.net_yards)
-    if (previewPlay.touchdown  != null) setPlayField('touchdown',  previewPlay.touchdown)
+    const net = outcome ? outcome.net_yards : previewPlay.net_yards
+    const td  = outcome ? outcome.touchdown : previewPlay.touchdown
+    if (net != null) setPlayField('net_yards', net)
+    if (td  != null) setPlayField('touchdown', td)
   }
 
   // Standalone PENALTY plays: 'accepted' always pairs with one of the same
@@ -1912,6 +2083,7 @@ function goBack() {
   // touching the normal-capture steps/currentStepIdx — those are untouched
   // while editing, so falling through would wrongly bounce to renderAddPlay().
   if (editMode) { editCursor = -1; _renderEditSummary(); return }
+  if (_flagMode) { _flagGoBack(); return }
   if (currentStepIdx <= 1) { renderAddPlay(); return }
   const backIdx = currentStepIdx - 1
   steps.slice(backIdx).forEach(s => { s.value = null; setPlayField(s.id, undefined) })
@@ -1957,6 +2129,21 @@ function _renderProgress() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Value shown for a flag step (edit summary), or null to use the generic one.
+function _flagStepValueLabel(step) {
+  const val = step.value
+  if (step.component === 'RESULT' && !val && step.mappedValue) {
+    const opts = RESULT_OPTIONS[step.config?.optionsKey] || []
+    return `${opts.find(o => o.key === step.mappedValue)?.label || step.mappedValue} (mapeado)`
+  }
+  if (!val) return null
+  if (step.component === 'PENALTY_CODE') return `${val.code} ${val.label ?? ''}`.trim()
+  if (step.component === 'TEAM') return val
+  if (step.component === 'PENALTY_RESULT') return PENALTY_RESULT_OPTIONS.find(o => o.key === val)?.label || val
+  if (step.component === 'PENALTY_DOWN') return PENALTY_DOWN_RESULT_OPTIONS.find(o => o.key === val)?.label || val
+  return null
+}
+
 function _container() { return document.getElementById('wizard-container') }
 
 function _playerLabel(p) {
@@ -1965,6 +2152,10 @@ function _playerLabel(p) {
 
 function _stepValueLabel(step) {
   const val = step.value
+  if (step.id?.startsWith('flag_')) {
+    const flagLabel = _flagStepValueLabel(step)
+    if (flagLabel) return flagLabel
+  }
   if (!val) return step.label
   if (step.component === 'RESULT') {
     const opts = RESULT_OPTIONS[step.config?.optionsKey] || []
