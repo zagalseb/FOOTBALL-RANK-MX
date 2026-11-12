@@ -1,4 +1,4 @@
-import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
+import { SUPABASE_URL, SUPABASE_HEADERS, envKey } from '../../shared/supabase/supabase_config.js'
 // getAuthHeaders() carries the signed-in operator's session token (see
 // auth_gate.js) — used ONLY for writes (plays/games), since those tables'
 // INSERT/UPDATE RLS policies now require role=authenticated. Reads
@@ -102,7 +102,7 @@ export function addPlay(playObj) {
 // ── Persistence ───────────────────────────────────────────────────────────────
 
 export function savePlays() {
-  localStorage.setItem('covercero_plays', JSON.stringify(plays))
+  localStorage.setItem(envKey('covercero_plays'), JSON.stringify(plays))
 }
 
 // ── Supabase sync ─────────────────────────────────────────────────────────────
@@ -115,8 +115,8 @@ export function setSupabaseClient(client) { _supabase = client }
 
 export function setGameId(id) {
   _gameId = id
-  if (id) localStorage.setItem('covercero_game_id', id)
-  else     localStorage.removeItem('covercero_game_id')
+  if (id) localStorage.setItem(envKey('covercero_game_id'), id)
+  else     localStorage.removeItem(envKey('covercero_game_id'))
 }
 
 export function getGameId() { return _gameId }
@@ -317,7 +317,7 @@ export async function loadPlays() {
     }
   }
 
-  const saved = localStorage.getItem('covercero_plays')
+  const saved = localStorage.getItem(envKey('covercero_plays'))
   plays.length = 0
   if (saved) plays.push(...JSON.parse(saved))
   _syncSeqFromPlays()
@@ -325,7 +325,7 @@ export async function loadPlays() {
 
 export function clearPlays() {
   plays.length = 0
-  localStorage.removeItem('covercero_plays')
+  localStorage.removeItem(envKey('covercero_plays'))
 }
 
 // ── Roster ────────────────────────────────────────────────────────────────────
@@ -1499,17 +1499,17 @@ export const GAME_CTRL_OPTIONS = [
 export const gameEvents = []
 
 export function saveGameEvents() {
-  localStorage.setItem('covercero_events', JSON.stringify(gameEvents))
+  localStorage.setItem(envKey('covercero_events'), JSON.stringify(gameEvents))
 }
 
 export function loadGameEvents() {
-  const saved = localStorage.getItem('covercero_events')
+  const saved = localStorage.getItem(envKey('covercero_events'))
   if (saved) gameEvents.push(...JSON.parse(saved))
 }
 
 export function clearGameEvents() {
   gameEvents.length = 0
-  localStorage.removeItem('covercero_events')
+  localStorage.removeItem(envKey('covercero_events'))
 }
 
 // Mutates `state` (down/distance/field_pos/possession/quarter/clock/score) per a

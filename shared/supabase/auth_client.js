@@ -6,7 +6,7 @@
 // viewer/ (index.html, viewer.html) must NEVER import this file — it stays
 // fully public, read-only, unauthenticated. Only capture/ pages (via
 // auth_gate.js) and engine.js's write functions use it.
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase_config.js'
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SCHEMA } from './supabase_config.js'
 
 let _clientPromise = null
 function client() {
@@ -53,7 +53,7 @@ export async function getAuthHeaders() {
   return {
     apikey: SUPABASE_ANON_KEY,
     Authorization: `Bearer ${token}`,
-    'Accept-Profile': 'covercero',
-    'Content-Profile': 'covercero',
+    'Accept-Profile': SCHEMA,
+    'Content-Profile': SCHEMA,
   }
 }

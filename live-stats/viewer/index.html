@@ -510,7 +510,7 @@
   </div>
 
   <script type="module">
-    import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_HEADERS as SB_HEADERS, SCHEMA } from '../../shared/supabase/supabase_config.js'
 
     // stats-lib.js is the pure calc/display module shared with capture/ (split
     // out of capture/engine.js on 2026-09-08 specifically so viewer/ never has
@@ -675,15 +675,15 @@
 
       try {
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2')
-        rtClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: 'covercero' } })
+        rtClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: SCHEMA } })
         const ids = liveGames.map(g => g.id).join(',')
         rtClient.channel('index-live-plays')
           .on('postgres_changes', {
-            event: 'INSERT', schema: 'covercero', table: 'plays',
+            event: 'INSERT', schema: SCHEMA, table: 'plays',
             filter: `game_id=in.(${ids})`,
           }, payload => queueUpdate(payload.new.game_id))
           .on('postgres_changes', {
-            event: 'UPDATE', schema: 'covercero', table: 'plays',
+            event: 'UPDATE', schema: SCHEMA, table: 'plays',
             filter: `game_id=in.(${ids})`,
           }, payload => queueUpdate(payload.new.game_id))
           .subscribe(status => {

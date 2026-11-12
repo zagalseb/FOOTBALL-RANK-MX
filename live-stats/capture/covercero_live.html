@@ -1616,7 +1616,7 @@
     import { gameState, playerShortLabel, computePlayerStats, buildRosterIndex, getGameTemporada,
              computeDrives, computeComparisonStats, computePenalties } from '../../shared/stats-lib.js'
     import { drawPlayerCard, drawBoxScore, drawStatCard } from './player_card.js'
-    import { SUPABASE_URL, SUPABASE_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { SUPABASE_URL, SUPABASE_HEADERS, envKey } from '../../shared/supabase/supabase_config.js'
 
     const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
 
@@ -1707,7 +1707,7 @@
 
     // Read game_id: URL → localStorage → error overlay
     const _urlGameId = new URLSearchParams(window.location.search).get('game_id')
-    const _localGameId = localStorage.getItem('covercero_game_id')
+    const _localGameId = localStorage.getItem(envKey('covercero_game_id'))
     const _activeGameId = _urlGameId || _localGameId
     const _urlTab = new URLSearchParams(window.location.search).get('tab')
 

@@ -45,11 +45,12 @@
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useMemo, useRef, useLayoutEffect } = React;
 
-let SB_URL, SB_KEY, HDRS;
+let SB_URL, SB_KEY, HDRS, SCHEMA;
 const configReady = import('../../shared/supabase/supabase_config.js').then(m => {
   SB_URL = m.SUPABASE_URL;
   SB_KEY = m.SUPABASE_ANON_KEY;
   HDRS = m.SUPABASE_HEADERS;
+  SCHEMA = m.SCHEMA;
 });
 
 // stats-lib.js is the pure calc/display module shared with capture/ (split
@@ -2053,14 +2054,14 @@ function App() {
         await configReady;
         const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
         if (cancelled) return;
-        sbClient = createClient(SB_URL, SB_KEY, { db: { schema: 'covercero' } });
+        sbClient = createClient(SB_URL, SB_KEY, { db: { schema: SCHEMA } });
         sbClient.channel(`viewer-plays-${gameId}`)
           .on('postgres_changes', {
-            event: 'INSERT', schema: 'covercero', table: 'plays',
+            event: 'INSERT', schema: SCHEMA, table: 'plays',
             filter: `game_id=eq.${gameId}`,
           }, payload => queueUpsert(payload.new))
           .on('postgres_changes', {
-            event: 'UPDATE', schema: 'covercero', table: 'plays',
+            event: 'UPDATE', schema: SCHEMA, table: 'plays',
             filter: `game_id=eq.${gameId}`,
           }, payload => queueUpsert(payload.new))
           .subscribe(status => {

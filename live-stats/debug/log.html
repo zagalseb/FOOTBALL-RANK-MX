@@ -250,7 +250,9 @@
 
   <div id="main-content"></div>
 
-  <script>
+  <script type="module">
+    import { envKey } from '../../shared/supabase/supabase_config.js'
+
     const TYPE_BADGE = {
       RUSH: 'badge-rush', PASS: 'badge-pass', PENALTY: 'badge-penalty',
       PUNT: 'badge-punt', KICK: 'badge-kick', PAT_TRY: 'badge-pat_try',
@@ -282,7 +284,7 @@
     }
 
     function render() {
-      const raw = localStorage.getItem('covercero_plays')
+      const raw = localStorage.getItem(envKey('covercero_plays'))
       const plays = raw ? JSON.parse(raw) : []
       const total = plays.length
 
@@ -356,7 +358,7 @@
 
     document.getElementById('btn-clear').addEventListener('click', () => {
       if (confirm('Delete all recorded plays?')) {
-        localStorage.removeItem('covercero_plays')
+        localStorage.removeItem(envKey('covercero_plays'))
         render()
       }
     })
