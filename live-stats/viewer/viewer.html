@@ -1872,7 +1872,122 @@ function IndividualSegmented({ groups, active, onChange, color, textColor }) {
   );
 }
 
-function IndividualTab({ home, away, homeColor, awayColor, sub, onSubChange, grp, onGrpChange }) {
+// ── Individual: tabla y sección compartidas ─────────────────────────────────
+// Las etiquetas de jugador de stats-lib.js son "#15 F. Sarabia" (o "#15
+// Fernando Sarabia" si dos jugadores del roster coinciden, "#15" sin apellido,
+// o "Desconocido" cuando la jugada no trae jugador). Se separan en Uni/Nombre
+// solo para mostrarlas; las claves de los mapas no cambian.
+function _splitPlayerLabel(label) {
+  const m = /^#(\S+)\s*(.*)$/.exec(String(label || '').trim());
+  if (m) return { uni: m[1], name: m[2] || '—' };
+  return { uni: '—', name: label || 'Desconocido' };
+}
+
+const IND_UNI_W = 48;   // ancho fijo de la columna Uni (también es el offset sticky de Nombre)
+const IND_CELL = { fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'7px 8px', whiteSpace:'nowrap', textAlign:'center', borderTop:'1px solid var(--border)', fontVariantNumeric:'tabular-nums' };
+const IND_HEAD = { fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:600, color:'var(--text3)', letterSpacing:0.5, padding:'4px 8px', textTransform:'uppercase', whiteSpace:'nowrap', textAlign:'center' };
+// Columnas 0 (Uni) y 1 (Nombre) fijas a la izquierda cuando la tabla hace
+// scroll horizontal; fondo opaco para que las demás columnas pasen por debajo.
+const IND_STICKY = [
+  { position:'sticky', left:0, zIndex:1, background:'var(--card-bg)', width:IND_UNI_W, minWidth:IND_UNI_W, color:'var(--text2)' },
+  { position:'sticky', left:IND_UNI_W, zIndex:1, background:'var(--card-bg)', minWidth:130, textAlign:'left', fontWeight:600, boxShadow:'inset -1px 0 0 var(--border)' },
+];
+
+// rows: arrays [uni, nombre, ...valores]. Sin filas → "Sin datos".
+function IndStatTable({ cols, rows, label }) {
+  if (!rows.length) return <EmptyState text="Sin datos" />;
+  return (
+    <div style={{ overflowX:'auto' }}>
+      <table aria-label={label} style={{ width:'100%', borderCollapse:'separate', borderSpacing:0 }}>
+        <thead>
+          <tr>
+            {cols.map((c, i) => (
+              <th key={c} scope="col" style={{ ...IND_HEAD, ...(IND_STICKY[i] || null), color:'var(--text3)', fontWeight:600, boxShadow: i === 1 ? IND_STICKY[1].boxShadow : undefined }}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => (
+            <tr key={ri}>
+              {r.map((v, j) => <td key={j} style={{ ...IND_CELL, ...(IND_STICKY[j] || null) }}>{v}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Tarjeta con título subrayado en el color del equipo.
+function IndSection({ title, color, children }) {
+  return (
+    <section style={{ ...CARD_STYLE, minWidth:0 }}>
+      <h3 style={{ ...SECTION_TITLE_STYLE, display:'inline-block', margin:'0 0 12px', paddingBottom:5, borderBottom:`3px solid ${color}` }}>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+// ── Individual · Ofensiva ────────────────────────────────────────────────────
+// Todo sale de lo que ya calcula stats-lib.js para las pestañas existentes:
+// buildOffenseMaps() (passers/rushers/receivers; scrambles, sacks e intentional
+// grounding ya son carrera del QB), las INT por QB de computeQBProgression()
+// (mismo qbIntMap que Comparación) y _passerRating() (NCAA). Aquí solo se
+// ordena y se da formato.
+const _fmtAvg = (num, den) => den ? (num / den).toFixed(1) : '—';
+
+function IndividualOffense({ abbr, color, passers, rushers, receivers, qbIntMap }) {
+  const split = d => { const s = _splitPlayerLabel(d.label); return [s.uni, s.name]; };
+
+  const passRows = Object.entries(passers[abbr] || {})
+    .sort((a, b) => b[1].att - a[1].att)
+    .map(([key, d]) => {
+      const int = qbIntMap[`${abbr}::${key}`] || 0;
+      const rating = _passerRating(d.comp, d.att, d.yds, d.td, int);
+      return [
+        ...split(d),
+        rating != null ? rating.toFixed(1) : '—',
+        d.comp, d.att, int,
+        d.att ? ((d.comp / d.att) * 100).toFixed(1) : '—',
+        d.yds, d.td, d.long,
+        d.sacked ? `${d.sacked}-${d.sackedYds}` : 0,
+      ];
+    });
+
+  const recRows = Object.values(receivers[abbr] || {})
+    .sort((a, b) => b.yds - a.yds)
+    .map(d => [...split(d), d.rec, d.yds, _fmtAvg(d.yds, d.rec), d.td, d.long]);
+
+  const rushRows = Object.values(rushers[abbr] || {})
+    .sort((a, b) => b.yds - a.yds)
+    .map(d => [...split(d), d.att, d.gained || 0, d.yds, _fmtAvg(d.yds, d.att), d.td, d.long]);
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16 }}>
+      <IndSection title="Pase" color={color}>
+        <IndStatTable label="Pase" rows={passRows}
+          cols={['Uni','Nombre','Rating','Comp','Att','Int','%','Yds','TD','Largo','Capturas']} />
+      </IndSection>
+      <IndSection title="Recepción" color={color}>
+        <IndStatTable label="Recepción" rows={recRows}
+          cols={['Uni','Nombre','Rec','Yds','Prom','TD','Largo']} />
+      </IndSection>
+      <IndSection title="Carrera" color={color}>
+        <IndStatTable label="Carrera" rows={rushRows}
+          cols={['Uni','Nombre','Att','Ganadas','Netas','Prom','TD','Largo']} />
+      </IndSection>
+    </div>
+  );
+}
+
+function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, sub, onSubChange, grp, onGrpChange,
+                         passers, rushers, receivers, qbProgression }) {
+  const qbIntMap = useMemo(() => {
+    const m = {};
+    qbProgression.forEach(qb => { m[`${qb.team}::${qb.key}`] = qb.int; });
+    return m;
+  }, [qbProgression]);
+
   const homeName = home?.nombre_corto || home?.Apodo || home?.abreviatura || 'Home';
   const awayName = away?.nombre_corto || away?.Apodo || away?.abreviatura || 'Away';
   const subTabs = [
@@ -1884,6 +1999,7 @@ function IndividualTab({ home, away, homeColor, awayColor, sub, onSubChange, grp
   ];
   const isTeam = sub === 'away' || sub === 'home';
   const team  = sub === 'home' ? home : away;
+  const abbr  = sub === 'home' ? homeAbbr : awayAbbr;
   const color = sub === 'home' ? homeColor : awayColor;
   const grpLabel = INDIVIDUAL_GROUPS.find(g => g.key === grp)?.label || '';
 
@@ -1899,7 +2015,9 @@ function IndividualTab({ home, away, homeColor, awayColor, sub, onSubChange, grp
         <IndividualSegmented groups={INDIVIDUAL_GROUPS} active={grp} onChange={onGrpChange}
           color={color} textColor={teamTextColor(team, color)} />
       )}
-      <Placeholder text={placeholderText} />
+      {isTeam && grp === 'off'
+        ? <IndividualOffense abbr={abbr} color={color} passers={passers} rushers={rushers} receivers={receivers} qbIntMap={qbIntMap} />
+        : <Placeholder text={placeholderText} />}
     </div>
   );
 }
@@ -2634,9 +2752,10 @@ function App() {
           <div style={{ padding:'16px 20px 40px', maxWidth: activeTab === 'individual' ? 1360 : 1200, margin:'0 auto' }}>
             {activeTab === 'individual' && (
               <IndividualTab
-                home={home} away={away} homeColor={homeColor} awayColor={awayColor}
+                home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
                 sub={indSubTab} onSubChange={setIndSubTab}
                 grp={indGroup} onGrpChange={setIndGroup}
+                passers={passers} rushers={rushers} receivers={receivers} qbProgression={qbProgression}
               />
             )}
             {activeTab === 'away' && (
