@@ -33,6 +33,8 @@
   ::-webkit-scrollbar { width:6px; height:6px; }
   ::-webkit-scrollbar-track { background:transparent; }
   ::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+  /* Pestaña Individual: foco visible de teclado en sus controles de navegación. */
+  .ind-btn:focus-visible { outline:2px solid var(--text); outline-offset:-2px; }
 </style>
 </head>
 <body>
@@ -1779,6 +1781,129 @@ function TeamStatsTab({
   );
 }
 
+// ── Tab: Individual ──────────────────────────────────────────────────────────
+// Nueva pestaña principal (3 niveles), añadida junto a las existentes sin
+// reemplazar ninguna:
+//   Nivel 2: [Away] · [Home] · QB Progression · Big Plays · Penalties
+//   Nivel 3 (solo Away/Home): Ofensiva · Defensiva · Equipos Especiales
+// El estado (subtab y unidad) vive en App, así que al cambiar de Away a Home se
+// conserva la unidad elegida, y al volver de otra pestaña principal también.
+
+// Texto legible sobre el color de un equipo: color_texto cuando la tabla de
+// equipos lo trae; si no, blanco o casi-negro según el contraste WCAG.
+function _hexLuminance(hex) {
+  let h = String(hex || '').trim().replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  const [r, g, b] = [0, 2, 4].map(i => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function _contrastText(hex) {
+  const L = _hexLuminance(hex);
+  if (L == null) return '#ffffff';
+  // Contraste contra casi-negro (#111827, L≈0.0123) vs. contra blanco.
+  return (L + 0.05) / (0.0123 + 0.05) >= 1.05 / (L + 0.05) ? '#111827' : '#ffffff';
+}
+function teamTextColor(team, color) {
+  return team?.color_texto || _contrastText(color);
+}
+
+const INDIVIDUAL_GROUPS = [
+  { key: 'off', label: 'Ofensiva' },
+  { key: 'def', label: 'Defensiva' },
+  { key: 'st',  label: 'Equipos Especiales' },
+];
+
+// Nivel 2: pestañas con scroll horizontal (no se parten en varias líneas). Las
+// de equipo llevan el punto de su color y subrayan en ese color al estar activas.
+function IndividualSubTabs({ tabs, active, onChange }) {
+  return (
+    // Centrado con margin:auto en un contenedor interno (no justify-content:
+    // center): cuando la fila no cabe (móvil), justify-content recortaría la
+    // primera pestaña fuera del área de scroll; los márgenes auto no.
+    <div style={{ display:'flex', overflowX:'auto', borderBottom:'1px solid var(--border)', marginBottom:14 }}>
+      <div role="group" aria-label="Individual" style={{ display:'flex', margin:'0 auto' }}>
+      {tabs.map(t => {
+        const on = active === t.key;
+        return (
+          <button key={t.key} type="button" className="ind-btn" aria-pressed={on} onClick={() => onChange(t.key)} style={{
+            flex:'0 0 auto', display:'flex', alignItems:'center', gap:7,
+            background:'none', border:'none', borderBottom:`3px solid ${on ? (t.color || 'var(--text)') : 'transparent'}`,
+            color: on ? 'var(--text)' : 'var(--text2)',
+            fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, letterSpacing:0.2,
+            padding:'10px 14px', minHeight:42, cursor:'pointer', whiteSpace:'nowrap',
+          }}>
+            {t.color && <span style={{ width:9, height:9, borderRadius:'50%', background:t.color, display:'inline-block', flexShrink:0 }} />}
+            {t.label}
+          </button>
+        );
+      })}
+      </div>
+    </div>
+  );
+}
+
+// Nivel 3: control segmentado a todo el ancho; el segmento activo se rellena
+// con el color del equipo. En móvil hace scroll horizontal en vez de partirse.
+function IndividualSegmented({ groups, active, onChange, color, textColor }) {
+  return (
+    <div style={{ overflowX:'auto', marginBottom:16 }}>
+      <div role="group" aria-label="Unidad" style={{ display:'flex', minWidth:'100%' }}>
+        {groups.map((g, i) => {
+          const on = active === g.key;
+          const first = i === 0, last = i === groups.length - 1;
+          return (
+            <button key={g.key} type="button" className="ind-btn" aria-pressed={on} onClick={() => onChange(g.key)} style={{
+              flex:'1 0 auto', minHeight:40, padding:'0 16px',
+              borderTop:`1px solid ${color}`, borderBottom:`1px solid ${color}`, borderRight:`1px solid ${color}`,
+              borderLeft: first ? `1px solid ${color}` : 'none',
+              borderRadius: first ? '6px 0 0 6px' : last ? '0 6px 6px 0' : 0,
+              background: on ? color : 'var(--card-bg)', color: on ? textColor : 'var(--text)',
+              fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, letterSpacing:0.3,
+              cursor:'pointer', whiteSpace:'nowrap',
+            }}>{g.label}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function IndividualTab({ home, away, homeColor, awayColor, sub, onSubChange, grp, onGrpChange }) {
+  const homeName = home?.nombre_corto || home?.Apodo || home?.abreviatura || 'Home';
+  const awayName = away?.nombre_corto || away?.Apodo || away?.abreviatura || 'Away';
+  const subTabs = [
+    { key: 'away', label: awayName, color: awayColor },
+    { key: 'home', label: homeName, color: homeColor },
+    { key: 'qb',   label: 'QB Progression' },
+    { key: 'big',  label: 'Big Plays' },
+    { key: 'pen',  label: 'Penalties' },
+  ];
+  const isTeam = sub === 'away' || sub === 'home';
+  const team  = sub === 'home' ? home : away;
+  const color = sub === 'home' ? homeColor : awayColor;
+  const grpLabel = INDIVIDUAL_GROUPS.find(g => g.key === grp)?.label || '';
+
+  // Placeholders de la Fase 1 — cada vista se llena en su fase.
+  const placeholderText = isTeam
+    ? `${sub === 'home' ? homeName : awayName} · ${grpLabel} — próximamente`
+    : { qb: 'QB Progression — próximamente', big: 'Big Plays — próximamente', pen: 'Penalties — próximamente' }[sub];
+
+  return (
+    <div>
+      <IndividualSubTabs tabs={subTabs} active={sub} onChange={onSubChange} />
+      {isTeam && (
+        <IndividualSegmented groups={INDIVIDUAL_GROUPS} active={grp} onChange={onGrpChange}
+          color={color} textColor={teamTextColor(team, color)} />
+      )}
+      <Placeholder text={placeholderText} />
+    </div>
+  );
+}
+
 // ── Scoring Summary ──────────────────────────────────────────────────────────
 function ScoringSummaryPanel({ events, homeAbbr, awayAbbr, homeColor, awayColor }) {
   const [open, setOpen] = useState(true);
@@ -1978,6 +2103,10 @@ function App() {
   const [activeTab,   setActiveTab]   = useState('away');
   const [teamSubTab,  setTeamSubTab]  = useState('stats');
   const [drivesSubTab,setDrivesSubTab]= useState('byteam');
+  // Pestaña Individual: entra por defecto a Away · Ofensiva. La unidad (indGroup)
+  // se comparte entre Away y Home, así que se conserva al cambiar de equipo.
+  const [indSubTab, setIndSubTab] = useState('away');
+  const [indGroup,  setIndGroup]  = useState('off');
 
   // ── initial load ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2104,8 +2233,8 @@ function App() {
 
   // Which tabs actually consume each derived stat block below — realtime
   // updates only re-run the ones the visible tab needs (see useTabGatedMemo).
-  const offenseTabsNeeded = activeTab === 'away' || activeTab === 'home' || activeTab === 'comparacion';
-  const explosiveNeeded   = activeTab === 'away' || activeTab === 'home';
+  const offenseTabsNeeded = activeTab === 'away' || activeTab === 'home' || activeTab === 'comparacion' || activeTab === 'individual';
+  const explosiveNeeded   = activeTab === 'away' || activeTab === 'home' || activeTab === 'individual';
   const scoringNeeded     = activeTab === 'scoring';
   const driveRowsNeeded   = activeTab === 'drives';
 
@@ -2272,6 +2401,7 @@ function App() {
     { key: 'drives',  label: 'Drives' },
     { key: 'scoring', label: 'Anotaciones' },
     { key: 'pbp',     label: 'Play by Play' },
+    { key: 'individual', label: 'Individual' },
   ];
 
   return (
@@ -2500,7 +2630,15 @@ function App() {
           <TabBar tabs={mainTabs} active={activeTab} onChange={setActiveTab} />
 
           {/* ── TAB CONTENT ───────────────────────────────────────────────────── */}
-          <div style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
+          {/* Individual usa un contenedor más ancho (1360) para sus vistas lado a lado; el resto sigue en 1200. */}
+          <div style={{ padding:'16px 20px 40px', maxWidth: activeTab === 'individual' ? 1360 : 1200, margin:'0 auto' }}>
+            {activeTab === 'individual' && (
+              <IndividualTab
+                home={home} away={away} homeColor={homeColor} awayColor={awayColor}
+                sub={indSubTab} onSubChange={setIndSubTab}
+                grp={indGroup} onGrpChange={setIndGroup}
+              />
+            )}
             {activeTab === 'away' && (
               <TeamStatsTab
                 teamAbbr={awayAbbr} teamApodo={awayApodo} teamColor={awayColor}
