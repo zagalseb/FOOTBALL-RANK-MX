@@ -80,6 +80,8 @@ let secondsToMMSS;
 let computeDefenseStats, computeSpecialTeamsStats, computeFumbleStats, fumbleStatsToMap;
 let computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnoverStatsByPlayer;
 let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps, buildRosterIndex, getGameTemporada;
+// Pestaña Individual: helpers ya exportados por stats-lib.js (no se reimplementan).
+let _playerKeyLabel, resolvePlay, playNetYards, fumbleYards;
 // Fase 3: manual-capture path row/lookup builders (BasicBoxScore's data).
 let _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows;
 const engineReady = import('../../shared/stats-lib.js').then(m => {
@@ -109,6 +111,10 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   buildOffenseMaps                 = m.buildOffenseMaps;
   buildRosterIndex                 = m.buildRosterIndex;
   getGameTemporada                 = m.getGameTemporada;
+  _playerKeyLabel                  = m._playerKeyLabel;
+  resolvePlay                      = m.resolvePlay;
+  playNetYards                     = m.playNetYards;
+  fumbleYards                      = m.fumbleYards;
   _passerRating                    = m._passerRating;
   _topManualStat                   = m._topManualStat;
   _manualPassingRows               = m._manualPassingRows;
@@ -1894,25 +1900,43 @@ const IND_STICKY = [
   { position:'sticky', left:IND_UNI_W, zIndex:1, background:'var(--card-bg)', minWidth:130, textAlign:'left', fontWeight:600, boxShadow:'inset -1px 0 0 var(--border)' },
 ];
 
-// rows: arrays [uni, nombre, ...valores]. Sin filas → "Sin datos".
-function IndStatTable({ cols, rows, label }) {
+// cols: 'Etiqueta' o { label, align:'left' }.
+// rows: arrays [uni, nombre, ...valores], u objetos { v:[...], bg, fg, muted }
+//   bg/fg: fondo y texto de toda la fila (p. ej. TD en color del equipo);
+//   muted: fila apagada (jugada anulada por bandera).
+// sticky (default true): Uni y Nombre (columnas 0 y 1) fijas a la izquierda;
+//   false para tablas sin esas columnas (QB Progression).
+// Sin filas → "Sin datos".
+function IndStatTable({ cols, rows, label, sticky = true }) {
   if (!rows.length) return <EmptyState text="Sin datos" />;
+  const defs = cols.map(c => typeof c === 'string' ? { label: c } : c);
+  const stickyOf = i => (sticky && IND_STICKY[i]) || null;
   return (
     <div style={{ overflowX:'auto' }}>
       <table aria-label={label} style={{ width:'100%', borderCollapse:'separate', borderSpacing:0 }}>
         <thead>
           <tr>
-            {cols.map((c, i) => (
-              <th key={c} scope="col" style={{ ...IND_HEAD, ...(IND_STICKY[i] || null), color:'var(--text3)', fontWeight:600, boxShadow: i === 1 ? IND_STICKY[1].boxShadow : undefined }}>{c}</th>
+            {defs.map((c, i) => (
+              <th key={c.label} scope="col" style={{ ...IND_HEAD, textAlign: c.align || 'center', ...stickyOf(i), color:'var(--text3)', fontWeight:600 }}>{c.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, ri) => (
-            <tr key={ri}>
-              {r.map((v, j) => <td key={j} style={{ ...IND_CELL, ...(IND_STICKY[j] || null) }}>{v}</td>)}
-            </tr>
-          ))}
+          {rows.map((r, ri) => {
+            const row = Array.isArray(r) ? { v: r } : r;
+            const rowStyle = {
+              ...(row.bg ? { background: row.bg } : null),
+              ...(row.fg ? { color: row.fg, fontWeight: 700 } : null),
+              ...(row.muted ? { color: 'var(--text3)', fontStyle: 'italic' } : null),
+            };
+            return (
+              <tr key={ri}>
+                {row.v.map((v, j) => (
+                  <td key={j} style={{ ...IND_CELL, textAlign: defs[j]?.align || 'center', ...stickyOf(j), ...rowStyle }}>{v}</td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -1981,8 +2005,254 @@ function IndividualOffense({ abbr, color, passers, rushers, receivers, qbIntMap 
   );
 }
 
+// ── Individual · QB Progression ──────────────────────────────────────────────
+// "1ro y 10 en MTY 25" (o "3ro y gol en AT 4"). toApodo: abreviatura → Apodo
+// (solo para mostrar). Sin down (p. ej. tras un kickoff) queda solo el spot.
+const _IND_DOWN = ['', '1ro', '2do', '3ro', '4to'];
+function _indContext(p, toApodo) {
+  const spot = p.field_pos ? `${toApodo(p.field_pos.team)} ${p.field_pos.yard}` : null;
+  if (!p.down) return spot || '—';
+  const dist = (p.yardline_100 != null && p.distance != null && p.distance >= p.yardline_100) ? 'gol' : p.distance;
+  return `${_IND_DOWN[p.down] || `${p.down}°`} y ${dist}${spot ? ` en ${spot}` : ''}`;
+}
+
+// IND_QB_BUILDER_START (bloque sin JSX; debug lo extrae para verificarlo en Node)
+// Agrupa por QB con computeQBProgression() — sus totales (comp/att/yds/td/int,
+// que ya excluyen jugadas anuladas, sacks, scrambles y grounding) y sus filas
+// (receptor, nota TD/INT/SACK/IG) — y recorre las MISMAS jugadas en el MISMO
+// orden (PASS con pass_by, por seq, saltando las que no tienen etiqueta) para
+// añadir lo que esas filas no traen: contexto, objetivo, "1ro" y si la jugada
+// quedó anulada por una bandera.
+//   attempts: una fila por intento; las anuladas van marcadas y no cuentan.
+//   sacks:    capturas (no son intento); yardas = las del QB, igual que la
+//             columna Capturas de Pase (buildOffenseMaps → _carrierYards).
+//   Scrambles e intentional grounding se omiten: son carrera del QB.
+function _buildIndQbData(plays, qbProgression, rosters, homeAbbr, awayAbbr, toApodo) {
+  const groups = qbProgression.map(qb => ({ qb, attempts: [], sacks: [], _i: 0 }));
+  const byKey = {};
+  groups.forEach(g => { byKey[`${g.qb.team}::${g.qb.key}`] = g; });
+
+  // "1ro": _isFirstDownPlay con el inicio de serie de cada equipo, igual que
+  // computeComparisonStats (yardline_100 del último 1er down de esa ofensiva).
+  const seriesStart = {};
+  const firstDown = new Map();
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue;
+    const own = p.possession === homeAbbr || p.possession === awayAbbr;
+    if (own && p.down === 1 && p.yardline_100 != null) seriesStart[p.possession] = p.yardline_100;
+    if (p.play_type === 'PASS') firstDown.set(p, _isFirstDownPlay(p, seriesStart[p.possession] ?? null));
+  }
+
+  const passPlays = plays.filter(p => p.play_type === 'PASS' && p.pass_by).slice().sort((a, b) => a.seq - b.seq);
+  for (const raw of passPlays) {
+    const kl = _playerKeyLabel(raw.pass_by, rosters?.[raw.possession] || null);
+    if (!kl) continue;
+    const g = byKey[`${raw.possession}::${kl.key}`];
+    if (!g) continue;
+    const row = g.qb.rows[g._i++];          // fila de computeQBProgression para esta jugada
+    if (!row) continue;
+    const p = resolvePlay(raw);
+    const voided = p.stats_count === false;
+    const context = _indContext(p, toApodo);
+    const defTeam = p.possession === homeAbbr ? awayAbbr : homeAbbr;
+
+    if (p.pass_result === 'scramble' || row.note === 'IG') continue;
+
+    if (p.pass_result === 'sack') {
+      const f = p.net_yards == null ? fumbleYards(p) : null;
+      const yds = f ? f.fumbler : playNetYards(p);
+      const by = p.sack_by ? (_playerKeyLabel(p.sack_by, rosters?.[defTeam] || null)?.label || '—') : '—';
+      g.sacks.push({ voided, yds: yds ?? 0, context, by, seq: p.seq });
+      continue;
+    }
+
+    if (!['complete', 'incomplete', 'dropped', 'broken_up', 'intercepted'].includes(p.pass_result)) continue;
+    const isInt = p.pass_result === 'intercepted';
+    let target = '—';
+    if (row.receiver) target = row.receiver;
+    else if (!isInt && p.intended_for) target = _playerKeyLabel(p.intended_for, rosters?.[p.possession] || null)?.label || '—';
+    const result = voided ? '' : row.note === 'TD' ? 'TD' : isInt ? 'INT' : firstDown.get(raw) ? '1ro' : '';
+    g.attempts.push({
+      voided, complete: row.isComplete, isInt, result, context, target, seq: p.seq,
+      yds: voided ? null : (row.isComplete ? (row.netYards ?? 0) : 0),
+    });
+  }
+
+  // Capturas para las fichas: mismas cuentas que la columna Capturas de Pase.
+  return groups.map(({ qb, attempts, sacks }) => {
+    const counted = sacks.filter(s => !s.voided);
+    return { qb, attempts, sacks, sacked: counted.length, sackedYds: counted.reduce((a, s) => a + Math.abs(s.yds), 0) };
+  });
+}
+// IND_QB_BUILDER_END
+
+function IndChip({ label, value }) {
+  return (
+    <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, padding:'7px 12px', minWidth:78 }}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, letterSpacing:0.8, color:'var(--text3)', textTransform:'uppercase' }}>{label}</div>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:17, fontWeight:800, color:'var(--text)', marginTop:2, fontVariantNumeric:'tabular-nums' }}>{value}</div>
+    </div>
+  );
+}
+
+const IND_TAG = { fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:800, letterSpacing:0.6 };
+const IND_COMPLETE_BG = 'rgba(22,163,74,0.10)';
+const IND_INT_BG = '#fef2f2', IND_INT_FG = '#991b1b';
+
+// Una sección por QB: tarjeta → fichas → pases → capturas.
+function IndQbBlock({ data, team, color, textColor }) {
+  const { qb, attempts, sacks, sacked, sackedYds } = data;
+  const { uni, name } = _splitPlayerLabel(qb.label);
+  let n = 0;
+  // Racha: intentos seguidos con el mismo resultado (✓ completo / ✗ incompleto,
+  // INT incluida). Se muestra a partir de 2. Las anuladas no son intento: ni
+  // suman ni cortan la racha.
+  let streak = 0, lastComplete = null;
+  const passRows = attempts.map(a => {
+    if (a.voided) {
+      return { muted: true, v: ['—', <span style={IND_TAG}>ANULADA</span>, '—', '', a.context, a.target] };
+    }
+    n++;
+    streak = a.complete === lastComplete ? streak + 1 : 1;
+    lastComplete = a.complete;
+    const style = a.result === 'TD' ? { bg: color, fg: textColor } : a.isInt ? { bg: IND_INT_BG, fg: IND_INT_FG } : a.complete ? { bg: IND_COMPLETE_BG } : {};
+    // ✓/✗ como la QB Progression existente; en filas con color propio (TD/INT)
+    // hereda el texto de la fila para seguir siendo legible.
+    const word = a.complete ? 'completo' : 'incompleto';
+    const mark = (
+      <span style={{ whiteSpace:'nowrap' }}>
+        <span role="img" aria-label={a.complete ? 'Completo' : 'Incompleto'} title={a.complete ? 'Completo' : 'Incompleto'}
+          style={{ fontSize:14, fontWeight:800, color: style.fg ? 'inherit' : (a.complete ? '#16a34a' : '#dc2626') }}>
+          {a.complete ? '✓' : '✗'}
+        </span>
+        {streak >= 2 && (
+          <span title={`${streak} pases ${word}s seguidos`} aria-label={`racha de ${streak}`}
+            style={{ marginLeft:4, fontSize:11, fontWeight:600, color: style.fg ? 'inherit' : 'var(--text2)' }}>
+            ({streak})
+          </span>
+        )}
+      </span>
+    );
+    return { ...style, v: [n, mark, a.yds, a.result, a.context, a.target] };
+  });
+  let s = 0;
+  const sackRows = sacks.map(k => k.voided
+    ? { muted: true, v: ['—', 'Anulada', k.context, k.by] }
+    : [++s, k.yds, k.context, k.by]);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      <div style={{ ...CARD_STYLE, display:'flex', alignItems:'center', gap:12 }}>
+        <TeamLogo team={team} size={44} />
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)' }}>{uni !== '—' ? `#${uni} ` : ''}{name}</div>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', marginTop:2 }}>
+            {qb.comp}-{qb.att}, {qb.yds} yds ({qb.td}TD, {qb.int}INT)
+          </div>
+        </div>
+      </div>
+      <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+        <IndChip label="Comp/Att" value={`${qb.comp}-${qb.att}`} />
+        <IndChip label="% Comp" value={qb.att ? `${Math.round((qb.comp / qb.att) * 100)}%` : '—'} />
+        <IndChip label="Yds" value={qb.yds} />
+        <IndChip label="Yds/Pase" value={_fmtAvg(qb.yds, qb.att)} />
+        <IndChip label="Capturas" value={sacked ? `${sacked} (-${sackedYds})` : '0'} />
+      </div>
+      <IndSection title="Pases" color={color}>
+        <IndStatTable sticky={false} label={`Pases de ${qb.label}`} rows={passRows}
+          cols={['#', 'Pase', 'Yds', 'Resultado', { label: 'Contexto', align: 'left' }, { label: 'Receptor', align: 'left' }]} />
+      </IndSection>
+      <IndSection title="Capturas" color={color}>
+        <IndStatTable sticky={false} label={`Capturas de ${qb.label}`} rows={sackRows}
+          cols={['#', 'Yds', { label: 'Contexto', align: 'left' }, { label: 'Capturado por', align: 'left' }]} />
+      </IndSection>
+    </div>
+  );
+}
+
+// Columna de un equipo: banner + un bloque por QB (si hay más de uno).
+function IndQbColumn({ apodo, team, color, textColor, blocks }) {
+  return (
+    <section style={{ minWidth:0, display:'flex', flexDirection:'column', gap:12 }}>
+      <h2 style={{ margin:0, background:color, color:textColor, borderRadius:6, padding:'12px 14px', textAlign:'center',
+                   fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:18, letterSpacing:1 }}>
+        {apodo} QB PROGRESSION
+      </h2>
+      {blocks.length
+        ? blocks.map(b => <IndQbBlock key={b.qb.key} data={b} team={team} color={color} textColor={textColor} />)
+        : <div style={CARD_STYLE}><EmptyState text="Sin datos" /></div>}
+    </section>
+  );
+}
+
+// Grilla "lado a lado": Away izquierda, Home derecha; colapsa a una columna
+// cuando cada columna quedaría por debajo de ~540px. Compartida con Fases 4.
+function IndSideBySide({ children }) {
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 540px), 1fr))', gap:20, alignItems:'start' }}>
+      {children}
+    </div>
+  );
+}
+
+function IndLegendSwatch({ bg, border, label }) {
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}>
+      <span style={{ width:12, height:12, borderRadius:3, background:bg, border: border ? '1px solid var(--border2)' : 'none', display:'inline-block' }} />
+      {label}
+    </span>
+  );
+}
+
+function IndividualQbProgression({ plays, qbProgression, rosters, home, away, homeAbbr, awayAbbr, homeColor, awayColor, filt, onFiltChange }) {
+  const homeApodo = home?.Apodo || homeAbbr, awayApodo = away?.Apodo || awayAbbr;
+  const toApodo = abbr => abbr === homeAbbr ? homeApodo : abbr === awayAbbr ? awayApodo : abbr;
+  const data = useMemo(
+    () => _buildIndQbData(plays, qbProgression, rosters, homeAbbr, awayAbbr, toApodo),
+    [plays, qbProgression, rosters, homeAbbr, awayAbbr, homeApodo, awayApodo]
+  );
+  const cols = [
+    { key: 'away', abbr: awayAbbr, apodo: awayApodo, team: away, color: awayColor },
+    { key: 'home', abbr: homeAbbr, apodo: homeApodo, team: home, color: homeColor },
+  ].filter(c => filt === 'both' || filt === c.key);
+  const filters = [['both', 'Ambos'], ['away', awayApodo], ['home', homeApodo]];
+
+  return (
+    <div>
+      <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:16, marginBottom:16 }}>
+        <div role="group" aria-label="Filtrar por equipo" style={{ display:'flex', gap:5 }}>
+          {filters.map(([val, label]) => {
+            const on = filt === val;
+            return (
+              <button key={val} type="button" className="ind-btn" aria-pressed={on} onClick={() => onFiltChange(val)} style={{
+                background: on ? 'rgba(17,24,39,0.06)' : 'transparent',
+                border:`1px solid ${on ? 'rgba(17,24,39,0.25)' : 'var(--border2)'}`, borderRadius:4,
+                color: on ? 'var(--text)' : 'var(--text2)', fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:12,
+                letterSpacing:0.3, padding:'5px 12px', minHeight:30, cursor:'pointer', whiteSpace:'nowrap',
+              }}>{label}</button>
+            );
+          })}
+        </div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:14, fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)' }}>
+          <IndLegendSwatch bg={IND_COMPLETE_BG} border label="Pase completo" />
+          <IndLegendSwatch bg="var(--text)" label="Touchdown (color del equipo)" />
+          <IndLegendSwatch bg={IND_INT_BG} border label="Intercepción" />
+          <span><strong style={{ color:'var(--text)' }}>1ro</strong> = primer down</span>
+        </div>
+      </div>
+      <IndSideBySide>
+        {cols.map(c => (
+          <IndQbColumn key={c.key} apodo={c.apodo} team={c.team} color={c.color} textColor={teamTextColor(c.team, c.color)}
+            blocks={data.filter(d => d.qb.team === c.abbr)} />
+        ))}
+      </IndSideBySide>
+    </div>
+  );
+}
+
 function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, sub, onSubChange, grp, onGrpChange,
-                         passers, rushers, receivers, qbProgression }) {
+                         passers, rushers, receivers, qbProgression, plays, rosters }) {
+  const [qbFilt, setQbFilt] = useState('both');
   const qbIntMap = useMemo(() => {
     const m = {};
     qbProgression.forEach(qb => { m[`${qb.team}::${qb.key}`] = qb.int; });
@@ -2018,7 +2288,11 @@ function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, s
       )}
       {isTeam && grp === 'off'
         ? <IndividualOffense abbr={abbr} color={color} passers={passers} rushers={rushers} receivers={receivers} qbIntMap={qbIntMap} />
-        : <Placeholder text={placeholderText} />}
+        : sub === 'qb'
+          ? <IndividualQbProgression plays={plays} qbProgression={qbProgression} rosters={rosters}
+              home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
+              filt={qbFilt} onFiltChange={setQbFilt} />
+          : <Placeholder text={placeholderText} />}
     </div>
   );
 }
@@ -2763,6 +3037,7 @@ function App() {
                 sub={indSubTab} onSubChange={setIndSubTab}
                 grp={indGroup} onGrpChange={setIndGroup}
                 passers={passers} rushers={rushers} receivers={receivers} qbProgression={qbProgression}
+                plays={plays} rosters={rosters}
               />
             )}
             {activeTab === 'away' && (
