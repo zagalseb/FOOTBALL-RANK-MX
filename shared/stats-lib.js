@@ -1460,6 +1460,14 @@ function _formatPlayCore(play, noPlay = false) {
 // ── Game state advancement ────────────────────────────────────────────────────
 
 export function advanceGameState(state, play, teams) {
+  // The play's touchdown/net_yards/stats_count as computed at read time
+  // (resolvePlay → flagOutcome, H-06), not as stored: a capture from before
+  // the wizard wrote stats_count can still carry touchdown:true on a play an
+  // accepted flag voided, and every scoring branch below (rush/pass/scramble
+  // TD, and the own-recovery fumble TD in _advanceFumble, which receives this
+  // same resolved play) must score nothing for it (§14 Art.5). Same object
+  // back when nothing changes.
+  play = resolvePlay(play)
   const { net_yards, touchdown, at, result } = play
 
   if (play.play_type === 'PENALTY') {
@@ -2314,8 +2322,10 @@ function _advanceFumble(state, play, prefix, teams) {
     if (fumbleAtResult) state.field_pos = { ...fumbleAtResult }
     // Whoever ends up with the ball scores: the opponent on a return, or the
     // offense on its own recovery in the end zone (§13 Art.2 A.R.3-4). A play
-    // voided by an accepted flag (stats_count false) scores nothing (§14 Art.5).
-    if (play.stats_count !== false) _addPoints(state, state.possession, 6, teams)
+    // voided by an accepted flag scores nothing (§14 Art.5). `play` is the
+    // resolved play from advanceGameState (resolvePlay), so stats_count here
+    // is the computed one, not the stored field.
+    if (resolvePlay(play).stats_count !== false) _addPoints(state, state.possession, 6, teams)
     return
   }
 
