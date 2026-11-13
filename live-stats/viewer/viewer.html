@@ -351,6 +351,17 @@ function _isScrimmagePlay(p) {
   return true;
 }
 
+// Jugadas que se CUENTAN en la columna PLAYS de Drives (y el "N PLAYS" del
+// chart, que lee la misma fila) y en el "N jug" del encabezado de drive en
+// Play by Play: no cuentan las PENALTY puras ni las jugadas anuladas por
+// bandera (flagOutcome → voided, el mismo criterio que muestra "NO PLAY").
+// Solo afecta el conteo: las yardas del drive siguen sumando sus
+// desplazamientos (penalidades incluidas), como antes.
+function _isCountedDrivePlay(p) {
+  if (p.play_type === 'PENALTY') return false;
+  return !(typeof flagOutcome === 'function' && flagOutcome(p)?.voided);
+}
+
 // The drive's real starting field position — the field_pos of its FIRST
 // scrimmage play, which the wizard already resolved correctly at capture
 // time for however the preceding kickoff turned out (touchback, return,
@@ -379,7 +390,7 @@ function computeDriveRows(drives, teams) {
     // drive's offense", not a second hand-maintained criterion.
     const scrimmagePlays = d.plays.filter(_isScrimmagePlay);
     const yds = scrimmagePlays.reduce((a, p) => a + (_effectiveNetYards(p, teams) || 0), 0);
-    const realPlays = scrimmagePlays.length;
+    const realPlays = scrimmagePlays.filter(_isCountedDrivePlay).length;
     const c1 = parseClockToSeconds(first?.clock);
     const c2 = parseClockToSeconds(last?.clock);
     const top = (c1 != null && c2 != null && c1 >= c2 && first?.quarter === last?.quarter) ? c1 - c2 : null;
@@ -682,7 +693,7 @@ function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeApodo, awayApodo, homeC
                       }}>{dRes}</span>
                     )}
                     <span style={{ marginLeft:'auto', fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)' }}>
-                      {drive.plays.length} jug · {dYds} yds
+                      {drive.plays.filter(_isCountedDrivePlay).length} jug · {dYds} yds
                     </span>
                   </div>
                   {[...drive.plays].reverse().map((p, pi) => (
