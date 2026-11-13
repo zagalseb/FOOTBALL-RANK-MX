@@ -82,6 +82,8 @@ let computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnove
 let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps, buildRosterIndex, getGameTemporada;
 // Pestaña Individual: helpers ya exportados por stats-lib.js (no se reimplementan).
 let _playerKeyLabel, resolvePlay, playNetYards, fumbleYards, playTouchdown;
+// Play by Play: misma detección de jugada anulada (NO PLAY) que formatPlay.
+let flagOutcome;
 // Fase 3: manual-capture path row/lookup builders (BasicBoxScore's data).
 let _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows;
 const engineReady = import('../../shared/stats-lib.js').then(m => {
@@ -116,6 +118,7 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   playNetYards                     = m.playNetYards;
   fumbleYards                      = m.fumbleYards;
   playTouchdown                    = m.playTouchdown;
+  flagOutcome                      = m.flagOutcome;
   _passerRating                    = m._passerRating;
   _topManualStat                   = m._topManualStat;
   _manualPassingRows               = m._manualPassingRows;
@@ -695,6 +698,18 @@ function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeApodo, awayApodo, homeC
                         {formatPlay ? formatPlay(p) : p.play_type}
                       </span>
                       {p.play_type !== 'GAME_CTRL' && (() => {
+                        // Jugada anulada por bandera: "NO PLAY" en vez de una
+                        // cifra (las yardas de la penalidad ya van en el texto
+                        // de la bandera). Mismo criterio que formatPlay
+                        // (flagOutcome, calculado al leer).
+                        if (typeof flagOutcome === 'function' && flagOutcome(p)?.voided) {
+                          return (
+                            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, letterSpacing:0.4, color:'var(--text2)',
+                                           border:'1px solid var(--border2)', borderRadius:3, padding:'1px 5px', flexShrink:0, whiteSpace:'nowrap' }}>
+                              NO PLAY
+                            </span>
+                          );
+                        }
                         const eff = _effectiveNetYards(p, teams);
                         if (eff == null) return null;
                         return (

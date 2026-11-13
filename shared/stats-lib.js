@@ -745,20 +745,28 @@ function _penaltyBase(p, num) {
   return p.field_pos ? g(p.field_pos) : null
 }
 
+// Yards of one penalty (num = flag number, null for a standalone PENALTY play):
+// from its spot of enforcement to newLos (B.I.4), 0 for intentional grounding,
+// null when the spot is unknown. Shared by computePenalties and formatPlay's
+// flag summary so both always print the same figure.
+function _penaltyYards(p, num, newLos) {
+  if (num && num === _groundingFlag(p)) return INTENTIONAL_GROUNDING_PENALTY_YARDS
+  const base = newLos ? _penaltyBase(p, num) : null
+  return base == null ? null : Math.abs(_toGoal(p.possession, newLos) - base)
+}
+
 export function computePenalties(plays, homeAbbr) {
   plays = _resolvePlays(plays)
   const out = []
 
   function pushPenalty(p, num, team, infraction, by, result, newLos) {
     if (!team || !infraction) return
-    const base = newLos ? _penaltyBase(p, num) : null
-    const grounding = num && num === _groundingFlag(p)
     out.push({
       seq: p.seq, team, quarter: p.quarter, clock: p.clock,
       code: infraction.code, label: infraction.label,
       player: by ? playerShortLabel(by) : null,
       result: result || '—',
-      yards: grounding ? INTENTIONAL_GROUNDING_PENALTY_YARDS : (base == null ? null : Math.abs(_toGoal(p.possession, newLos) - base)),
+      yards: _penaltyYards(p, num, newLos),
       context: formatPlay(p),
     })
   }
@@ -867,13 +875,23 @@ function _kickoffOobFinalSpot(play) {
   return null
 }
 
-function _formatFlags(play) {
+const _FLAG_DOWN_LABEL = { repeat_down: 'repeat down', loss_of_down: 'loss of down', first_down: '1st down' }
+
+// noPlay: the play was voided by an accepted flag (formatPlay's NO PLAY case).
+// Its accepted flags then also carry their yards and down result — the only
+// place left to read what the flag did, since the play itself shows no yards.
+function _formatFlagsOf(play, noPlay = false) {
   const flags = []
   for (const num of [1, 2]) {
     const inf = play[`flag_${num}_infraction`]
     if (!inf) break
     const team   = play[`flag_${num}_team`] || '—'
-    const res    = play[`flag_${num}_result`] || ''
+    let res      = play[`flag_${num}_result`] || ''
+    if (noPlay && res === 'accepted') {
+      const yds  = _penaltyYards(play, num, play[`flag_${num}_new_los`])
+      const down = _FLAG_DOWN_LABEL[play[`flag_${num}_down_result`]]
+      res = [res, yds != null ? `${yds} yds` : null, down].filter(Boolean).join(', ')
+    }
     const by     = play[`flag_${num}_by`] ? ` on ${_playerStr(play[`flag_${num}_by`])}` : ''
     const newLos = play[`flag_${num}_new_los`] ? ` → ${_posStr(play[`flag_${num}_new_los`])}` : ''
     let label = 'FLAG', note = ''
@@ -899,8 +917,22 @@ function _formatFlags(play) {
 
 // Formats a completed play object into a human-readable string.
 // play must have at minimum: down, distance, field_pos, play_type
+//
+// A play voided by an accepted flag (flagOutcome → voided, computed at read
+// time, so captures without a stored stats_count are covered too) reads
+// "<situation>: NO PLAY — <what happened, without yards> | FLAG: ... (accepted,
+// N yds, <down result>)". Its yards are dropped from the description (the
+// stored net_yards is the 0 the wizard writes on a void, not a real gain);
+// spots, players and the flag summary stay.
 export function formatPlay(play) {
-  const text = _formatPlayCore(play)
+  const noPlay = !!flagOutcome(play)?.voided
+  let text = _formatPlayCore(noPlay ? { ...play, net_yards: null, touchdown: false } : play, noPlay)
+  if (noPlay) {
+    // Every _formatPlayCore result is "<situation>: <rest>" and no situation
+    // string contains ": " (see the `situation` branch at the top of it).
+    const i = text.indexOf(': ')
+    text = i > 0 ? `${text.slice(0, i)}: NO PLAY — ${text.slice(i + 2)}` : `NO PLAY — ${text}`
+  }
   if (play.fake_punt) return `[FAKE PUNT] ${text}`
   // Snap fumble the offense recovered and developed into a real RUSH/PASS —
   // play_type is already 'RUSH'/'PASS' here (see wizard.js's snap_fumble_type
@@ -913,9 +945,12 @@ export function formatPlay(play) {
   return text
 }
 
-function _formatPlayCore(play) {
+function _formatPlayCore(play, noPlay = false) {
   const { down, distance, field_pos, play_type, result,
           rush_by, tackle_by, at, net_yards, touchdown } = play
+  // Every `_formatFlags(play)` below is this closure's play; noPlay is threaded
+  // through it so the flag summary of a voided play gets its yards/down.
+  const _formatFlags = p => _formatFlagsOf(p, noPlay)
 
   let situation
   if (play_type === 'KICK') {

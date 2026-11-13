@@ -86,3 +86,9 @@ público), así que viven sólo en la máquina de quien los congeló. En un clon
 - `debug/numeric_diff.py` compara contra `baseline_legacy` (era C4) y ya no pasa: los snapshots
   ahora incluyen las correcciones NCAA de los lotes 1 a 3 (H-01 a H-07, H-13, H-15), que esa
   lista de excepciones no contempla.
+
+### NO PLAY en formatPlay (2026-11-12)
+
+Solo cambian textos (`context`), ningún número: las jugadas anuladas por bandera
+(`flagOutcome` → voided) dicen "NO PLAY", sin la cifra de 0 yardas, y el resumen de la
+bandera lleva yardas y resultado del down. Final: seq 31. CCM vs CU: seq 16 y 18.

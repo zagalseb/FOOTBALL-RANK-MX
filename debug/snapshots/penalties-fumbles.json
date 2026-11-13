@@ -127,7 +127,7 @@
       "player": "#72",
       "result": "accepted",
       "yards": 10,
-      "context": "2nd & 8 at CU 27: #3 pass complete to #18 for 0 yards to CCM 50 (tackle: #0) | FLAG: HO CU on #72 (accepted) → CU 17"
+      "context": "2nd & 8 at CU 27: NO PLAY — #3 pass complete to #18 to CCM 50 (tackle: #0) | FLAG: HO CU on #72 (accepted, 10 yds, repeat down) → CU 17"
     },
     {
       "seq": 17,
@@ -151,7 +151,7 @@
       "player": "#0",
       "result": "accepted",
       "yards": 15,
-      "context": "2nd & 15 at CU 22: #3 pass INCOMPLETE intended for #18 | FLAG: PI CCM on #0 (accepted) → CU 37"
+      "context": "2nd & 15 at CU 22: NO PLAY — #3 pass INCOMPLETE intended for #18 | FLAG: PI CCM on #0 (accepted, 15 yds, 1st down) → CU 37"
     }
   ],
   "computePlayerStats": [
@@ -612,7 +612,7 @@
           "netYards": 0,
           "receiver": "#18 J. Ponce",
           "note": "",
-          "context": "2nd & 8 at CU 27: #3 pass complete to #18 for 0 yards to CCM 50 (tackle: #0) | FLAG: HO CU on #72 (accepted) → CU 17"
+          "context": "2nd & 8 at CU 27: NO PLAY — #3 pass complete to #18 to CCM 50 (tackle: #0) | FLAG: HO CU on #72 (accepted, 10 yds, repeat down) → CU 17"
         },
         {
           "isComplete": false,
@@ -620,7 +620,7 @@
           "netYards": 0,
           "receiver": null,
           "note": "",
-          "context": "2nd & 15 at CU 22: #3 pass INCOMPLETE intended for #18 | FLAG: PI CCM on #0 (accepted) → CU 37"
+          "context": "2nd & 15 at CU 22: NO PLAY — #3 pass INCOMPLETE intended for #18 | FLAG: PI CCM on #0 (accepted, 15 yds, 1st down) → CU 37"
         },
         {
           "isComplete": true,
