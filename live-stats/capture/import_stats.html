@@ -241,7 +241,7 @@
           <select class="input" id="p-semana"></select>
         </div>
         <div class="field field--wide">
-          <label class="field-label" for="p-file">CSV de stats (semana, equipo, nombre, columnas de stats; jersey opcional)</label>
+          <label class="field-label" for="p-file">CSV de stats (semana, equipo, nombre, columnas de stats ofensivas y/o defensivas: tackles, sacks, ff, tfl, fum_rec, ints; jersey opcional)</label>
           <input class="input" type="file" accept=".csv,text/csv" id="p-file">
         </div>
       </div>
@@ -450,8 +450,11 @@
       }
 
       const nameWrites = rows.filter(r => r.status === 'ok' && nameChecked(r))
+      const checkedTotals = totals.filter(t => totalChecked(t)).length
+      // Sin totales (p. ej. CSV solo defensivo) no se muestra la parte de totales de equipo.
+      const totalsSummary = totals.length ? ` · ${checkedTotals} total${checkedTotals !== 1 ? 'es' : ''} de equipo (pass_yds)` : ''
       html += `<div class="sticky-confirm">
-        <span class="import-summary">${okRows.length} jugador${okRows.length !== 1 ? 'es' : ''} · ${totals.filter(t => totalChecked(t)).length} total${totals.filter(t => totalChecked(t)).length !== 1 ? 'es' : ''} de equipo (pass_yds) · ${nameWrites.length} nombre_completo</span>`
+        <span class="import-summary">${okRows.length} jugador${okRows.length !== 1 ? 'es' : ''}${totalsSummary} · ${nameWrites.length} nombre_completo</span>`
       html += blockers.length
         ? `<div class="banner banner--error" style="margin:0;flex:1">${blockers.map(esc).join('<br>')}</div>`
         : `<button class="btn btn--primary" id="confirm-btn" ${S.busy ? 'disabled' : ''}>Descargar respaldo y confirmar</button>`

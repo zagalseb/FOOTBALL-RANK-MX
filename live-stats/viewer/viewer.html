@@ -2338,6 +2338,102 @@ function _buildIndPenalties(penalties, plays) {
 }
 // IND_F4_BUILDERS_END
 
+// IND_F56_BUILDERS_START (bloque sin JSX; debug lo extrae para verificarlo en Node)
+// ── Defensiva ──
+// Tackles y presión: computeDefenseStats() (misma fuente que la tabla
+// Defensiva de "{Apodo} Stats"), solo jugadores con algún tackle/TFL/sack/FF;
+// los que solo tienen INT o PBU salen en "Defensa de pase".
+// Defensa de pase: INT y Yds ret. de computeTurnoverStatsByPlayer()
+// (interceptions) y Pases def. = PBU (broken_up_by) de computeDefenseStats().
+// sack_by es de un solo jugador: no hay medias capturas que mostrar.
+function _buildIndDefense(defenseStats, interceptions, abbr) {
+  const def = defenseStats?.[abbr] || {};
+  const ints = interceptions?.[abbr] || {};
+  const tackles = Object.values(def)
+    .filter(d => d.solo + d.ast + d.tfl + d.sacks + d.ff > 0)
+    .sort((a, b) => (b.solo + b.ast) - (a.solo + a.ast) || b.sacks - a.sacks || b.tfl - a.tfl)
+    .map(d => ({ label: d.label, solo: d.solo, ast: d.ast, total: d.solo + d.ast, tfl: d.tfl, sacks: d.sacks, ff: d.ff }));
+  const keys = new Set([...Object.keys(def).filter(k => def[k].pbu > 0), ...Object.keys(ints)]);
+  const pass = [...keys]
+    .map(k => ({ label: def[k]?.label ?? ints[k]?.label ?? k, int: ints[k]?.no || 0, yds: ints[k]?.yds || 0, pbu: def[k]?.pbu || 0 }))
+    .filter(r => r.int || r.pbu)
+    .sort((a, b) => b.int - a.int || b.pbu - a.pbu || b.yds - a.yds);
+  return { tackles, pass };
+}
+
+// ── Equipos Especiales ──
+// Kickoffs y retornos: computeSpecialTeamsStats() (misma fuente que la pestaña
+// existente); a los retornos se les añade el TD (isTouchdown sobre el punto
+// final del retorno). FG/PAT por pateador y despejes se arman aquí:
+//   FG:  KICK field_goal con fg_result good/missed/blocked (los mismos que
+//        cuenta la tabla Field Goals existente). Largo = FG anotado más largo.
+//   PAT: PAT_TRY pat_type 'kick' con pat_kick_result good/missed/blocked.
+//   Despejes: mismos campos y reglas que computeSpecialTeamsStats, más las
+//        yardas reales de los que hoy suman 0: downed (hasta punt_downed_at,
+//        con Dentro 20) y muffed (hasta el punto del muff, punt_muff_at,
+//        TC-22). Bloqueado = despeje de 0 yardas (igual que hoy). Fake punt y
+//        snap malo no son despeje y no se cuentan. Un despeje anulado por
+//        bandera (resolvePlay → stats_count false) tampoco se cuenta, igual
+//        que las anuladas en QB Progression (la pestaña existente sí lo cuenta).
+const IND_PUNT_KINDS = ['returned', 'fair_catch', 'touchback', 'oob', 'downed', 'blocked', 'muffed'];
+function _buildIndSpecialTeams(plays, st, rosters, homeAbbr, awayAbbr, abbr) {
+  const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+  const other = t => t === homeAbbr ? awayAbbr : t === awayAbbr ? homeAbbr : null;
+  const kl = (ref, team) => ref ? _playerKeyLabel(ref, rosters?.[team] || null) : null;
+
+  const kick = {}, punt = {}, retTd = {};
+  for (const p of plays) {
+    const def = other(p.possession);
+    if (!def) continue;
+    if (p.possession === abbr && p.play_type === 'KICK' && p.kick_type === 'field_goal' && ['good', 'missed', 'blocked'].includes(p.fg_result)) {
+      const k = kl(p.kicked_by, abbr);
+      if (k) {
+        const r = kick[k.key] ||= { label: k.label, fgm: 0, fga: 0, long: null, patm: 0, pata: 0 };
+        r.fga++;
+        if (p.fg_result === 'good') { r.fgm++; if (p.kick_distance != null && (r.long == null || p.kick_distance > r.long)) r.long = p.kick_distance; }
+      }
+    }
+    if (p.possession === abbr && p.play_type === 'PAT_TRY' && p.pat_type === 'kick' && ['good', 'missed', 'blocked'].includes(p.pat_kick_result)) {
+      const k = kl(p.kicked_by, abbr);
+      if (k) {
+        const r = kick[k.key] ||= { label: k.label, fgm: 0, fga: 0, long: null, patm: 0, pata: 0 };
+        r.pata++;
+        if (p.pat_kick_result === 'good') r.patm++;
+      }
+    }
+    if (p.possession === abbr && p.play_type === 'PUNT' && IND_PUNT_KINDS.includes(p.punt_result) && resolvePlay(p).stats_count !== false) {
+      const k = kl(p.punted_by, abbr);
+      if (k) {
+        const r = punt[k.key] ||= { label: k.label, no: 0, yds: 0, long: 0, in20: 0 };
+        r.no++;
+        const land = { returned: p.punt_kicked_to, fair_catch: p.punt_kicked_to, oob: p.punt_oob_at, downed: p.punt_downed_at,
+                       muffed: p.punt_muff_at, touchback: { team: def, yard: 0 } }[p.punt_result] || null;
+        const d = land && p.field_pos ? calcNetYards(teams, p.possession, p.field_pos, land) : null;
+        if (d != null) { r.yds += d; if (d > r.long) r.long = d; }
+        if (land && ['returned', 'fair_catch', 'oob', 'downed'].includes(p.punt_result) && land.team === def && land.yard > 0 && land.yard <= 20) r.in20++;
+      }
+    }
+    // TD de retorno (para las filas de computeSpecialTeamsStats del equipo que regresa).
+    if (def === abbr) {
+      let ref = null, end = null, kind = null;
+      if (p.play_type === 'KICK' && p.kick_type === 'kickoff' && p.kickoff_result === 'returned' && ['tackle', 'oob', 'eop'].includes(p.kick_return_result)) { ref = p.kick_returned_by; end = p.kick_return_at; kind = 'kr'; }
+      if (p.play_type === 'PUNT' && p.punt_result === 'returned' && ['tackle', 'oob', 'eop'].includes(p.punt_return_result)) { ref = p.punt_returned_by; end = p.punt_return_at; kind = 'pr'; }
+      const k = kl(ref, def);
+      if (k && end && isTouchdown(teams, def, end)) retTd[`${kind}::${k.key}`] = (retTd[`${kind}::${k.key}`] || 0) + 1;
+    }
+  }
+  const mine = arr => (arr || []).filter(r => r.team === abbr);
+  return {
+    kicking: Object.values(kick).sort((a, b) => (3 * b.fgm + b.patm) - (3 * a.fgm + a.patm))
+      .map(r => ({ ...r, pts: 3 * r.fgm + r.patm })),
+    punting: Object.values(punt).sort((a, b) => b.no - a.no || b.yds - a.yds),
+    kickoffs: mine(st?.kickoffs),
+    kickReturns: mine(st?.kickReturns).map(r => ({ ...r, td: retTd[`kr::${r.key}`] || 0 })),
+    puntReturns: mine(st?.puntReturns).map(r => ({ ...r, td: retTd[`pr::${r.key}`] || 0 })),
+  };
+}
+// IND_F56_BUILDERS_END
+
 // Columna de un equipo con banner, fichas, tabla y nota al pie.
 function IndBannerColumn({ title, color, textColor, chips, children }) {
   return (
@@ -2420,8 +2516,65 @@ function IndividualPenalties({ plays, penalties, home, away, homeAbbr, awayAbbr,
   );
 }
 
+// ── Individual · Defensiva (una columna) ─────────────────────────────────────
+function IndividualDefense({ abbr, color, defenseStats, interceptions }) {
+  const { tackles, pass } = _buildIndDefense(defenseStats, interceptions, abbr);
+  const split = l => { const s = _splitPlayerLabel(l); return [s.uni, s.name]; };
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16 }}>
+      <IndSection title="Tackles y presión" color={color}>
+        <IndStatTable label="Tackles y presión"
+          cols={['Uni', 'Nombre', 'Solo', 'Ast', 'Total', 'TFL', 'Capturas', 'FF']}
+          rows={tackles.map(r => [...split(r.label), r.solo, r.ast, r.total, r.tfl, r.sacks, r.ff])} />
+      </IndSection>
+      <IndSection title="Defensa de pase" color={color}>
+        <IndStatTable label="Defensa de pase"
+          cols={['Uni', 'Nombre', 'INT', 'Yds ret.', 'Pases def.']}
+          rows={pass.map(r => [...split(r.label), r.int, r.int ? r.yds : '—', r.pbu])} />
+      </IndSection>
+    </div>
+  );
+}
+
+// ── Individual · Equipos Especiales (una columna; cada sección solo si hay datos) ──
+function IndividualSpecialTeams({ abbr, color, plays, specialTeamsStats, rosters, homeAbbr, awayAbbr }) {
+  const d = useMemo(
+    () => _buildIndSpecialTeams(plays, specialTeamsStats, rosters, homeAbbr, awayAbbr, abbr),
+    [plays, specialTeamsStats, rosters, homeAbbr, awayAbbr, abbr]
+  );
+  const split = l => { const s = _splitPlayerLabel(l); return [s.uni, s.name]; };
+  const retRows = rows => rows.map(r => [...split(r.label), r.no, r.yds, _fmtAvg(r.yds, r.no), r.long, r.td]);
+  const sections = [
+    { title: 'Goles de campo y PAT', cols: ['Uni', 'Nombre', 'FG', 'Largo', 'PAT', 'Pts'],
+      rows: d.kicking.map(r => [...split(r.label), `${r.fgm}-${r.fga}`, r.long ?? '—', `${r.patm}-${r.pata}`, r.pts]) },
+    { title: 'Despejes', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom', 'Largo', 'Dentro 20'],
+      rows: d.punting.map(r => [...split(r.label), r.no, r.yds, _fmtAvg(r.yds, r.no), r.long, r.in20]) },
+    { title: 'Patadas iniciales', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom', 'Touchback'],
+      rows: d.kickoffs.map(r => [...split(r.label), r.no, r.yds, _fmtAvg(r.yds, r.no), r.tb]) },
+    { title: 'Retorno de patadas', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom', 'Largo', 'TD'], rows: retRows(d.kickReturns) },
+    { title: 'Retorno de despejes', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom', 'Largo', 'TD'], rows: retRows(d.puntReturns) },
+  ].filter(s => s.rows.length);
+  if (!sections.length) return <div style={CARD_STYLE}><EmptyState text="Sin datos" /></div>;
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16 }}>
+      {sections.map(s => (
+        <IndSection key={s.title} title={s.title} color={color}>
+          <IndStatTable label={s.title} cols={s.cols} rows={s.rows} />
+        </IndSection>
+      ))}
+    </div>
+  );
+}
+
 function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, sub, onSubChange, grp, onGrpChange,
-                         passers, rushers, receivers, qbProgression, plays, rosters, explosivePlays, penalties }) {
+                         passers, rushers, receivers, qbProgression, plays, rosters, explosivePlays, penalties,
+                         defenseStats, specialTeamsStats }) {
+  // Mismas INT por jugador que el sub-tab Defense de Comparación.
+  const interceptions = useMemo(() => {
+    if (typeof computeTurnoverStatsByPlayer !== 'function') return {};
+    const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+    return computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, rosters).interceptions;
+  }, [plays, homeAbbr, awayAbbr, rosters]);
   const [qbFilt, setQbFilt] = useState('both');
   const qbIntMap = useMemo(() => {
     const m = {};
@@ -2442,12 +2595,6 @@ function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, s
   const team  = sub === 'home' ? home : away;
   const abbr  = sub === 'home' ? homeAbbr : awayAbbr;
   const color = sub === 'home' ? homeColor : awayColor;
-  const grpLabel = INDIVIDUAL_GROUPS.find(g => g.key === grp)?.label || '';
-
-  // Placeholders de la Fase 1 — cada vista se llena en su fase.
-  const placeholderText = isTeam
-    ? `${sub === 'home' ? homeName : awayName} · ${grpLabel} — próximamente`
-    : { qb: 'QB Progression — próximamente', big: 'Big Plays — próximamente', pen: 'Penalties — próximamente' }[sub];
 
   return (
     <div>
@@ -2458,6 +2605,11 @@ function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, s
       )}
       {isTeam && grp === 'off'
         ? <IndividualOffense abbr={abbr} color={color} passers={passers} rushers={rushers} receivers={receivers} qbIntMap={qbIntMap} />
+        : isTeam && grp === 'def'
+        ? <IndividualDefense abbr={abbr} color={color} defenseStats={defenseStats} interceptions={interceptions} />
+        : isTeam && grp === 'st'
+        ? <IndividualSpecialTeams abbr={abbr} color={color} plays={plays} specialTeamsStats={specialTeamsStats}
+            rosters={rosters} homeAbbr={homeAbbr} awayAbbr={awayAbbr} />
         : sub === 'qb'
           ? <IndividualQbProgression plays={plays} qbProgression={qbProgression} rosters={rosters}
               home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
@@ -2465,10 +2617,8 @@ function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, s
           : sub === 'big'
             ? <IndividualBigPlays plays={plays} explosivePlays={explosivePlays} rosters={rosters}
                 home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
-            : sub === 'pen'
-              ? <IndividualPenalties plays={plays} penalties={penalties}
-                  home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
-              : <Placeholder text={placeholderText} />}
+            : <IndividualPenalties plays={plays} penalties={penalties}
+                home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />}
     </div>
   );
 }
@@ -3214,6 +3364,7 @@ function App() {
                 grp={indGroup} onGrpChange={setIndGroup}
                 passers={passers} rushers={rushers} receivers={receivers} qbProgression={qbProgression}
                 plays={plays} rosters={rosters} explosivePlays={explosivePlays} penalties={penalties}
+                defenseStats={defenseStats} specialTeamsStats={specialTeamsStats}
               />
             )}
             {activeTab === 'away' && (

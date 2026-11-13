@@ -4,12 +4,37 @@
 import { parseCSV } from './csv.js'
 import { matchStatName, getGameTemporada, normalizeName, rosterFullName } from './stats-lib.js'
 
+// Defensive columns. tackles/tfl/sacks are `numeric` in the DB (half credit:
+// multiples of 0.5); ff/fum_rec/ints are `integer`. All are non-negative.
+export const DEFENSE_STAT_COLUMNS = ['tackles', 'tfl', 'sacks', 'ff', 'fum_rec', 'ints']
+const HALF_STEP_COLUMNS = new Set(['tackles', 'tfl', 'sacks'])
+const NON_NEGATIVE_INT_COLUMNS = new Set(['ff', 'fum_rec', 'ints'])
+
 // Columns of the CSV that map 1:1 to player_game_stats_manual (no renames).
 export const IMPORT_STAT_COLUMNS = [
   'pass_att', 'pass_comp', 'pass_yds', 'pass_td', 'pass_int',
   'rush_att', 'rush_yds', 'rush_td', 'rush_fum',
   'rec', 'rec_yds', 'rec_td', 'rec_fum',
+  ...DEFENSE_STAT_COLUMNS,
 ]
+
+// Parses one non-empty stat cell. Returns { value } or { error }.
+//   tackles/tfl/sacks: >= 0 and a multiple of 0.5 ("3", "0.5", "2.5").
+//   ff/fum_rec/ints:   integer >= 0.
+//   offensive columns: integer, negatives allowed (e.g. rush_yds).
+function parseStatCell(column, v) {
+  if (HALF_STEP_COLUMNS.has(column)) {
+    const n = /^\d+(\.\d+)?$/.test(v) ? parseFloat(v) : NaN
+    if (Number.isFinite(n) && Number.isInteger(n * 2)) return { value: n }
+    return { error: `${column}: valor inválido "${v}" (debe ser un número ≥ 0 en múltiplos de 0.5)` }
+  }
+  if (NON_NEGATIVE_INT_COLUMNS.has(column)) {
+    if (/^\d+$/.test(v)) return { value: parseInt(v, 10) }
+    return { error: `${column}: valor inválido "${v}" (debe ser un entero ≥ 0)` }
+  }
+  if (/^-?\d+$/.test(v)) return { value: parseInt(v, 10) }
+  return { error: `${column}: valor inválido "${v}"` }
+}
 // Team totals the import may write to team_game_stats_manual (summed over players).
 export const TEAM_TOTAL_COLUMNS = ['pass_yds', 'rush_yds', 'total_yds']
 const REQUIRED_COLUMNS = ['semana', 'equipo', 'nombre']
@@ -42,7 +67,7 @@ const wordKey = s => normalizeName(s).split(' ').filter(Boolean).sort().join(' '
 // Header (case-insensitive): semana, equipo, nombre required; `jersey` optional
 // (only a hint); stat columns are the DB names. Unknown columns are reported and
 // ignored. A stat cell that is empty means "do not touch" (key absent); an
-// explicit 0 is kept. Values are integers (negative allowed, e.g. rush_yds).
+// explicit 0 is kept. Value rules per column: see parseStatCell.
 export function parseStatsCsv(text) {
   const clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text
   const raw = parseCSV(clean)
@@ -77,8 +102,9 @@ export function parseStatsCsv(text) {
     for (const c of statColumns) {
       const v = cell(cols, c)
       if (v === '') continue
-      if (/^-?\d+$/.test(v)) row.stats[c] = parseInt(v, 10)
-      else row.errors.push(`${c}: valor inválido "${v}"`)
+      const parsed = parseStatCell(c, v)
+      if (parsed.error) row.errors.push(parsed.error)
+      else row.stats[c] = parsed.value
     }
     return row
   })

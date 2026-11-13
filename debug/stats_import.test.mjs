@@ -287,3 +287,106 @@ test('semana 3: totales de equipo y demás cuerpos de un solo objeto son siempre
   assert.equal(uniformKeys([{ a: 1, b: 2 }, { b: 3, a: 4 }]), true)
   assert.equal(uniformKeys([{ a: 1 }, { a: 1, b: 2 }]), false)
 })
+
+// ── Columnas defensivas (tackles, tfl, sacks, ff, fum_rec, ints) ──
+// Roster y partido SINTÉTICOS (nombres inventados), independientes de los fixtures de arriba.
+const DEF_COLS = ['tackles', 'tfl', 'sacks', 'ff', 'fum_rec', 'ints']
+const OFF_COLS = ['pass_att', 'pass_comp', 'pass_yds', 'pass_td', 'pass_int', 'rush_att', 'rush_yds', 'rush_td', 'rush_fum', 'rec', 'rec_yds', 'rec_td', 'rec_fum']
+const defRoster = {
+  [MTY]: [
+    P('d1', MTY, 50, 'Ficticio', 'Alfa', 'Alfa Ficticio Perez'),
+    P('d2', MTY, 51, 'Inventado', 'Beto', 'Beto Inventado Lopez'),
+    P('d3', MTY, 52, 'Supuesto', 'Ciro', 'Ciro Supuesto Ruiz'),
+  ],
+}
+const defCtx = (over = {}) => ctx({ games: [G('gd', MTY, OPP)], rostersByTeam: defRoster, ...over })
+const DEF_HEADER = 'semana,equipo,nombre,tackles,sacks,ff,tfl,fum_rec,ints'
+const defParse = (...lines) => parse(DEF_HEADER, ...lines)
+const defRun = (rows, over) => classifyStatsImport(rows, defCtx(over))
+
+test('defensa: CSV solo defensivo se acepta con las 6 columnas, sin desconocidas ni totales de equipo', () => {
+  const p = defParse('3,MTY,FICTICIO PEREZ ALFA,5,1,0,2,0,1')
+  assert.equal(p.error, undefined)
+  assert.deepEqual(p.statColumns, DEF_COLS)
+  assert.deepEqual(p.unknownColumns, [])
+  assert.deepEqual(p.rows[0].stats, { tackles: 5, sacks: 1, ff: 0, tfl: 2, fum_rec: 0, ints: 1 })
+  const { rows } = defRun(p.rows)
+  assert.equal(rows[0].status, 'ok')
+  assert.deepEqual(computeTeamTotals(rows), [])
+})
+
+test('defensa: celda vacía = no tocar, 0 explícito = 0, medios en tackles/tfl/sacks', () => {
+  const p = defParse('3,MTY,FICTICIO PEREZ ALFA,4.5,,0,0.5,,0', '3,MTY,INVENTADO LOPEZ BETO,,0.5,,,,')
+  assert.deepEqual(p.rows[0].errors, [])
+  assert.deepEqual(p.rows[0].stats, { tackles: 4.5, ff: 0, tfl: 0.5, ints: 0 })
+  for (const c of ['sacks', 'fum_rec']) assert.equal(c in p.rows[0].stats, false)
+  assert.deepEqual(p.rows[1].stats, { sacks: 0.5 })
+})
+
+test('defensa: rechaza decimales en ints/ff/fum_rec y negativos en cualquier columna defensiva', () => {
+  const p = defParse(
+    '3,MTY,A,,,0.5,,,',      // ff decimal
+    '3,MTY,B,,,,,1.5,',      // fum_rec decimal
+    '3,MTY,C,,,,,,0.5',      // ints decimal
+    '3,MTY,D,-1,-0.5,-1,-2,-1,-1',
+  )
+  assert.deepEqual(p.rows[0].errors, ['ff: valor inválido "0.5" (debe ser un entero ≥ 0)'])
+  assert.deepEqual(p.rows[1].errors, ['fum_rec: valor inválido "1.5" (debe ser un entero ≥ 0)'])
+  assert.deepEqual(p.rows[2].errors, ['ints: valor inválido "0.5" (debe ser un entero ≥ 0)'])
+  assert.equal(p.rows[3].errors.length, 6)
+  for (const c of DEF_COLS) assert.ok(p.rows[3].errors.some(e => e.startsWith(`${c}: valor inválido "-`)), c)
+  for (const r of p.rows) assert.deepEqual(r.stats, {})
+  // Las ofensivas siguen aceptando negativos.
+  assert.deepEqual(parse('semana,equipo,nombre,rush_yds,tackles', '3,MTY,X,-4,1').rows[0].stats, { rush_yds: -4, tackles: 1 })
+})
+
+test('defensa: múltiplos de 0.5 en tackles/tfl/sacks (0.3 y 2.75 se rechazan, 2.5 y 3 se aceptan)', () => {
+  const p = defParse('3,MTY,A,2.5,3,,0.5,,', '3,MTY,B,0.3,2.75,,1.25,,', '3,MTY,C,abc,.5,,1.,,')
+  assert.deepEqual(p.rows[0].stats, { tackles: 2.5, sacks: 3, tfl: 0.5 })
+  assert.deepEqual(p.rows[0].errors, [])
+  assert.deepEqual(p.rows[1].errors, [
+    // Orden de DEFENSE_STAT_COLUMNS (tackles, tfl, sacks), no el del encabezado.
+    'tackles: valor inválido "0.3" (debe ser un número ≥ 0 en múltiplos de 0.5)',
+    'tfl: valor inválido "1.25" (debe ser un número ≥ 0 en múltiplos de 0.5)',
+    'sacks: valor inválido "2.75" (debe ser un número ≥ 0 en múltiplos de 0.5)',
+  ])
+  assert.equal(p.rows[2].errors.length, 3)   // formatos mal escritos también se rechazan
+})
+
+test('defensa: UPDATE manda solo las celdas defensivas con valor, nunca ofensivas; cuerpos uniformes', () => {
+  const p = defParse('3,MTY,FICTICIO PEREZ ALFA,6,,,1,,', '3,MTY,INVENTADO LOPEZ BETO,3,1,,,,', '3,MTY,SUPUESTO RUIZ CIRO,2,,,1,,')
+  const prev = { pass_att: 10, pass_yds: 120, rush_yds: 30, rec: 2, tackles: 1 }
+  const existing = new Map(['d1', 'd2', 'd3'].map(id => [`gd|${id}`, prev]))
+  const { rows } = defRun(p.rows, { existing: { player: existing, team: new Map() } })
+  assert.deepEqual(rows.map(r => r.kind), ['update', 'update', 'update'])
+  const plan = planPlayerWrites(rows.filter(r => r.status === 'ok'), existing, p.statColumns)
+  assert.ok(plan.every(q => q.kind === 'update'))
+  for (const q of plan) assert.equal(uniformKeys(q.rows), true, q.columns.join())
+  const sent = Object.fromEntries(plan.flatMap(q => q.rows).map(r => [r.player_id, r]))
+  assert.deepEqual(sent.d1, { game_id: 'gd', player_id: 'd1', tackles: 6, tfl: 1 })
+  assert.deepEqual(sent.d2, { game_id: 'gd', player_id: 'd2', tackles: 3, sacks: 1 })
+  assert.deepEqual(sent.d3, { game_id: 'gd', player_id: 'd3', tackles: 2, tfl: 1 })
+  // d1 y d3 comparten llaves → misma petición; d2 va aparte.
+  assert.equal(plan.length, 2)
+  for (const r of Object.values(sent)) for (const c of OFF_COLS) assert.equal(c in r, false, `no se manda ${c}`)
+})
+
+test('defensa: NEW manda las 6 columnas defensivas (vacías en 0) y ninguna ofensiva', () => {
+  const p = defParse('3,MTY,FICTICIO PEREZ ALFA,4,,,1.5,,', '3,MTY,INVENTADO LOPEZ BETO,,2,1,,,')
+  const { rows } = defRun(p.rows)
+  const plan = planPlayerWrites(rows.filter(r => r.status === 'ok'), new Map(), p.statColumns)
+  assert.equal(plan.length, 1)
+  assert.equal(plan[0].kind, 'new')
+  assert.equal(uniformKeys(plan[0].rows), true)
+  const [a, b] = plan[0].rows
+  assert.deepEqual(a, { game_id: 'gd', player_id: 'd1', tackles: 4, tfl: 1.5, sacks: 0, ff: 0, fum_rec: 0, ints: 0 })
+  assert.deepEqual(b, { game_id: 'gd', player_id: 'd2', tackles: 0, tfl: 0, sacks: 2, ff: 1, fum_rec: 0, ints: 0 })
+  for (const r of plan[0].rows) for (const c of OFF_COLS) assert.equal(c in r, false, `no se manda ${c}`)
+})
+
+test('defensa: el mismo jugador con fila ofensiva y fila defensiva en un CSV → ambas duplicate', () => {
+  const p = parse('semana,equipo,nombre,rec,rec_yds,tackles,sacks', '3,MTY,FICTICIO PEREZ ALFA,3,40,,', '3,MTY,FICTICIO PEREZ ALFA,,,5,1')
+  const { rows, summary } = defRun(p.rows)
+  assert.deepEqual(rows.map(r => r.status), ['duplicate', 'duplicate'])
+  assert.deepEqual(summary, { duplicate: 2 })
+})

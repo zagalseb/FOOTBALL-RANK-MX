@@ -1,0 +1,1 @@
+Agrega ?env=staging al final de la dirección de cualquier página del sitio y recarga

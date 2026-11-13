@@ -166,6 +166,12 @@ Severidad = impacto sobre las cifras que ve el usuario (box score, líderes, mar
 - **Qué pasa:** al editar una jugada anterior, la lista de jugadores del presionador sale del equipo opuesto a la posesión **actual** del juego, no a la de la jugada editada. Si la posesión cambió desde entonces, se ofrece el roster equivocado.
 - **Alcance:** limitación previa de todos los pasos "del rival" en edición; `pressured_by` sólo la hereda.
 
+### H-22 · Estadísticas defensivas acreditadas en jugadas anuladas por penalidad — **MEDIA**
+- **Regla:** una jugada anulada por una falta aceptada no cuenta para ninguna estadística individual (tampoco las defensivas).
+- **Dónde:** `shared/stats-lib.js` `computeDefenseStats` no revisa `stats_count`; está documentado como intencional en el encabezado de la agregación por jugador ("excluded from offense … but NOT from defense").
+- **Qué pasa:** en una jugada con `stats_count: false` se siguen sumando tackles (solo/ast), TFL, sacks y yardas de sack, fumbles forzados, intercepciones y PBU. Sólo los QB hurries (`qbh`) se excluyen, desde el cambio que los extendió a complete/intercepted/scramble/sack.
+- **Pendiente (opción b):** excluir toda la defensa cuando `stats_count === false`. Cambia números ya publicados y las referencias de `debug/snapshots`, por eso no se hizo junto con los hurries. Sin cambio de código por ahora.
+
 ---
 
 ## B. Reglas que requieren capturar datos nuevos (candidatas a segunda pasada con video)

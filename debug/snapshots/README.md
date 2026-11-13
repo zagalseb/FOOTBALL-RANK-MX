@@ -35,6 +35,38 @@ Las diferencias de texto (nombres mostrados, `label`, `key`, `receiver`) no cuen
    atribuía a Mandujano porque era el único #35 del roster 2026. El apellido
    contradice, así que ahora Ascolani es huérfano. Mandujano conserva su INT.
 
+### Corrección de tackles (2026-11-12)
+
+`computeDefenseStats`/`computePlayerStats` (helper `_tackleCredits`): sack = sack + 1 solo
++ 1 TFL sin duplicarse con `tackle_by` (TC-02/TC-03); cada `*_tackle_by` se acredita al equipo
+cuyo roster ofreció el wizard (TC-24); cuentan los tackles de cobertura y los demás
+`*_tackle_by` que no se contaban (TC-23). Solo cambian `computeDefenseStats` y `computePlayerStats`:
+
+| Partido | Jugador | Cambio | Motivo |
+|---|---|---|---|
+| Final | MTY #2 M. Martínez | solo 8 → 7 | sack con `tackle_by` del mismo jugador (seq 59) contaba 2 solos |
+| Final | AT #97 J. Montes | TFL 0 → 1 | el sack es TFL |
+| Final | #56 S. Zambrano, #82 M. Santos | solo 1 pasan de AT a MTY | tacklearon tras las INT de MTY (`return_tackle_by`): son de MTY |
+| Final | AT #28 G. Caballero, AT #27 E. García, MTY #20 P. Arnalde | solo 0 → 1 | tackles de cobertura (`kick_return_tackle_by`/`punt_return_tackle_by`) |
+| CCM vs CU | CU #94 J. Soriano | TFL 0 → 1 | el sack es TFL |
+| CCM vs CU | CU #58 L. Corona | solo 0 → 1 | tackle de cobertura en kickoff |
+
+### TFL de equipo alineado con el TFL por jugador (2026-11-12)
+
+`computeComparisonStats` (fila "TFL (Def Yds)" de Team Stats y de captura): cuenta también
+los sacks (con sus yardas) y los scrambles con pérdida, igual que el TFL por jugador. Las
+yardas del sack aparecen en la fila de Sacks y en la de TFL a propósito (el TFL incluye
+sacks, §16 Art.4); ningún total suma las dos filas. Solo cambian `tflMade`/`tflYds`:
+
+| Partido | Equipo | TFL (Def Yds) | Motivo |
+|---|---|---|---|
+| Final | AT | 1-4 → 2-10 | sack de #97 Montes (-6) |
+| Final | MTY | 1-1 → 2-8 | sack de #2 Martínez (-7) |
+| CCM vs CU | CU | 0-0 → 1-8 | sack de #94 Soriano (-8) |
+
+`debug/numeric_diff.py` compara contra `baseline_legacy/` y ya fallaba antes de este cambio;
+la comparación de este cambio es contra el baseline con commit (`debug/compare_snapshot.py`).
+
 ### Huérfanos nuevos del Final (no resueltos)
 
 Los 140 jugadores de MTY y AT ya están en temporada 2025; estos tres números no están en esos rosters.
@@ -47,6 +79,9 @@ Los 140 jugadores de MTY y AT ya están en temporada 2025; estos tres números n
 
 Observación: la referencia "Steven Zambrano" coincide con un jugador de MTY (#56 en
 el roster de MTY). Puede ser una captura en el lado equivocado. No se corrige aquí.
+Actualización 2026-11-12: Zambrano (#56) y Santos (#82) no eran capturas en el lado
+equivocado: son tackles de MTY en retornos de INT (`return_tackle_by`), que el código
+acreditaba a la defensa (AT). Con la corrección de tackles ya cuentan para MTY.
 
 ## Reportes de solo lectura (2026-10-05)
 

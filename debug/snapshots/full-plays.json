@@ -31,8 +31,8 @@
       "intsThrown": 2,
       "sacksMade": 1,
       "sacksYds": 7,
-      "tflMade": 1,
-      "tflYds": 1
+      "tflMade": 2,
+      "tflYds": 8
     },
     "AT": {
       "passYds": 31,
@@ -56,8 +56,8 @@
       "intsThrown": 0,
       "sacksMade": 1,
       "sacksYds": 6,
-      "tflMade": 1,
-      "tflYds": 4
+      "tflMade": 2,
+      "tflYds": 10
     }
   },
   "computeDrives": [
@@ -423,30 +423,12 @@
     {
       "team": "AT",
       "number": 56,
-      "stats": {
-        "defense": {
-          "solo": 1,
-          "ast": 0,
-          "sacks": 0,
-          "tfl": 0,
-          "ff": 0,
-          "int": 0
-        }
-      }
+      "stats": {}
     },
     {
       "team": "AT",
       "number": 82,
-      "stats": {
-        "defense": {
-          "solo": 1,
-          "ast": 0,
-          "sacks": 0,
-          "tfl": 0,
-          "ff": 0,
-          "int": 0
-        }
-      }
+      "stats": {}
     },
     {
       "team": "AT",
@@ -484,7 +466,7 @@
           "solo": 2,
           "ast": 2,
           "sacks": 1,
-          "tfl": 0,
+          "tfl": 1,
           "ff": 0,
           "int": 0
         }
@@ -509,7 +491,7 @@
       "number": 2,
       "stats": {
         "defense": {
-          "solo": 8,
+          "solo": 7,
           "ast": 4,
           "sacks": 1,
           "tfl": 2,
@@ -694,6 +676,14 @@
           "rec": 2,
           "yds": 25,
           "td": 0
+        },
+        "defense": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 0,
+          "tfl": 0,
+          "ff": 0,
+          "int": 0
         }
       }
     },
@@ -728,7 +718,7 @@
       },
       "#2 M. Martínez": {
         "label": "#2 M. Martínez",
-        "solo": 8,
+        "solo": 7,
         "ast": 4,
         "sacks": 1,
         "tfl": 2,
@@ -774,6 +764,18 @@
         "qbh": 0,
         "pbu": 0
       },
+      "#56 S. Zambrano": {
+        "label": "#56 S. Zambrano",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
       "#3 A. Flores": {
         "label": "#3 A. Flores",
         "solo": 1,
@@ -788,6 +790,18 @@
       },
       "#10 R. Aceves": {
         "label": "#10 R. Aceves",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
+      "#20 P. Arnalde": {
+        "label": "#20 P. Arnalde",
         "solo": 1,
         "ast": 0,
         "sacks": 0,
@@ -833,9 +847,33 @@
         "sackYds": 0,
         "qbh": 0,
         "pbu": 0
+      },
+      "#82 M. Santos": {
+        "label": "#82 M. Santos",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
       }
     },
     "AT": {
+      "#28 G. Caballero": {
+        "label": "#28 G. Caballero",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
       "#35 L. Ascolani": {
         "label": "#35 L. Ascolani",
         "solo": 1,
@@ -889,11 +927,23 @@
         "solo": 2,
         "ast": 2,
         "sacks": 1,
-        "tfl": 0,
+        "tfl": 1,
         "ff": 0,
         "int": 0,
         "sackYds": 6,
         "qbh": 1,
+        "pbu": 0
+      },
+      "#27 E. García": {
+        "label": "#27 E. García",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
         "pbu": 0
       },
       "#7 B. Huez": {
@@ -916,18 +966,6 @@
         "tfl": 0,
         "ff": 0,
         "int": 1,
-        "sackYds": 0,
-        "qbh": 0,
-        "pbu": 0
-      },
-      "#56 S. Zambrano": {
-        "label": "#56 S. Zambrano",
-        "solo": 1,
-        "ast": 0,
-        "sacks": 0,
-        "tfl": 0,
-        "ff": 0,
-        "int": 0,
         "sackYds": 0,
         "qbh": 0,
         "pbu": 0
@@ -984,18 +1022,6 @@
         "label": "#96 E. Arredondo",
         "solo": 0,
         "ast": 1,
-        "sacks": 0,
-        "tfl": 0,
-        "ff": 0,
-        "int": 0,
-        "sackYds": 0,
-        "qbh": 0,
-        "pbu": 0
-      },
-      "#82 M. Santos": {
-        "label": "#82 M. Santos",
-        "solo": 1,
-        "ast": 0,
         "sacks": 0,
         "tfl": 0,
         "ff": 0,

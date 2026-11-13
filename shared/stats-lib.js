@@ -287,6 +287,69 @@ function _isSamePlayer(ref, player) {
   return !!(ref && player && Number(ref.number) === Number(player.number))
 }
 
+// ── Tackle credits (shared by computeDefenseStats and computePlayerStats) ─────
+// Each *_tackle_by field lists players of ONE team: the roster the wizard's BY
+// picker offered for that step (engine.js step configs → wizard.js
+// renderByMenu): team:'opponent' → the defense; no team → getRoster(undefined),
+// the possession team; teamFrom + invertTeamFrom → the side opposite that
+// recovery. Crediting every tackle to the defense (the old rule) put the
+// offense's tackles after a turnover on the wrong team (TC-24, B.I.15).
+// pat_bad_snap_tackle_by is left out on purpose: a try is not a scrimmage
+// play and carries no individual tackles (§11 Art.4, TC-26).
+const _TACKLE_FIELDS = [
+  ['tackle_by',                'defense'],
+  ['return_tackle_by',         'possession'],   // INT return: the passing team
+  ['kick_return_tackle_by',    'possession'],   // kickoff coverage (TC-23)
+  ['punt_return_tackle_by',    'possession'],   // punt coverage (TC-23)
+  ['fumble_tackle_by',         'fumble_recovery_team'],
+  ['fumble_2_tackle_by',       'fumble_2_recovery_team'],
+  ['punt_block_ret_tackle_by', 'punt_recovery_team'],
+  ['fg_ret_tackle_by',         'fg_recovery_team'],
+  ['punt_muff_tackle_by',      'punt_muff_recovery_team'],
+  ['snap_fumble_tackle_by',    'snap_fumble_recovery_team'],
+  ['punt_bad_snap_tackle_by',  'punt_bad_snap_recovery_team'],
+  ['fg_bad_snap_tackle_by',    'fg_bad_snap_recovery_team'],
+]
+
+// Did the players in this field belong to `team`? A field that follows a
+// recovery with no recovery team captured falls back to the defense (the
+// previous behaviour), so no credit is lost.
+function _tacklerIsTeam(p, side, team) {
+  if (!p.possession || !team) return false
+  if (side === 'possession') return p.possession === team
+  if (side === 'defense') return p.possession !== team
+  const rec = p[side]
+  return rec ? rec !== team : p.possession !== team
+}
+
+// One play's tackle credits: [{ ref, side, kind: 'solo'|'ast', tfl }].
+// - §16 Art.1-2: a lone tackler is solo; two or more are each assisted.
+// - Sack (§16 Art.4, TC-02/TC-03): the sacker's tackle comes from the sack
+//   itself (credited by the caller), so he is dropped from tackle_by when the
+//   operator also listed him there; anyone else in tackle_by helped and is
+//   assisted. sack_by holds one player, so assisted sacks stay out of reach
+//   (TC-04, needs capture).
+// - TFL only for the defense's tackles on a RUSH/PASS that lost yards — never
+//   for return/coverage tackles, whose play net_yards is not the ball
+//   carrier's (a punt's is its field-position swing).
+// sameAsSacker(ref): true when ref is the sack_by player.
+function _tackleCredits(p, sameAsSacker) {
+  const out = []
+  const isSack = p.play_type === 'PASS' && p.pass_result === 'sack' && !!p.sack_by
+  const scrimmageLoss = (p.play_type === 'RUSH' || p.play_type === 'PASS') && p.net_yards != null && p.net_yards < 0
+  for (const [field, side] of _TACKLE_FIELDS) {
+    let arr = p[field]
+    if (!Array.isArray(arr) || !arr.length) continue
+    const withSacker = isSack && field === 'tackle_by'
+    if (withSacker) arr = arr.filter(ref => !sameAsSacker(ref))
+    if (!arr.length) continue
+    const kind = arr.length === 1 && !withSacker ? 'solo' : 'ast'
+    const tfl = field === 'tackle_by' && scrimmageLoss
+    for (const ref of arr) out.push({ ref, side, kind, tfl })
+  }
+  return out
+}
+
 // index (optional, C3): buildRosterIndex() of teamAbbr's roster. With it, a
 // reference counts as the target when both resolve to the same canonical key
 // (see resolvePlayerKey); without it, the legacy number-only match is used, so
@@ -357,24 +420,24 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
       }
     }
 
-    // Defense credit belongs to the team that did NOT snap this play —
-    // same defTeam pattern as viewer.html's computeDefenseStats.
+    // Tackles go to the team of the tackler (see _TACKLE_FIELDS), which after
+    // a turnover or on kick coverage is the team that snapped the play.
+    for (const t of _tackleCredits(p, ref => !!p.sack_by && same(ref) && same(p.sack_by))) {
+      if (!_tacklerIsTeam(p, t.side, teamAbbr) || !same(t.ref)) continue
+      const d = ensureDefense()
+      d[t.kind]++
+      if (t.tfl) d.tfl++
+    }
+
+    // The rest of the defensive credits belong to the team that did NOT snap
+    // this play — same defTeam pattern as computeDefenseStats.
     if (p.possession && p.possession !== teamAbbr) {
-      const tackleArrays = [p.tackle_by, p.fumble_tackle_by, p.punt_block_ret_tackle_by, p.return_tackle_by]
-      for (const arr of tackleArrays) {
-        if (!Array.isArray(arr) || !arr.length) continue
-        const isSolo = arr.length === 1
-        for (const ref of arr) {
-          if (!same(ref)) continue
-          const d = ensureDefense()
-          d[isSolo ? 'solo' : 'ast']++
-          if (p.net_yards != null && p.net_yards < 0) d.tfl++
-        }
-      }
       if (p.play_type === 'PASS' && p.pass_result === 'sack' && same(p.sack_by)) {
+        // §16 Art.4 (TC-02): a sack is a sack, a solo tackle and a TFL.
         const d = ensureDefense()
         d.sacks++
         d.solo++
+        d.tfl++
       }
       if (same(p.fumble_forced_by) || same(p.fumble_2_forced_by)) {
         ensureDefense().ff++
@@ -624,15 +687,25 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       }
     }
 
+    // Team TFL follows the same rule as the per-player TFL (computeDefenseStats
+    // / _tackleCredits): every sack, plus any other RUSH/PASS that lost yards
+    // (a scramble is a rush). A sack's yards therefore appear in both the
+    // Sacks and the TFL rows by design (§16 Art.4: TFL includes sacks); no
+    // total adds the two rows together, so nothing is counted twice.
     if (p.play_type === 'PASS' && p.pass_result === 'sack') {
       const def = out[otherTeam(p.possession)]
       // §16 Art.4 A.R.7-10: on a strip-sack the loss runs to the spot of the recovery.
-      if (def) { def.sacksMade++; def.sacksYds += Math.abs(_carrierYards(p) || 0) }
-    }
-    const isTflEligible = p.play_type === 'RUSH' || (p.play_type === 'PASS' && p.pass_result === 'complete')
-    if (isTflEligible && p.net_yards != null && p.net_yards < 0) {
-      const def = out[otherTeam(p.possession)]
-      if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards) }
+      const sackYds = Math.abs(_carrierYards(p) || 0)
+      if (def) {
+        def.sacksMade++; def.sacksYds += sackYds
+        def.tflMade++;   def.tflYds += sackYds
+      }
+    } else {
+      const isTflEligible = p.play_type === 'RUSH' || (p.play_type === 'PASS' && ['complete', 'scramble'].includes(p.pass_result))
+      if (isTflEligible && p.net_yards != null && p.net_yards < 0) {
+        const def = out[otherTeam(p.possession)]
+        if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards) }
+      }
     }
 
     if (out[p.possession]) out[p.possession].firstDowns += firstDowns
@@ -1015,15 +1088,16 @@ function _formatPlayCore(play, noPlay = false) {
 
     if (passRes === 'sack') {
       const sackBy = play.sack_by ? ` by ${_playerStr(play.sack_by)}` : ''
+      const hurried = play.qb_hurried_by ? ` (hurried by ${_playerStr(play.qb_hurried_by)})` : ''
 
       if (result === 'fumble') {
-        return `${situation}: ${passer} SACK${sackBy}${_formatFumbleTail(play)}${_formatFlags(play)}`
+        return `${situation}: ${passer} SACK${sackBy}${_formatFumbleTail(play)}${hurried}${_formatFlags(play)}`
       }
 
       const atStr  = play.at ? ` to ${_posStr(play.at)}` : ''
       const yds    = play.net_yards != null ? Math.abs(play.net_yards) : null
       const ydsStr = yds != null ? ` for loss of ${yds} yard${yds === 1 ? '' : 's'}` : ''
-      return `${situation}: ${passer} SACK${sackBy}${ydsStr}${atStr}${_formatFlags(play)}`
+      return `${situation}: ${passer} SACK${sackBy}${ydsStr}${atStr}${hurried}${_formatFlags(play)}`
     }
 
     if (passRes === 'scramble') {
@@ -1034,8 +1108,9 @@ function _formatPlayCore(play, noPlay = false) {
           : `scramble for loss of ${Math.abs(yds)} yard${Math.abs(yds) === 1 ? '' : 's'}`
         : 'scramble'
       const atStr = play.at ? ` to ${_posStr(play.at)}` : ''
-      if (play.touchdown) return `${situation}: ${passer} ${gainLoss} TOUCHDOWN${_formatFlags(play)}`
-      return `${situation}: ${passer} ${gainLoss}${atStr}${_formatFlags(play)}`
+      const hurried = play.qb_hurried_by ? ` (hurried by ${_playerStr(play.qb_hurried_by)})` : ''
+      if (play.touchdown) return `${situation}: ${passer} ${gainLoss} TOUCHDOWN${hurried}${_formatFlags(play)}`
+      return `${situation}: ${passer} ${gainLoss}${atStr}${hurried}${_formatFlags(play)}`
     }
 
     if (passRes === 'intercepted') {
@@ -1043,6 +1118,7 @@ function _formatPlayCore(play, noPlay = false) {
       const intAt = play.intercepted_at ? ` at ${_posStr(play.intercepted_at)}` : ''
       const retBy = play.returned_by    ? ` returned by ${_playerStr(play.returned_by)}` : ''
       const retAt = play.return_at      ? ` to ${_posStr(play.return_at)}` : ''
+      const hurried = play.qb_hurried_by ? ` (hurried by ${_playerStr(play.qb_hurried_by)})` : ''
       let retTD = ''
       if (play.return_at && play.teams) {
         const intTeam = play.possession === play.teams.home.name
@@ -1050,26 +1126,27 @@ function _formatPlayCore(play, noPlay = false) {
           : play.teams.home.name
         if (isTouchdown(play.teams, intTeam, play.return_at)) retTD = ' TOUCHDOWN'
       }
-      return `${situation}: ${passer} INTERCEPTED${intBy}${intAt}${retBy}${retAt}${retTD}${_formatFlags(play)}`
+      return `${situation}: ${passer} INTERCEPTED${intBy}${intAt}${retBy}${retAt}${retTD}${hurried}${_formatFlags(play)}`
     }
 
     if (passRes === 'complete') {
       const receiver = _playerStr(play.received_by)
       const atStr    = play.at ? ` to ${_posStr(play.at)}` : ''
+      const hurried  = play.qb_hurried_by ? ` (hurried by ${_playerStr(play.qb_hurried_by)})` : ''
       const yds      = play.net_yards != null ? play.net_yards : null
       const gainLoss = yds != null
         ? yds >= 0
           ? `pass complete to ${receiver} for ${yds} yard${yds === 1 ? '' : 's'}`
           : `pass complete to ${receiver} for loss of ${Math.abs(yds)} yard${Math.abs(yds) === 1 ? '' : 's'}`
         : `pass complete to ${receiver}`
-      if (play.touchdown) return `${situation}: ${passer} ${gainLoss} TOUCHDOWN${_formatFlags(play)}`
+      if (play.touchdown) return `${situation}: ${passer} ${gainLoss} TOUCHDOWN${hurried}${_formatFlags(play)}`
       let suffix = ''
       if (play.result === 'tackle' && play.tackle_by) {
         suffix = ` (tackle: ${_playersStr(play.tackle_by)})`
       } else if (play.result === 'oob') {
         suffix = ' (out of bounds)'
       }
-      return `${situation}: ${passer} ${gainLoss}${atStr}${suffix}${_formatFlags(play)}`
+      return `${situation}: ${passer} ${gainLoss}${atStr}${suffix}${hurried}${_formatFlags(play)}`
     }
 
     return `${situation}: ${passer} pass${_formatFlags(play)}`
@@ -1282,7 +1359,7 @@ function _formatPlayCore(play, noPlay = false) {
         const intBy     = play.intercepted_by
           ? ` by ${_playerStr(play.intercepted_by)}` : ''
         const defScored = play.pat_two_pt_defense ? ' — DEFENSE 2pt' : ''
-        return `PAT: ${passer} pass INTERCEPTED${intBy}${defScored}${_formatFlags(play)}`
+        return `PAT: ${passer} pass INTERCEPTED${intBy}${defScored}${play.qb_hurried_by ? ` (hurried by ${_playerStr(play.qb_hurried_by)})` : ''}${_formatFlags(play)}`
       }
       if (passRes === 'complete') {
         return `PAT: ${passer} pass complete NO GOOD${_formatFlags(play)}`
@@ -2384,10 +2461,11 @@ function _advanceDownDistance(state, gained) {
 // do. See debug/snapshot_stats.mjs's baseline for the before/after diff this
 // was checked against.
 
-// A play's defense is simply whichever team does NOT have possession on it —
-// tackle_by/sack_by/etc. player refs don't carry their own team, but since
-// they only ever come from the opposing side of `possession`, this is enough
-// to attribute every defensive credit correctly without needing that.
+// A play's defense is whichever team does NOT have possession on it. Player
+// refs don't carry their own team: sack_by/fumble_forced_by/intercepted_by/
+// qb_hurried_by/broken_up_by always come from the defense, so that is enough
+// for them. Tackles are the exception — each *_tackle_by field belongs to the
+// team whose roster the wizard offered (see _TACKLE_FIELDS / _tackleCredits).
 export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
   plays = _resolvePlays(plays)
   const teams = { [homeAbbr]: {}, [awayAbbr]: {} }
@@ -2405,19 +2483,20 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
     const defTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
     if (!defTeam) continue
 
-    const tackleArrays = [p.tackle_by, p.fumble_tackle_by, p.punt_block_ret_tackle_by, p.return_tackle_by]
-    for (const arr of tackleArrays) {
-      if (!Array.isArray(arr) || !arr.length) continue
-      const isSolo = arr.length === 1
-      for (const player of arr) {
-        credit(defTeam, player, isSolo ? 'solo' : 'ast', 1)
-        if (p.net_yards != null && p.net_yards < 0) credit(defTeam, player, 'tfl', 1)
-      }
+    const keyOf = (ref, team) => _playerKeyLabel(ref, rosters?.[team] || null)?.key
+    const sackerKey = p.sack_by ? keyOf(p.sack_by, defTeam) : null
+    for (const t of _tackleCredits(p, ref => sackerKey != null && keyOf(ref, defTeam) === sackerKey)) {
+      const team = [homeAbbr, awayAbbr].find(tm => _tacklerIsTeam(p, t.side, tm))
+      credit(team, t.ref, t.kind, 1)
+      if (t.tfl) credit(team, t.ref, 'tfl', 1)
     }
 
     if (p.play_type === 'PASS' && p.pass_result === 'sack' && p.sack_by) {
+      // §16 Art.4 (TC-02): a sack is a sack, a solo tackle and a TFL. The
+      // sacker is never credited a second tackle from tackle_by (TC-03).
       credit(defTeam, p.sack_by, 'sacks', 1)
-      credit(defTeam, p.sack_by, 'solo', 1) // a sack is also a solo tackle
+      credit(defTeam, p.sack_by, 'solo', 1)
+      credit(defTeam, p.sack_by, 'tfl', 1)
       // §16 Art.4 A.R.7-10: on a strip-sack the loss runs to the spot of the recovery.
       credit(defTeam, p.sack_by, 'sackYds', Math.abs(_carrierYards(p) || 0))
     }
@@ -2429,11 +2508,22 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
       credit(defTeam, p.intercepted_by, 'int', 1)
     }
 
-    // qb_hurried_by/broken_up_by are optional single-player fields captured
-    // on PASS incomplete/dropped/broken_up (same team:'opponent' shape as
-    // fumble_forced_by above) — Comparación's Defense sub-tab is the first
-    // consumer of either.
-    if (p.qb_hurried_by) credit(defTeam, p.qb_hurried_by, 'qbh', 1)
+    // qb_hurried_by is an optional single-player field captured on every PASS
+    // result except a PAT pass that is not intercepted (incomplete/dropped/
+    // broken_up, complete, sack, scramble, intercepted); broken_up_by only on
+    // incomplete/dropped/broken_up. Same team:'opponent' shape as
+    // fumble_forced_by above; Comparación's Defense sub-tab is the consumer.
+    // A hurry is not credited on a play voided by an accepted flag
+    // (stats_count false), nor to the player who already got the sack or the
+    // interception on that play. The rest of the defense is still credited on
+    // voided plays (see hallazgos.md H-22).
+    if (p.qb_hurried_by && p.stats_count !== false) {
+      const hKey = _playerKeyLabel(p.qb_hurried_by, rosters?.[defTeam] || null)?.key
+      const same = ref => !!ref && _playerKeyLabel(ref, rosters?.[defTeam] || null)?.key === hKey
+      const counted = (p.pass_result === 'sack' && same(p.sack_by)) ||
+                      (p.pass_result === 'intercepted' && same(p.intercepted_by))
+      if (!counted) credit(defTeam, p.qb_hurried_by, 'qbh', 1)
+    }
     if (p.broken_up_by) credit(defTeam, p.broken_up_by, 'pbu', 1)
   }
 

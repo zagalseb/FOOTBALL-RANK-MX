@@ -390,7 +390,9 @@ function _onEditStepComplete(idx, value) {
       // The chosen value leads down a different branch than before — the old
       // suffix no longer applies, so replace it and collect fresh values for
       // the new branch. Siblings before this step are left untouched.
-      editSteps = editSteps.slice(0, idx + 1).concat(newBranch.map(s => ({ ...s, value: null })))
+      // qb_hurried_by is the one step shared by several pass_result branches:
+      // it keeps editingPlay's value, so what the step shows is what gets saved.
+      editSteps = editSteps.slice(0, idx + 1).concat(newBranch.map(s => ({ ...s, value: s.id === 'qb_hurried_by' ? (editingPlay.qb_hurried_by ?? null) : null })))
       const nextIdx = idx + 1
       if (nextIdx < editSteps.length) {
         _openEditStep(nextIdx)

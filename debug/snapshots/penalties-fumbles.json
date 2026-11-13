@@ -56,8 +56,8 @@
       "intsThrown": 0,
       "sacksMade": 1,
       "sacksYds": 8,
-      "tflMade": 0,
-      "tflYds": 0
+      "tflMade": 1,
+      "tflYds": 8
     }
   },
   "computeDrives": [
@@ -339,7 +339,7 @@
           "solo": 1,
           "ast": 0,
           "sacks": 1,
-          "tfl": 0,
+          "tfl": 1,
           "ff": 0,
           "int": 0
         }
@@ -398,12 +398,24 @@
         "qbh": 0,
         "pbu": 0
       },
+      "#58 L. Corona": {
+        "label": "#58 L. Corona",
+        "solo": 1,
+        "ast": 0,
+        "sacks": 0,
+        "tfl": 0,
+        "ff": 0,
+        "int": 0,
+        "sackYds": 0,
+        "qbh": 0,
+        "pbu": 0
+      },
       "#94 J. Soriano": {
         "label": "#94 J. Soriano",
         "solo": 1,
         "ast": 0,
         "sacks": 1,
-        "tfl": 0,
+        "tfl": 1,
         "ff": 0,
         "int": 0,
         "sackYds": 8,

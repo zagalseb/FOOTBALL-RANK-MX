@@ -788,6 +788,8 @@ export const PASS_RESULT_BRANCHES = {
   complete: [
     { id: 'received_by', label: 'Received By', component: 'BY',
       config: { stateKey: 'received_by', multiple: false, optional: false } },
+    { id: 'qb_hurried_by', label: 'QB Hurried By', component: 'BY',
+      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true, team: 'opponent' } },
     { id: 'result', label: 'Result', component: 'RESULT',
       config: { stateKey: 'result', optionsKey: 'STANDARD' } },
   ],
@@ -818,6 +820,8 @@ export const PASS_RESULT_BRANCHES = {
   sack: [
     { id: 'sack_by', label: 'Sack By', component: 'BY',
       config: { stateKey: 'sack_by', multiple: false, optional: false, team: 'opponent' } },
+    { id: 'qb_hurried_by', label: 'QB Hurried By', component: 'BY',
+      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true, team: 'opponent' } },
     // 'result' here resolves via RESULT_BRANCHES[playType] same as a normal
     // RUSH — playType really is 'PASS' the whole time a sack is being
     // captured (unlike a PAT_TRY/fake-punt reuse attempt, where playType
@@ -829,12 +833,16 @@ export const PASS_RESULT_BRANCHES = {
       config: { stateKey: 'result', optionsKey: 'STANDARD' } },
   ],
   scramble: [
+    { id: 'qb_hurried_by', label: 'QB Hurried By', component: 'BY',
+      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true, team: 'opponent' } },
     { id: 'result', label: 'Result', component: 'RESULT',
       config: { stateKey: 'result', optionsKey: 'STANDARD' } },
   ],
   intercepted: [
     { id: 'intercepted_by', label: 'Intercepted By', component: 'BY',
       config: { stateKey: 'intercepted_by', multiple: false, optional: false, team: 'opponent' } },
+    { id: 'qb_hurried_by', label: 'QB Hurried By', component: 'BY',
+      config: { stateKey: 'qb_hurried_by', multiple: false, optional: true, team: 'opponent' } },
     { id: 'intercepted_at', label: 'Intercepted AT', component: 'AT',
       config: { stateKey: 'intercepted_at' } },
     { id: 'returned_by', label: 'Returned By', component: 'BY',
