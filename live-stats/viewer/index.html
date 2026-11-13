@@ -280,6 +280,14 @@
       text-transform: uppercase;
     }
 
+    .badge-half {
+      font-size: 11px;
+      font-weight: 700;
+      color: #b45309;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
     .badge-scheduled {
       font-size: 12px;
       font-weight: 500;
@@ -452,6 +460,22 @@
     @media (max-width: 400px) {
       .card-score { font-size: 26px; }
       .logo-wrap  { width: 42px; height: 42px; }
+    }
+
+    /* Móvil y tablet (≤900px): el encabezado (marca + Líderes + indicador en vivo +
+       Modo captura) no cabía a 360–390px y la página se desplazaba de lado. Por encima
+       de 900px nada de esto aplica. */
+    @media (max-width: 900px) {
+      .site-header__inner { padding: 0 12px; gap: 8px; }
+      .brand { min-width: 0; gap: 8px; }
+      .site-header__right { gap: 8px; flex-shrink: 0; }
+    }
+    @media (max-width: 480px) {
+      .brand__league { display: none; }
+      .site-nav__link { padding: 6px 8px; }
+      .capture-btn { padding: 7px 10px; }
+      /* Queda el punto de color (con su title); el texto no cabe junto a los botones. */
+      #rt-indicator__label { display: none; }
     }
   </style>
 </head>
@@ -752,7 +776,7 @@
       const now = Date.now()
 
       // 1. Live game?
-      const live = games.find(g => g.status === 'live')
+      const live = games.find(g => g.status === 'live' || g.status === 'halftime')
       if (live) return live.semana
 
       // 2. Next future game
@@ -812,6 +836,9 @@
           <span style="font-size:10px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(ticker)}</span>
         </div>`
       }
+      if (game.status === 'halftime') {
+        return `<span class="badge-half">MEDIO TIEMPO</span>`
+      }
       if (game.status === 'final') {
         return `<span class="badge-final">FINAL</span>`
       }
@@ -821,7 +848,7 @@
     }
 
     function renderCard(game) {
-      const showScore = game.status === 'live' || game.status === 'final'
+      const showScore = game.status === 'live' || game.status === 'halftime' || game.status === 'final'
       const hs = game.score_home ?? 0
       const as = game.score_away ?? 0
 

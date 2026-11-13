@@ -194,6 +194,18 @@ function _groundingFlag(p) {
     (!p[`flag_${n}_team`] || p[`flag_${n}_team`] === p.possession)) || 0
 }
 
+// TC-05 (§16 Art.4 and A.R.5, §3 Art.10 A.R.1-3): the defender who pressured
+// the passer into intentional grounding (flag_N_pressured_by) gets a solo pass
+// sack, a solo tackle and a solo TFL for the yards lost to the spot of the foul.
+// No sack without a loss. { by, yds } or null. `p` must be resolved
+// (resolvePlay: net_yards runs to the spot of the foul).
+function _groundingSack(p) {
+  const n = _groundingFlag(p)
+  const by = n ? p[`flag_${n}_pressured_by`] : null
+  if (!by || p.stats_count === false || p.net_yards == null || p.net_yards >= 0) return null
+  return { by, yds: -p.net_yards }
+}
+
 // The QB never threw a legal pass: a scramble, a sack or intentional grounding
 // is a rush by the passer (pass_by), never a pass attempt (NCAA; §3 Art.10).
 function _isQBRush(p) {
@@ -212,6 +224,14 @@ export function flagEnforcement(p, num) {
   if (!p[`flag_${num}_infraction`] || p[`flag_${num}_result`] !== 'accepted') return null
   const enforced = p[`flag_${num}_enforced`]
   if (enforced) return enforced
+  // Punts and kickoffs: the legacy timing mapping can't tell a previous-spot
+  // foul (re-kick, roughing the kicker) from a foul by the receiving team
+  // after the kick (c0a826d4 seq 31), so only an explicit flag_N_enforced ===
+  // 'previous' voids them — same rule as _penaltyFirstDown and
+  // _flagKeepsBall. Without it the kick counts. Field goals keep the legacy
+  // mapping below (a foul before the snap voids the kick; the FG branch of
+  // advanceGameState relies on it).
+  if (p.play_type === 'PUNT' || (p.play_type === 'KICK' && p.kick_type === 'kickoff')) return 'end'
   if (p[`flag_${num}_timing`] === 'dead') return 'end'
   return _NO_PLAY_DOWN_RESULTS.includes(p[`flag_${num}_down_result`]) ? 'previous' : 'end'
 }
@@ -238,6 +258,50 @@ export function flagOutcome(p) {
   // unless they are the zeros of a capture-time void that no longer applies.
   const wasVoided = p.stats_count === false
   return { voided: false, net_yards: wasVoided ? null : (p.net_yards ?? null), touchdown: wasVoided ? false : p.touchdown }
+}
+
+// H-19: accepted fouls that change what a play's turnover/score means.
+// The capture does not record whether a foul came before or after a change of
+// possession, so only what the data proves is used:
+//   _flagKeepsBall: the team that snapped keeps the ball and nothing scores.
+//     RUSH/PASS: a foul enforced from the previous spot (the down is replayed;
+//     a foul during a return is never enforced from there).
+//     PUNT/KICK: only an explicit flag_N_enforced === 'previous'.
+//   _returnFoulTeam: the team that gained the ball on an interception or a
+//     fumble fouled, enforced at the spot of the foul (§14): read as a foul
+//     during its return — the turnover stands, the return ends there, no
+//     score. Returns that team.
+// KNOWN LIMITATION (TC-44e): a foul by that team BEFORE the change of
+// possession enforced at the spot of the foul (e.g. a spot-foul PI before the
+// interception) should give the ball back to the offense. Telling it apart
+// needs a capture field (flag_N_before_change, see notas_pendientes.md).
+function _flagKeepsBall(p) {
+  if (!p || p.play_type === 'PENALTY') return false
+  const nums = [1, 2].filter(n => flagEnforcement(p, n))
+  if (p.play_type === 'RUSH' || p.play_type === 'PASS') return nums.some(n => flagEnforcement(p, n) === 'previous')
+  if (p.play_type === 'PUNT' || p.play_type === 'KICK') return nums.some(n => p[`flag_${n}_enforced`] === 'previous')
+  return false
+}
+function _returnFoulTeam(p) {
+  if (!p || (p.play_type !== 'RUSH' && p.play_type !== 'PASS') || _flagKeepsBall(p)) return null
+  const turnover = p.pass_result === 'intercepted' || fumbleYards(p)?.lost === true
+  if (!turnover) return null
+  const n = [1, 2].find(k => flagEnforcement(p, k) === 'foul_spot' &&
+    !!p[`flag_${k}_team`] && p[`flag_${k}_team`] !== p.possession)
+  return n ? p[`flag_${n}_team`] : null
+}
+
+// TC-44c (§14 Art.1 A.R.3): where a turnover return by `team` ends for the
+// statistics. A foul by that team during its return, enforced at the spot of
+// the foul (_returnFoulTeam), ends the return at the foul when the foul is
+// behind the end of the run; otherwise the run's own end stands. The return
+// gets no TD unless that spot is in the end zone.
+function _turnoverReturnEnd(p, team, endPos, teams) {
+  if (!endPos || !team || _returnFoulTeam(p) !== team) return endPos
+  const n = [1, 2].find(k => flagEnforcement(p, k) === 'foul_spot' && p[`flag_${k}_team`] === team)
+  const spot = n ? p[`flag_${n}_foul_spot`] : null
+  if (!spot || !teams) return endPos
+  return calcNetYards(teams, team, spot, endPos) > 0 ? spot : endPos
 }
 
 // The play with net_yards/touchdown/stats_count taken from flagOutcome().
@@ -272,9 +336,10 @@ export function secondsToMMSS(sec) {
 // of both teams at once, and viewer.html isn't an ES module capture/ could
 // import from) — but it applies the exact same business rules already
 // validated there, read from the same fields, so the numbers match:
-//   - stats_count === false plays are excluded from offense categories
-//     (same as viewer.html's passers/rushers/receivers), but NOT from
-//     defense (viewer.html's computeDefenseStats doesn't gate on it either).
+//   - stats_count === false plays (voided by an accepted flag) are excluded
+//     from every category, defense included (§14 Art.3, 5, 6: "the play is
+//     nullified and is not recorded"; H-22, TC-25), same as
+//     computeDefenseStats.
 //   - A scramble or a sack is credited as a RUSH to the QB (pass_by), never
 //     as a passing attempt — same NCAA-convention rule as Comparación.
 //   - Individual stats use raw net_yards, not _effectiveNetYards — that
@@ -333,6 +398,26 @@ function _tacklerIsTeam(p, side, team) {
 //   for return/coverage tackles, whose play net_yards is not the ball
 //   carrier's (a punt's is its field-position swing).
 // sameAsSacker(ref): true when ref is the sack_by player.
+// TC-04 (§16 Art.4 A.R.2): the other defenders in tackle_by on a sack shared
+// it with the sack_by player — each gets an assisted sack, an assisted tackle
+// and a TFL, and the sack yards are split equally. [] when not shared.
+function _sackHelpers(p, sameAsSacker) {
+  if (!(p.play_type === 'PASS' && p.pass_result === 'sack' && p.sack_by)) return []
+  return (Array.isArray(p.tackle_by) ? p.tackle_by : []).filter(ref => !sameAsSacker(ref))
+}
+
+// TC-40 (§16 Art.6: "A tackle for loss may only be credited when the fumble
+// recovery is behind the original line of scrimmage"): yards the offense lost
+// on a forced scrimmage fumble (> 0), else 0 — to the opponent's recovery, or
+// to the end of the play when the offense recovered (fumbleYards().team), so
+// an own recovery behind the line that is then advanced beyond it is no loss
+// (§13 Art.3(a)). Feeds the forcer's TFL and the team TFL row.
+function _forcedFumbleLoss(p) {
+  if (!p.fumble_forced_by || p.pass_result === 'sack') return 0
+  const t = fumbleYards(p)?.team
+  return t != null && t < 0 ? -t : 0
+}
+
 function _tackleCredits(p, sameAsSacker) {
   const out = []
   const isSack = p.play_type === 'PASS' && p.pass_result === 'sack' && !!p.sack_by
@@ -344,8 +429,23 @@ function _tackleCredits(p, sameAsSacker) {
     if (withSacker) arr = arr.filter(ref => !sameAsSacker(ref))
     if (!arr.length) continue
     const kind = arr.length === 1 && !withSacker ? 'solo' : 'ast'
-    const tfl = field === 'tackle_by' && scrimmageLoss
+    // A sack is always a loss (§16 Art.4): a defender who shared it (TC-04)
+    // gets the TFL even on a strip-sack, whose net_yards is not stored.
+    const tfl = field === 'tackle_by' && (scrimmageLoss || isSack)
     for (const ref of arr) out.push({ ref, side, kind, tfl })
+  }
+  // TC-40 (§16 Art.6, A.R.1): the player who forced a fumble is also credited
+  // with a solo tackle (a TFL only when the play ends in a loss, see
+  // _forcedFumbleLoss). Not on a sack: the sack already carries the play's
+  // solo tackle (one solo per play, Art.1). The forcer is of the team that did
+  // not have the ball: the defense on a scrimmage fumble, the kicking/passing
+  // team on a return; on a second fumble, the team opposite the recovery.
+  const isReturnFumble = p.result !== 'fumble'
+  if (p.fumble_forced_by && !isSack && _fumbleOccurred(p)) {
+    out.push({ ref: p.fumble_forced_by, side: isReturnFumble ? 'possession' : 'defense', kind: 'solo', tfl: _forcedFumbleLoss(p) > 0 })
+  }
+  if (p.fumble_2_forced_by && p.fumble_result === 'fumble' && p.fumble_recovery_team) {
+    out.push({ ref: p.fumble_2_forced_by, side: 'fumble_recovery_team', kind: 'solo', tfl: false })
   }
   return out
 }
@@ -365,7 +465,7 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
   const ensureRushing   = () => rushing   ?? (rushing   = { att: 0, yds: 0, td: 0 })
   const ensurePassing   = () => passing   ?? (passing   = { att: 0, comp: 0, yds: 0, td: 0, int: 0 })
   const ensureReceiving = () => receiving ?? (receiving = { rec: 0, yds: 0, td: 0 })
-  const ensureDefense   = () => defense   ?? (defense   = { solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0 })
+  const ensureDefense   = () => defense   ?? (defense   = { solo: 0, ast: 0, sacks: 0, asstSacks: 0, tfl: 0, ff: 0, int: 0 })
 
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue
@@ -420,6 +520,15 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
       }
     }
 
+    // H-22: a voided play credits no defense either; TC-26: neither does a try.
+    if (p.stats_count === false || p.play_type === 'PAT_TRY') continue
+
+    // TC-12: FF to the team opposite the one that fumbled (on a return, the
+    // kicking/passing team).
+    for (const ev of _fumbleEvents(p)) {
+      if (ev.forcedBy && ev.team !== teamAbbr && same(ev.forcedBy)) ensureDefense().ff++
+    }
+
     // Tackles go to the team of the tackler (see _TACKLE_FIELDS), which after
     // a turnover or on kick coverage is the team that snapped the play.
     for (const t of _tackleCredits(p, ref => !!p.sack_by && same(ref) && same(p.sack_by))) {
@@ -432,15 +541,22 @@ export function computePlayerStats(plays, player, teamAbbr, index = null) {
     // The rest of the defensive credits belong to the team that did NOT snap
     // this play — same defTeam pattern as computeDefenseStats.
     if (p.possession && p.possession !== teamAbbr) {
+      const sameRef = (x, y) => index ? !!x && !!y && resolvePlayerKey(x, index) === resolvePlayerKey(y, index) : _isSamePlayer(x, y)
+      const helpers = _sackHelpers(p, ref => sameRef(ref, p.sack_by))
       if (p.play_type === 'PASS' && p.pass_result === 'sack' && same(p.sack_by)) {
         // §16 Art.4 (TC-02): a sack is a sack, a solo tackle and a TFL.
+        // TC-04: shared with tackle_by → assisted sack and assisted tackle.
         const d = ensureDefense()
-        d.sacks++
-        d.solo++
+        if (helpers.length) { d.asstSacks++; d.ast++ } else { d.sacks++; d.solo++ }
         d.tfl++
+      } else if (helpers.some(same)) {
+        // A helper's assisted tackle and TFL come from _tackleCredits above.
+        ensureDefense().asstSacks++
       }
-      if (same(p.fumble_forced_by) || same(p.fumble_2_forced_by)) {
-        ensureDefense().ff++
+      const gs = _groundingSack(p)
+      if (gs && same(gs.by)) {
+        const d = ensureDefense()
+        d.sacks++; d.solo++; d.tfl++
       }
       if (p.pass_result === 'intercepted' && same(p.intercepted_by)) {
         ensureDefense().int++
@@ -486,15 +602,15 @@ function _turnoverScore(p, teams) {
 
   if (p.play_type === 'PASS' && p.pass_result === 'intercepted') {
     const intTeam = opponentOf(p.possession)
-    const pos = p.return_at || p.intercepted_at
+    const pos = _turnoverReturnEnd(p, intTeam, p.return_at || p.intercepted_at, teams)
     if (pos && isTouchdown(teams, intTeam, pos)) return 'INTERCEPTION'
   }
 
   if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession && p.fumble_recovered_at) {
-    if (isTouchdown(teams, p.fumble_recovery_team, p.fumble_recovered_at)) return 'FUMBLE'
+    if (isTouchdown(teams, p.fumble_recovery_team, _turnoverReturnEnd(p, p.fumble_recovery_team, p.fumble_recovered_at, teams))) return 'FUMBLE'
   }
   if (p.fumble_2_recovery_team && p.fumble_2_recovery_team !== p.possession && p.fumble_2_recovered_at) {
-    if (isTouchdown(teams, p.fumble_2_recovery_team, p.fumble_2_recovered_at)) return 'FUMBLE'
+    if (isTouchdown(teams, p.fumble_2_recovery_team, _turnoverReturnEnd(p, p.fumble_2_recovery_team, p.fumble_2_recovered_at, teams))) return 'FUMBLE'
   }
 
   if (p.play_type === 'KICK' && p.fg_returned_by && p.fg_ret_at) {
@@ -562,6 +678,8 @@ export function driveEndLabel(plays, isLastDrive, teams) {
   if (last.play_type === 'PUNT') return 'PUNT'
   if (last.pass_result === 'intercepted') return 'INT'
   if (last.result === 'fumble') return 'FUMB'
+  // TC-34: a bad snap the opponent recovered.
+  if (last.play_type === 'SNAP_FUMBLE' && last.snap_fumble_recovery_team && last.snap_fumble_recovery_team !== last.possession) return 'FUMB'
   if (last.down === 4) return 'DOWNS'
   if (isLastDrive) return 'HALF'
   return null
@@ -572,6 +690,8 @@ export function driveEndLabel(plays, isLastDrive, teams) {
 // seriesStartYardline: yardline_100 of the 1st down that started this series
 // (null when unknown — the TD then counts, as before).
 export function _firstDownsOnPlay(p, seriesStartYardline = null) {
+  // TC-26 (§11 Art.4): a try is not a play from scrimmage — no first down.
+  if (p?.play_type === 'PAT_TRY') return 0
   p = resolvePlay(p)
   const yds = playNetYards(p)
   // §1 Art.1: a TD is a first down only in a series that started 10 or more
@@ -608,11 +728,9 @@ function _penaltyFirstDown(p, byYards) {
   if (p.play_type === 'PUNT' || p.play_type === 'KICK') return nums.some(n => p[`flag_${n}_enforced`] === 'previous')
   if (p.play_type !== 'RUSH' && p.play_type !== 'PASS') return false
   if (p.stats_count !== false) {
-    // The play stands and the opponent has the ball. KNOWN LIMITATION (H-19,
-    // TC-44): a defensive foul accepted before the change of possession gives
-    // the ball back to the offense, but applyFlags doesn't return possession,
-    // so no first down is counted here either.
-    if (fumbleYards(p)?.lost === true || p.pass_result === 'intercepted') return false
+    // The play stands and the opponent has the ball, unless the defense's foul
+    // came before the change of possession (H-19, _flagKeepsBall).
+    if ((fumbleYards(p)?.lost === true || p.pass_result === 'intercepted') && !_flagKeepsBall(p)) return false
     // On a TD the foul is enforced on the kickoff (captured on the try).
     if (playTouchdown(p)) return false
   }
@@ -669,19 +787,37 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
 
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue
+    // TC-26 (§11 Art.4): a try is not a play from scrimmage — no team fumble,
+    // turnover, sack, TFL, first down or play of any kind in these totals.
+    if (p.play_type === 'PAT_TRY') continue
     if (p.down === 1 && p.yardline_100 != null && out[p.possession]) seriesStart[p.possession] = p.yardline_100
     const firstDowns = _firstDownsOnPlay(p, seriesStart[p.possession] ?? null)
 
     // intsThrown mirrors viewer.html's Comparación team summary panel split
     // (PASS-CAI) — kept in sync here even though no Box Score row reads it
     // yet, same as the rest of this duplicated block.
-    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && out[p.possession]) {
+    if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && out[p.possession] && !_flagKeepsBall(p)) {
       out[p.possession].turnovers++
       out[p.possession].intsThrown++
     }
-    if (p.result === 'fumble' && out[p.possession]) {
+    // TC-11/TC-12: every fumble, charged to the team that had the ball.
+    for (const ev of _fumbleEvents(p, homeAbbr, awayAbbr)) {
+      if (!out[ev.team]) continue
+      out[ev.team].fumbles++
+      if (ev.lost && !_flagKeepsBall(p)) {
+        out[ev.team].fumblesLost++
+        out[ev.team].turnovers++
+      }
+    }
+
+    // TC-34 (§15; §6 A.R.6; §3 Art.10 A.R.4): a bad snap is a team fumble —
+    // lost when the opponent recovers it (SNAP_FUMBLE), not lost when the
+    // offense recovers and the play goes on (snap_fumble). Who is charged with
+    // the rush and the loss (Center Pass or the player) needs capture.
+    const snapFumble = p.play_type === 'SNAP_FUMBLE' || p.snap_fumble === true
+    if (snapFumble && out[p.possession]) {
       out[p.possession].fumbles++
-      if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) {
+      if (p.snap_fumble_recovery_team && p.snap_fumble_recovery_team !== p.possession && !_flagKeepsBall(p)) {
         out[p.possession].fumblesLost++
         out[p.possession].turnovers++
       }
@@ -692,7 +828,9 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
     // (a scramble is a rush). A sack's yards therefore appear in both the
     // Sacks and the TFL rows by design (§16 Art.4: TFL includes sacks); no
     // total adds the two rows together, so nothing is counted twice.
-    if (p.play_type === 'PASS' && p.pass_result === 'sack') {
+    // H-22: a voided play is no sack and no TFL.
+    const recorded = p.stats_count !== false
+    if (recorded && p.play_type === 'PASS' && p.pass_result === 'sack') {
       const def = out[otherTeam(p.possession)]
       // §16 Art.4 A.R.7-10: on a strip-sack the loss runs to the spot of the recovery.
       const sackYds = Math.abs(_carrierYards(p) || 0)
@@ -700,12 +838,25 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
         def.sacksMade++; def.sacksYds += sackYds
         def.tflMade++;   def.tflYds += sackYds
       }
-    } else {
+    } else if (recorded && _groundingSack(p)) {
+      // TC-05: grounding under pressure is a sack (and a TFL) of the defense.
+      const def = out[otherTeam(p.possession)]
+      const yds = _groundingSack(p).yds
+      if (def) { def.sacksMade++; def.sacksYds += yds; def.tflMade++; def.tflYds += yds }
+    } else if (recorded) {
       const isTflEligible = p.play_type === 'RUSH' || (p.play_type === 'PASS' && ['complete', 'scramble'].includes(p.pass_result))
       if (isTflEligible && p.net_yards != null && p.net_yards < 0) {
         const def = out[otherTeam(p.possession)]
         if (def) { def.tflMade++; def.tflYds += Math.abs(p.net_yards) }
       }
+    }
+
+    // TC-40: the forcer's TFL (play ending in a loss) in the team TFL row too,
+    // so it matches the per-player TFL.
+    const ffLoss = recorded && !(p.net_yards != null && p.net_yards < 0) ? _forcedFumbleLoss(p) : 0
+    if (ffLoss > 0) {
+      const def = out[otherTeam(p.possession)]
+      if (def) { def.tflMade++; def.tflYds += ffLoss }
     }
 
     if (out[p.possession]) out[p.possession].firstDowns += firstDowns
@@ -1547,6 +1698,19 @@ export function advanceGameState(state, play, teams) {
   play = resolvePlay(play)
   const { net_yards, touchdown, at, result } = play
 
+  // H-19: the foul leaves the ball with the team that snapped (no turnover,
+  // no score), e.g. a pick-six on a play voided by an accepted foul.
+  if (_flagKeepsBall(play)) return
+  // H-19: the team that gained the ball fouled during its return: it keeps
+  // the ball, nothing scores; applyFlags puts it at the penalty's spot.
+  const returnFoulTeam = _returnFoulTeam(play)
+  if (returnFoulTeam) {
+    state.possession = returnFoulTeam
+    state.down       = 1
+    state.distance   = 10
+    return
+  }
+
   if (play.play_type === 'PENALTY') {
     const res = play.penalty_result
 
@@ -1563,8 +1727,9 @@ export function advanceGameState(state, play, teams) {
         state.distance = 10
       } else if (downRes === 'loss_of_down') {
         if (state.down >= 4) {
-          state.down     = 1
-          state.distance = 10
+          // TC-17: loss of down on 4th down is a turnover on downs.
+          _fourthDownFails(state, teams, null)
+          state.possession = play.possession === teams.home.name ? teams.away.name : teams.home.name
         } else {
           state.down = state.down + 1
         }
@@ -1590,8 +1755,21 @@ export function advanceGameState(state, play, teams) {
     if (play.kick_type === 'field_goal') {
       const res = play.fg_result
 
+      // ── FG anulado por bandera (bloque independiente; se puede quitar sin
+      // tocar lo de abajo) ────────────────────────────────────────────────
+      // Una bandera aceptada desde el spot previo anula la patada (§14 Art.5,
+      // H-06; resolvePlay deja stats_count === false): no anota ni cambia la
+      // posesión. applyFlags pone después el nuevo spot y el down. Sin esto un
+      // FG bueno anulado sumaba 3 y uno fallado anulado le daba el balón al rival.
+      if (play.stats_count === false) return
+      // ── fin del bloque FG anulado ─────────────────────────────────────────
+
       if (res === 'good') {
         _addPoints(state, play.possession, 3, teams)
+        // Igual que tras el PAT: quien anotó patea el kickoff desde su propia
+        // KICKOFF_YARD (antes se quedaba en el spot del snap del FG).
+        state.possession = play.possession
+        state.field_pos  = { team: play.possession, yard: KICKOFF_YARD }
         state.down     = 0
         state.distance = 0
         return
@@ -1601,6 +1779,12 @@ export function advanceGameState(state, play, teams) {
         const defTeam = play.possession === teams.home.name
           ? teams.away.name : teams.home.name
         state.possession = defTeam
+        // Fallado sin tocar: el rival toma el balón en el spot previo (el del
+        // snap, que ya es state.field_pos), o en su propia 20 si el snap fue
+        // dentro de su 20.
+        if (play.field_pos && _toGoal(play.possession, play.field_pos) < 20) {
+          state.field_pos = { team: defTeam, yard: 20 }
+        }
         state.down       = 1
         state.distance   = 10
         return
@@ -2162,8 +2346,7 @@ export function advanceGameState(state, play, teams) {
 
     if (['incomplete', 'dropped', 'broken_up'].includes(passRes)) {
       if (state.down >= 4) {
-        state.down     = 1
-        state.distance = 10
+        _fourthDownFails(state, teams, play)
       } else {
         state.down = state.down + 1
       }
@@ -2185,7 +2368,7 @@ export function advanceGameState(state, play, teams) {
         return
       }
       if (play.at) state.field_pos = { ...play.at }
-      _advanceDownDistance(state, play.net_yards ?? 0)
+      _advanceDownDistance(state, play.net_yards ?? 0, teams, play)
       return
     }
 
@@ -2207,7 +2390,7 @@ export function advanceGameState(state, play, teams) {
         return
       }
       if (at) state.field_pos = { ...at }
-      _advanceDownDistance(state, play.net_yards ?? 0)
+      _advanceDownDistance(state, play.net_yards ?? 0, teams, play)
       return
     }
 
@@ -2264,7 +2447,7 @@ export function advanceGameState(state, play, teams) {
         return
       }
       if (at) state.field_pos = { ...at }
-      _advanceDownDistance(state, play.net_yards ?? 0)
+      _advanceDownDistance(state, play.net_yards ?? 0, teams, play)
       return
     }
 
@@ -2292,7 +2475,7 @@ export function advanceGameState(state, play, teams) {
   }
 
   if (at) state.field_pos = { ...at }
-  _advanceDownDistance(state, net_yards ?? 0)
+  _advanceDownDistance(state, net_yards ?? 0, teams, play)
 }
 
 export function applyFlags(state, play, teams) {
@@ -2323,8 +2506,10 @@ function _applyFlag(state, play, num, teams) {
     state.distance = 10
   } else if (downRes === 'loss_of_down') {
     if (play.down >= 4) {
+      // TC-17: loss of down on 4th down is a turnover on downs.
       state.down     = 1
       state.distance = 10
+      if (teams && play.possession) state.possession = play.possession === teams.home.name ? teams.away.name : teams.home.name
     } else {
       state.down = play.down + 1
       if (newLos) {
@@ -2432,19 +2617,33 @@ function _advanceFumble(state, play, prefix, teams) {
         play.field_pos,
         fumbleAtResult
       )
-      _advanceDownDistance(state, net)
+      _advanceDownDistance(state, net, teams, play)
     }
   }
 }
 
-function _advanceDownDistance(state, gained) {
+// TC-17 (B.I.9: possession lasts "until a scoring play is made or loss of
+// possession occurs"): a 4th down that falls short is a turnover on downs —
+// 1st and 10 for the other team where the ball is. Not when an accepted foul
+// on the play sets the down itself (first down by penalty, repeat the down):
+// applyFlags handles those, the offense keeps the ball.
+function _fourthDownFails(state, teams, play) {
+  state.down     = 1
+  state.distance = 10
+  const flagSetsDown = !!play && [1, 2].some(n => flagEnforcement(play, n) &&
+    ['first_down', 'repeat_down'].includes(play[`flag_${n}_down_result`]))
+  if (!flagSetsDown && teams && play?.possession) {
+    state.possession = play.possession === teams.home.name ? teams.away.name : teams.home.name
+  }
+}
+
+function _advanceDownDistance(state, gained, teams, play) {
   const newDistance = state.distance - gained
   if (newDistance <= 0) {
     state.down     = 1
     state.distance = 10
   } else if (state.down >= 4) {
-    state.down     = 1
-    state.distance = 10
+    _fourthDownFails(state, teams, play)
   } else {
     state.down     = state.down + 1
     state.distance = newDistance
@@ -2474,18 +2673,25 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
     if (!team || !teams[team] || !player) return
     const kl = _playerKeyLabel(player, rosters?.[team] || null)
     if (!kl) return
-    if (!teams[team][kl.key]) teams[team][kl.key] = { label: kl.label, solo: 0, ast: 0, sacks: 0, tfl: 0, ff: 0, int: 0, sackYds: 0, qbh: 0, pbu: 0 }
+    if (!teams[team][kl.key]) teams[team][kl.key] = { label: kl.label, solo: 0, ast: 0, sacks: 0, asstSacks: 0, tfl: 0, ff: 0, int: 0, sackYds: 0, qbh: 0, pbu: 0 }
     teams[team][kl.key][field] += delta
   }
 
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue
+    // H-22 (TC-25, §14 Art.3, 5, 6): a play voided by an accepted flag is
+    // not recorded — no tackles, sacks, TFL, FF, INT, PBU or hurries.
+    if (p.stats_count === false) continue
+    // TC-26 (§11 Art.4): a try is not a play from scrimmage — no individual
+    // defense (an intercepted try is a defensive extra-point attempt, A.R.1-6).
+    if (p.play_type === 'PAT_TRY') continue
     const defTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
     if (!defTeam) continue
 
     const keyOf = (ref, team) => _playerKeyLabel(ref, rosters?.[team] || null)?.key
     const sackerKey = p.sack_by ? keyOf(p.sack_by, defTeam) : null
-    for (const t of _tackleCredits(p, ref => sackerKey != null && keyOf(ref, defTeam) === sackerKey)) {
+    const isSacker = ref => sackerKey != null && keyOf(ref, defTeam) === sackerKey
+    for (const t of _tackleCredits(p, isSacker)) {
       const team = [homeAbbr, awayAbbr].find(tm => _tacklerIsTeam(p, t.side, tm))
       credit(team, t.ref, t.kind, 1)
       if (t.tfl) credit(team, t.ref, 'tfl', 1)
@@ -2494,15 +2700,39 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
     if (p.play_type === 'PASS' && p.pass_result === 'sack' && p.sack_by) {
       // §16 Art.4 (TC-02): a sack is a sack, a solo tackle and a TFL. The
       // sacker is never credited a second tackle from tackle_by (TC-03).
-      credit(defTeam, p.sack_by, 'sacks', 1)
-      credit(defTeam, p.sack_by, 'solo', 1)
-      credit(defTeam, p.sack_by, 'tfl', 1)
       // §16 Art.4 A.R.7-10: on a strip-sack the loss runs to the spot of the recovery.
-      credit(defTeam, p.sack_by, 'sackYds', Math.abs(_carrierYards(p) || 0))
+      const sackYds = Math.abs(_carrierYards(p) || 0)
+      const helpers = _sackHelpers(p, isSacker)
+      if (!helpers.length) {
+        credit(defTeam, p.sack_by, 'sacks', 1)
+        credit(defTeam, p.sack_by, 'solo', 1)
+        credit(defTeam, p.sack_by, 'sackYds', sackYds)
+      } else {
+        // TC-04 (§16 Art.4 A.R.2): shared sack — every participant gets an
+        // assisted sack and an equal share of the yards; the helpers'
+        // assisted tackle and TFL already came from _tackleCredits.
+        const share = sackYds / (helpers.length + 1)
+        credit(defTeam, p.sack_by, 'asstSacks', 1)
+        credit(defTeam, p.sack_by, 'ast', 1)
+        credit(defTeam, p.sack_by, 'sackYds', share)
+        for (const h of helpers) { credit(defTeam, h, 'asstSacks', 1); credit(defTeam, h, 'sackYds', share) }
+      }
+      credit(defTeam, p.sack_by, 'tfl', 1)
     }
 
-    if (p.fumble_forced_by) credit(defTeam, p.fumble_forced_by, 'ff', 1)
-    if (p.fumble_2_forced_by) credit(defTeam, p.fumble_2_forced_by, 'ff', 1)
+    // TC-12: the FF goes to the team opposite the one that fumbled (on a
+    // return, the kicking/passing team).
+    for (const ev of _fumbleEvents(p, homeAbbr, awayAbbr)) {
+      if (ev.forcedBy) credit(ev.team === homeAbbr ? awayAbbr : homeAbbr, ev.forcedBy, 'ff', 1)
+    }
+
+    const gs = _groundingSack(p)
+    if (gs) {
+      credit(defTeam, gs.by, 'sacks', 1)
+      credit(defTeam, gs.by, 'solo', 1)
+      credit(defTeam, gs.by, 'tfl', 1)
+      credit(defTeam, gs.by, 'sackYds', gs.yds)
+    }
 
     if (p.pass_result === 'intercepted' && p.intercepted_by) {
       credit(defTeam, p.intercepted_by, 'int', 1)
@@ -2513,11 +2743,9 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
     // broken_up, complete, sack, scramble, intercepted); broken_up_by only on
     // incomplete/dropped/broken_up. Same team:'opponent' shape as
     // fumble_forced_by above; Comparación's Defense sub-tab is the consumer.
-    // A hurry is not credited on a play voided by an accepted flag
-    // (stats_count false), nor to the player who already got the sack or the
-    // interception on that play. The rest of the defense is still credited on
-    // voided plays (see hallazgos.md H-22).
-    if (p.qb_hurried_by && p.stats_count !== false) {
+    // A hurry is not credited to the player who already got the sack or the
+    // interception on that play (voided plays were skipped above, H-22).
+    if (p.qb_hurried_by) {
       const hKey = _playerKeyLabel(p.qb_hurried_by, rosters?.[defTeam] || null)?.key
       const same = ref => !!ref && _playerKeyLabel(ref, rosters?.[defTeam] || null)?.key === hKey
       const counted = (p.pass_result === 'sack' && same(p.sack_by)) ||
@@ -2542,6 +2770,29 @@ export function computeDefenseStats(plays, homeAbbr, awayAbbr, rosters = null) {
 // touchback punts/kickoffs. Blocked punts and oob/onside kickoffs likewise
 // have no measurable landing spot recorded — they still count as an attempt
 // (No.) but contribute 0 to Yds/Long/Avg.
+// Punt results that are a punt (fake punts and bad snaps are not), and the
+// key of the Team row that holds blocked punts (TC-20).
+const PUNT_KINDS = ['returned', 'fair_catch', 'touchback', 'oob', 'downed', 'blocked', 'muffed']
+export const PUNT_TEAM_KEY = 'TEAM'
+
+// Where a blocked punt ended: the end of the blocking team's return when it
+// recovered and returned it, else the recovery spot. null when not captured.
+export function _blockedPuntEnd(p, defTeam) {
+  if (p.punt_recovery_team === defTeam && p.punt_block_return_result === 'returned' &&
+      ['tackle', 'oob', 'eop'].includes(p.punt_block_ret_result) && p.punt_block_ret_at) return p.punt_block_ret_at
+  return p.punt_recovered_at || null
+}
+
+// Who ran with a blocked punt the blocking team recovered: the returner, else
+// the player who recovered it. null when the blocking team did not recover it
+// or did not advance it (the ball ended where it was picked up).
+export function _blockedPuntRunner(p, defTeam) {
+  if (p.punt_recovery_team !== defTeam) return null
+  const end = _blockedPuntEnd(p, defTeam)
+  if (!end || end === p.punt_recovered_at) return null
+  return p.punt_block_returned_by || p.punt_recovery_by || null
+}
+
 export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams, rosters = null) {
   plays = _resolvePlays(plays)
   const punting     = {}
@@ -2552,29 +2803,88 @@ export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams, roste
 
   const dist = (kicker, snap, land) =>
     (typeof calcNetYards === 'function' && snap && land) ? calcNetYards(teams, kicker, snap, land) : null
+  // count: 1 = a return; 0 = yards credited without a return (A.R.4 runner).
+  function addPuntReturn(team, kl, yds, count) {
+    const key = `${team}::${kl.key}`
+    if (!puntReturns[key]) puntReturns[key] = { team, key: kl.key, label: kl.label, no: 0, yds: 0, long: 0 }
+    puntReturns[key].no += count
+    puntReturns[key].yds += yds
+    if (yds > puntReturns[key].long) puntReturns[key].long = yds
+  }
 
   for (const p of plays) {
     const defTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
     if (!defTeam) continue
 
-    if (p.play_type === 'PUNT') {
-      const kl = p.punted_by ? _playerKeyLabel(p.punted_by, rosters?.[p.possession] || null) : null
+    // Punts (same rules as viewer.html's Individual tab used to apply on its own):
+    //   - a punt voided by an accepted flag is not a punt (§6 Art.5 A.R., TC-41);
+    //     a fake punt or a bad snap is not one either.
+    //   - yards run to where the kick ended: downed → punt_downed_at (TC-18),
+    //     muffed → punt_muff_at (TC-22).
+    //   - a blocked punt is a Team punt of 0 yards, not the punter's (§7 Art.1,
+    //     TC-20): row key PUNT_TEAM_KEY, label 'Equipo'. If the ball went toward
+    //     the kicker's goal, the player who blocked it gets a punt return of
+    //     those yards, from the line of scrimmage to where the ball ended, even
+    //     when the kicking team recovers (A.R.1-2). Exception (Art.3): the
+    //     kicking team recovers beyond the line of scrimmage — a normal punt of
+    //     the punter, yards from the line of scrimmage, no return.
+    //   - inside the 20 where the ball is dead (end of the return, fair catch,
+    //     out of bounds, downed), the 20 itself not included (B.I.14, TC-19).
+    if (p.play_type === 'PUNT' && PUNT_KINDS.includes(p.punt_result) && p.stats_count !== false) {
+      const blocked = p.punt_result === 'blocked'
+      const recBeyondLos = blocked && p.punt_recovery_team === p.possession &&
+        (dist(p.possession, p.field_pos, p.punt_recovered_at) ?? 0) > 0
+      const kl = blocked && !recBeyondLos
+        ? { key: PUNT_TEAM_KEY, label: 'Equipo' }
+        : (p.punted_by ? _playerKeyLabel(p.punted_by, rosters?.[p.possession] || null) : null)
       if (kl) {
         const key = `${p.possession}::${kl.key}`
         if (!punting[key]) punting[key] = { team: p.possession, key: kl.key, label: kl.label, no: 0, yds: 0, long: 0, in20: 0, tb: 0 }
         const row = punting[key]
         row.no++
-        let landPos = null
-        if (p.punt_result === 'returned' || p.punt_result === 'fair_catch') landPos = p.punt_kicked_to
-        else if (p.punt_result === 'oob') landPos = p.punt_oob_at
-        else if (p.punt_result === 'touchback') { landPos = { team: defTeam, yard: 0 }; row.tb++ }
+        const landPos = {
+          returned: p.punt_kicked_to, fair_catch: p.punt_kicked_to, oob: p.punt_oob_at,
+          downed: p.punt_downed_at, muffed: p.punt_muff_at, touchback: { team: defTeam, yard: 0 },
+          blocked: recBeyondLos ? p.punt_recovered_at : null,
+        }[p.punt_result] || null
+        if (p.punt_result === 'touchback') row.tb++
         if (landPos) {
           const d = dist(p.possession, p.field_pos, landPos)
           if (d != null) {
             row.yds += d
             if (d > row.long) row.long = d
           }
-          if (p.punt_result !== 'touchback' && landPos.team === defTeam && landPos.yard > 0 && landPos.yard <= 20) row.in20++
+        }
+        const deadPos = {
+          returned: ['tackle', 'oob', 'eop'].includes(p.punt_return_result) ? p.punt_return_at : null,
+          fair_catch: p.punt_fair_catch_at || p.punt_kicked_to, oob: p.punt_oob_at, downed: p.punt_downed_at,
+        }[p.punt_result] || null
+        if (deadPos && deadPos.team === defTeam && deadPos.yard >= 1 && deadPos.yard <= 19) row.in20++
+      }
+
+      // §7 Art.1 A.R.1-4: the blocked punt's return.
+      //   - The blocker gets ONE return: from the line of scrimmage to where
+      //     the ball was picked up (A.R.1-2, also when the kicking team
+      //     recovers) or, when he himself picked it up and ran, to the end of
+      //     his run (A.R.3).
+      //   - Another player of the blocking team who picked it up and ran gets
+      //     the rest of the yards (pick-up spot → end of the run) WITHOUT a
+      //     return of his own; the TD, if any, is his (A.R.4).
+      if (blocked && !recBeyondLos && p.punt_blocked_by) {
+        const keyOf = ref => ref ? _playerKeyLabel(ref, rosters?.[defTeam] || null) : null
+        const bk = keyOf(p.punt_blocked_by)
+        const pickUp = p.punt_recovered_at || null
+        const end = _blockedPuntEnd(p, defTeam)
+        const runner = _blockedPuntRunner(p, defTeam)
+        const rk = keyOf(runner)
+        // Same player: same team (the runner's is punt_recovery_team, the
+        // blocker's the receiving team) and same player key.
+        const blockerRan = !!rk && !!bk && p.punt_recovery_team === defTeam && rk.key === bk.key
+        const toBlocker = bk ? dist(defTeam, p.field_pos, blockerRan ? end : pickUp) : null
+        if (toBlocker != null && toBlocker > 0) addPuntReturn(defTeam, bk, toBlocker, 1)
+        if (rk && !blockerRan) {
+          const rest = dist(defTeam, pickUp, end)
+          if (rest != null) addPuntReturn(defTeam, rk, rest, 0)
         }
       }
 
@@ -2596,7 +2906,7 @@ export function computeSpecialTeamsStats(plays, homeAbbr, awayAbbr, teams, roste
       }
     }
 
-    if (p.play_type === 'KICK' && p.kick_type === 'kickoff') {
+    if (p.play_type === 'KICK' && p.kick_type === 'kickoff' && p.stats_count !== false) {
       const kl = p.kicked_by ? _playerKeyLabel(p.kicked_by, rosters?.[p.possession] || null) : null
       if (kl) {
         const key = `${p.possession}::${kl.key}`
@@ -2675,18 +2985,45 @@ export function _fumbleCarrier(p) {
   return null
 }
 
-export function computeFumbleStats(plays, rosters = null) {
+// Every fumble on a play, in order (§13 Art.1, 7; B.I.5):
+//   level 1: whoever had the ball when it came loose (_fumbleCarrier). On an
+//     interception, kick, punt or FG return that is the returning team
+//     (TC-12); otherwise the offense.
+//   level 2 (fumble_result 'fumble'): the player who recovered it fumbled
+//     again (TC-11); his team is fumble_recovery_team.
+// { level, team, carrier, forcedBy, lost }: lost = the other team recovered
+// that fumble. homeAbbr/awayAbbr (or the play's own `teams`) name the
+// returning team; without them a return fumble is left out.
+export function _fumbleEvents(p, homeAbbr = null, awayAbbr = null) {
+  if (!p?.possession || !_fumbleOccurred(p)) return []
+  const home = homeAbbr || p.teams?.home?.name || null, away = awayAbbr || p.teams?.away?.name || null
+  const other = t => (t === home ? away : t === away ? home : null)
+  const team1 = p.result === 'fumble' ? p.possession : other(p.possession)
+  if (!team1) return []
+  const ev = [{ level: 1, team: team1, carrier: _fumbleCarrier(p), forcedBy: p.fumble_forced_by || null,
+    lost: !!p.fumble_recovery_team && p.fumble_recovery_team !== team1 }]
+  if (p.fumble_result === 'fumble' && p.fumble_recovery_team) {
+    const team2 = p.fumble_recovery_team
+    ev.push({ level: 2, team: team2, carrier: p.fumble_recovered_by || null, forcedBy: p.fumble_2_forced_by || null,
+      lost: !!p.fumble_2_recovery_team && p.fumble_2_recovery_team !== team2 })
+  }
+  return ev
+}
+
+export function computeFumbleStats(plays, rosters = null, homeAbbr = null, awayAbbr = null) {
   plays = _resolvePlays(plays)
   const out = {}
   for (const p of plays) {
-    if (!_fumbleOccurred(p)) continue
-    const carrier = _fumbleCarrier(p)
-    const kl = carrier ? _playerKeyLabel(carrier, rosters?.[p.possession] || null) : null
-    if (!kl || !p.possession) continue
-    const key = `${p.possession}::${kl.key}`
-    if (!out[key]) out[key] = { team: p.possession, key: kl.key, label: kl.label, no: 0, lost: 0 }
-    out[key].no++
-    if (p.fumble_recovery_team && p.fumble_recovery_team !== p.possession) out[key].lost++
+    // TC-26 (§11 Art.4 A.R.6): a fumble on a try is not charged.
+    if (!_fumbleOccurred(p) || p.play_type === 'PAT_TRY') continue
+    for (const ev of _fumbleEvents(p, homeAbbr, awayAbbr)) {
+      const kl = ev.carrier ? _playerKeyLabel(ev.carrier, rosters?.[ev.team] || null) : null
+      if (!kl) continue
+      const key = `${ev.team}::${kl.key}`
+      if (!out[key]) out[key] = { team: ev.team, key: kl.key, label: kl.label, no: 0, lost: 0 }
+      out[key].no++
+      if (ev.lost) out[key].lost++
+    }
   }
   return Object.values(out)
 }
@@ -2728,12 +3065,14 @@ export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, ros
     (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0
 
   for (const p of plays) {
+    if (p.stats_count === false) continue   // H-22: voided, not recorded
     if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
       const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
       if (intTeam) {
         let endPos = null
         if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
         else if (p.return_result === 'fumble') endPos = p.fumble_at
+        endPos = _turnoverReturnEnd(p, intTeam, endPos, teams)
         // No floor at 0: a return can be negative (NCAA Manual 2011, Sec. 3 Art. 6 A.R. 1;
         // same for fumble returns below, B.I. 5).
         const yds = endPos ? dist(intTeam, p.intercepted_at, endPos) : 0
@@ -2747,7 +3086,7 @@ export function computeTurnoverReturnYards(plays, homeAbbr, awayAbbr, teams, ros
       const recAt   = p[`${prefix}recovered_at`]
       if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
-      const endPos = p[advField] || null
+      const endPos = _turnoverReturnEnd(p, recTeam, p[advField] || null, teams)
       const yds = endPos ? dist(recTeam, recAt, endPos) : 0
       add(recTeam, _playerKeyLabel(recBy, rosters?.[recTeam] || null), yds)
     }
@@ -2771,12 +3110,14 @@ export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, team
     (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0
 
   for (const p of plays) {
+    if (p.stats_count === false) continue   // H-22: voided, not recorded
     if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
       const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
       if (intTeam && out[intTeam]) {
         let endPos = null
         if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
         else if (p.return_result === 'fumble') endPos = p.fumble_at
+        endPos = _turnoverReturnEnd(p, intTeam, endPos, teams)
         // No floor at 0: a return can be negative (NCAA Manual 2011, Sec. 3 Art. 6 A.R. 1;
         // same for fumble returns below, B.I. 5).
         const yds = endPos ? dist(intTeam, p.intercepted_at, endPos) : 0
@@ -2789,7 +3130,7 @@ export function computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, team
       const recAt   = p[`${prefix}recovered_at`]
       if (!recTeam || !recAt || recTeam === p.possession || !out[recTeam]) continue
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
-      const endPos = p[advField] || null
+      const endPos = _turnoverReturnEnd(p, recTeam, p[advField] || null, teams)
       const yds = endPos ? dist(recTeam, recAt, endPos) : 0
       out[recTeam].fumYds += yds
     }
@@ -2826,12 +3167,14 @@ export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, r
     (typeof calcNetYards === 'function' && from && to) ? calcNetYards(teams, team, from, to) : 0
 
   for (const p of plays) {
+    if (p.stats_count === false) continue   // H-22: voided, not recorded
     if (p.play_type === 'PASS' && p.pass_result === 'intercepted' && p.intercepted_by) {
       const intTeam = p.possession === homeAbbr ? awayAbbr : (p.possession === awayAbbr ? homeAbbr : null)
       if (intTeam) {
         let endPos = null
         if (['tackle', 'oob', 'eop'].includes(p.return_result)) endPos = p.return_at
         else if (p.return_result === 'fumble') endPos = p.fumble_at
+        endPos = _turnoverReturnEnd(p, intTeam, endPos, teams)
         // No floor at 0: a return can be negative (NCAA Manual 2011, Sec. 3 Art. 6 A.R. 1;
         // same for fumble returns below, B.I. 5).
         const yds = endPos ? dist(intTeam, p.intercepted_at, endPos) : 0
@@ -2846,7 +3189,7 @@ export function computeTurnoverStatsByPlayer(plays, homeAbbr, awayAbbr, teams, r
       const recAt   = p[`${prefix}recovered_at`]
       if (!recTeam || !recBy || !recAt || recTeam === p.possession) continue
       const advField = prefix === 'fumble_' ? 'fumble_at_result' : 'fumble_2_at_result'
-      const endPos = p[advField] || null
+      const endPos = _turnoverReturnEnd(p, recTeam, p[advField] || null, teams)
       const yds = endPos ? dist(recTeam, recAt, endPos) : 0
       const isTD = !!(endPos && isTouchdown(teams, recTeam, endPos))
       // NCAA Manual 2011, B.I. 5 / Sec. 13 Art. 4: list only fumble returns

@@ -30,9 +30,19 @@ const bases = {
   fumble:   { play_type: 'RUSH', result: 'fumble', possession: 'AAA', field_pos: { team: 'BBB', yard: 30 },
               fumble_recovery_team: 'BBB', fumble_recovered_at: { team: 'BBB', yard: 25 } },
   punt:     { play_type: 'PUNT', punt_result: 'fair_catch', possession: 'AAA', field_pos: { team: 'AAA', yard: 40 } },
+  kickoff:  { play_type: 'KICK', kick_type: 'kickoff', kickoff_result: 'touchback', possession: 'AAA', field_pos: { team: 'AAA', yard: 35 } },
+  fg:       { play_type: 'KICK', kick_type: 'field_goal', fg_result: 'good', possession: 'AAA', field_pos: { team: 'BBB', yard: 25 } },
 }
 
-test('live / dead / sin timing: flagOutcome reproduce lo que guardaba el wizard', () => {
+// Punts and kickoffs (2026-11-13): a legacy flag (no flag_N_enforced) no
+// longer voids them — the timing mapping can't tell a previous-spot foul from a
+// foul by the receiving team after the kick, so only an explicit
+// flag_N_enforced === 'previous' voids a punt or kickoff. Every other play
+// with a legacy flag, field goals included, still resolves exactly as the
+// wizard stored it.
+const legacyKickCounts = base => base.play_type === 'PUNT' || (base.play_type === 'KICK' && base.kick_type === 'kickoff')
+
+test('live / dead / sin timing: flagOutcome reproduce lo que guardaba el wizard (salvo punts y kickoffs, que ya no se anulan)', () => {
   let n = 0
   for (const [name, base] of Object.entries(bases)) {
     for (const timing of ['live', 'dead', null, undefined]) {
@@ -44,15 +54,34 @@ test('live / dead / sin timing: flagOutcome reproduce lo que guardaba el wizard'
           const stored = oldSubmit(flagged)
           const r = resolvePlay(stored)
           const ctx = `${name} timing=${timing} down=${down} ${result}`
-          assert.equal(r.stats_count === false, stored.stats_count === false, ctx)
-          assert.equal(r.net_yards ?? null, stored.net_yards ?? null, ctx)
-          assert.equal(r.touchdown ?? false, stored.touchdown ?? false, ctx)
+          if (legacyKickCounts(base)) {
+            // Never voided; the zeros of a capture-time void no longer apply (null yards).
+            assert.equal(r.stats_count === false, false, ctx)
+            assert.equal(r.net_yards ?? null, stored.stats_count === false ? null : (stored.net_yards ?? null), ctx)
+            assert.equal(r.touchdown ?? false, false, ctx)
+          } else {
+            assert.equal(r.stats_count === false, stored.stats_count === false, ctx)
+            assert.equal(r.net_yards ?? null, stored.net_yards ?? null, ctx)
+            assert.equal(r.touchdown ?? false, stored.touchdown ?? false, ctx)
+          }
           n++
         }
       }
     }
   }
-  assert.equal(n, 5 * 4 * 4 * 3)
+  assert.equal(n, 7 * 4 * 4 * 3)
+
+  // Punts y kickoffs: solo flag_N_enforced = previous explícito los anula; los FG siguen la regla anterior.
+  const flag = extra => ({ flag_1_infraction: { code: 'RK' }, flag_1_team: 'BBB', flag_1_result: 'accepted',
+    flag_1_new_los: { team: 'BBB', yard: 45 }, flag_1_down_result: 'first_down', ...extra })
+  for (const name of ['punt', 'kickoff']) {
+    assert.equal(flagOutcome({ ...bases[name], ...flag({ flag_1_timing: 'live' }) }).voided, false, `${name} viejo`)
+    assert.equal(flagOutcome({ ...bases[name], ...flag({ flag_1_enforced: 'previous', flag_1_timing: 'live' }) }).voided, true, `${name} previous`)
+    assert.equal(flagOutcome({ ...bases[name], ...flag({ flag_1_enforced: 'end', flag_1_timing: 'dead' }) }).voided, false, `${name} end`)
+  }
+  assert.equal(flagOutcome({ ...bases.fg, ...flag({ flag_1_timing: 'live' }) }).voided, true, 'fg viejo')
+  assert.equal(flagOutcome({ ...bases.fg, ...flag({ flag_1_enforced: 'previous', flag_1_timing: 'live' }) }).voided, true, 'fg previous')
+  assert.equal(flagOutcome({ ...bases.fg, ...flag({ flag_1_enforced: 'end', flag_1_timing: 'dead' }) }).voided, false, 'fg end')
 })
 
 // The 4 flagged plays in covercero.plays (all in TEST games), as stored.
@@ -71,12 +100,17 @@ const prod = {
     flag_1_infraction: { code: 'NF' }, flag_1_team: 'MTY', flag_1_result: 'accepted', flag_1_new_los: { team: 'MTY', yard: 12 }, flag_1_down_result: 'first_down' },
 }
 
-test('producción: sólo 2dd8·18 cambia de anulación (PI capturado antes de la regla)', () => {
+test('producción: sólo cambian de anulación 2dd8·18 (PI capturado antes de la regla) y c0a8·31 (punt con bandera vieja: ya no se anula)', () => {
   for (const [id, p] of Object.entries(prod)) {
     const r = resolvePlay(p)
     if (id === '2dd8·18') {
       assert.deepEqual(flagOutcome(p), { voided: true, net_yards: 0, touchdown: false })
       assert.equal(r.stats_count, false)
+    } else if (id === 'c0a8·31') {
+      // NF of MTY (the receiving team) after the fair catch: the punt counts.
+      assert.deepEqual(flagOutcome(p), { voided: false, net_yards: null, touchdown: false })
+      assert.notEqual(r.stats_count, false)
+      assert.equal(r.net_yards, null)
     } else {
       assert.equal(r, p, id)   // same object: nothing changes
     }

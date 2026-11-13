@@ -9,7 +9,7 @@ import { loadLib, loadGame, GAMES, SRC, ok, done } from './common.mjs'
 const args = process.argv.slice(2)
 const VERBOSE = args.includes('-v')
 const L = await loadLib(args.find(x => !x.startsWith('-')))
-const Bld = new Function('L', `const { _playerKeyLabel, calcNetYards, isTouchdown, resolvePlay } = L;
+const Bld = new Function('L', `const { _playerKeyLabel, calcNetYards, isTouchdown, resolvePlay, _blockedPuntEnd, _blockedPuntRunner } = L;
 ${SRC.f56Builders()}\nreturn { _buildIndDefense, _buildIndSpecialTeams };`)(L)
 
 for (const gid of Object.values(GAMES)) {

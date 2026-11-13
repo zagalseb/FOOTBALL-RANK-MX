@@ -255,6 +255,207 @@
       "cumple_hoy": false
     },
     {
+      "id": "TC-04b",
+      "regla_ncaa": "Sack asistido entre tres: cada uno sack asistido, tackle asistido y TFL; yardas repartidas (§16 Art.4 A.R.2)",
+      "fuente_manual": "§16 Art.4 A.R.2",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / _sackHelpers",
+      "entrada": {
+        "descripcion": "Sack de -8: sack_by=#99, tackle_by=[#99,#31,#50]."
+      },
+      "salida_esperada": {
+        "31": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1,
+          "sackYds": 2.67
+        },
+        "50": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1,
+          "sackYds": 2.67
+        },
+        "99": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1,
+          "sackYds": 2.67
+        }
+      },
+      "tolerancia": 0.01,
+      "resultado_actual_codigo": {
+        "31": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 0,
+          "tfl": 1,
+          "sackYds": 0
+        },
+        "50": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 0,
+          "tfl": 1,
+          "sackYds": 0
+        },
+        "99": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 1,
+          "asstSacks": 0,
+          "tfl": 1,
+          "sackYds": 8
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-04c",
+      "regla_ncaa": "Sack asistido en computePlayerStats (reportes de captura): mismo crédito que computeDefenseStats (§16 Art.4 A.R.2)",
+      "fuente_manual": "§16 Art.4 A.R.2",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computePlayerStats",
+      "entrada": {
+        "descripcion": "Sack de -8: sack_by=#99, tackle_by=[#99,#31]; computePlayerStats del que hizo el sack y del ayudante."
+      },
+      "salida_esperada": {
+        "sacker": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1
+        },
+        "ayudante": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1
+        }
+      },
+      "resultado_actual_codigo": {
+        "sacker": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 1,
+          "asstSacks": 0,
+          "tfl": 1
+        },
+        "ayudante": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 0,
+          "tfl": 1
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-04d",
+      "regla_ncaa": "Strip-sack compartido: sack asistido y TFL para cada uno, yardas hasta la recuperación repartidas; FF al que lo forzó (§16 Art.4 A.R.2, A.R.7-10)",
+      "fuente_manual": "§16 Art.4 A.R.2, A.R.7-10",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / _tackleCredits",
+      "entrada": {
+        "descripcion": "Strip-sack de #99 (fumble en BBB45, A recupera en BBB48: -8), tackle_by=[#99,#31]. Nota: el wizard hoy no pide tackle_by en la rama fumble del sack."
+      },
+      "salida_esperada": {
+        "31": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1,
+          "sackYds": 4,
+          "ff": 0
+        },
+        "99": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 1,
+          "tfl": 1,
+          "sackYds": 4,
+          "ff": 1
+        },
+        "equipo": {
+          "sacksMade": 1,
+          "sacksYds": 8
+        }
+      },
+      "resultado_actual_codigo": {
+        "31": {
+          "solo": 0,
+          "ast": 1,
+          "sacks": 0,
+          "asstSacks": 0,
+          "tfl": 0,
+          "sackYds": 0,
+          "ff": 0
+        },
+        "99": {
+          "solo": 1,
+          "ast": 0,
+          "sacks": 1,
+          "asstSacks": 0,
+          "tfl": 1,
+          "sackYds": 8,
+          "ff": 1
+        },
+        "equipo": {
+          "sacksMade": 1,
+          "sacksYds": 8
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "id": "TC-04e",
+      "regla_ncaa": "tackle_by que solo repite al que hizo el sack: sack solo, como TC-03 (§16 Art.4)",
+      "fuente_manual": "§16 Art.4",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats",
+      "entrada": {
+        "descripcion": "Sack de -8: sack_by=#99, tackle_by=[#99]."
+      },
+      "salida_esperada": {
+        "solo": 1,
+        "ast": 0,
+        "sacks": 1,
+        "asstSacks": 0,
+        "tfl": 1,
+        "sackYds": 8
+      },
+      "resultado_actual_codigo": {
+        "solo": 1,
+        "ast": 0,
+        "sacks": 1,
+        "asstSacks": 0,
+        "tfl": 1,
+        "sackYds": 8
+      },
+      "cumple_hoy": false
+    },
+    {
       "id": "TC-05",
       "regla_ncaa": "Intentional grounding: rush negativo al pasador, sack+TFL al presionador, penalidad de 0 yardas, sin intento de pase (§3 Art.10 A.R.1, §16 Art.4)",
       "fuente_manual": "Manual p.8 §3 Art.10 A.R.1 / p.17 A.R.5",
@@ -1294,7 +1495,7 @@
     },
     {
       "id": "TC-20",
-      "regla_ncaa": "Punt bloqueado = entrada de \"Team\", no del pateador; 1 punt de 0 yardas en el total de equipo; bloqueador recibe punt return de lo avanzado (§7 Art.1)",
+      "regla_ncaa": "Punt bloqueado = entrada de \"Team\", no del pateador; 1 punt de 0 yardas en el total de equipo; bloqueador recibe punt return de lo avanzado (§7 Art.1) Runner corregido: la fila Team lleva key PUNT_TEAM_KEY (antes teamPuntsZeroYds estaba fijo en 0).",
       "fuente_manual": "Manual p.10-11 §7 Art.1 y A.R.1 (punt de AAA50 bloqueado por #50, recuperado por A en AAA40)",
       "grupo": "a",
       "severidad": "MEDIA",
@@ -1335,6 +1536,7 @@
       },
       "salida_esperada": {
         "punterRows": 0,
+        "punterYds": 0,
         "teamPuntsZeroYds": 1,
         "blockerPuntReturnYds": 10
       },
@@ -1342,6 +1544,82 @@
         "punterRows": 1,
         "teamPuntsZeroYds": 0,
         "blockerPuntReturnYds": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Punt bloqueado recuperado por el equipo que patea pasada la línea de golpeo: despeje del pateador con yardas desde la línea, sin regreso (§7 Art.3)",
+      "fuente_manual": "§7 Art.3",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeSpecialTeamsStats",
+      "id": "TC-20b",
+      "entrada": {
+        "descripcion": "Punt desde AAA50 bloqueado por #50; AAA recupera en BBB45 (5 yds pasada la línea)."
+      },
+      "salida_esperada": {
+        "punterRows": 1,
+        "punterYds": 5,
+        "teamPuntsZeroYds": 0,
+        "blockerPuntReturnYds": 0
+      },
+      "resultado_actual_codigo": {
+        "punterRows": 1,
+        "punterYds": 0,
+        "teamPuntsZeroYds": 0,
+        "blockerPuntReturnYds": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Punt bloqueado: el mismo jugador bloquea, recoge y corre → UN regreso con todas las yardas, desde la línea de golpeo (§7 Art.1 A.R.3)",
+      "fuente_manual": "§7 Art.1 A.R.3",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeSpecialTeamsStats",
+      "id": "TC-20c",
+      "entrada": {
+        "descripcion": "Punt desde AAA50 bloqueado por #50, que recoge en AAA45 y corre a AAA0 (TD)."
+      },
+      "salida_esperada": {
+        "brown": {
+          "no": 1,
+          "yds": 50
+        },
+        "baker": null
+      },
+      "resultado_actual_codigo": {
+        "brown": null,
+        "baker": null
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Punt bloqueado: otro jugador recoge y corre → el bloqueador, un regreso hasta donde se recogió; el que corre, el resto de las yardas sin regreso y el TD (§7 Art.1 A.R.4)",
+      "fuente_manual": "§7 Art.1 A.R.4",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeSpecialTeamsStats",
+      "id": "TC-20d",
+      "entrada": {
+        "descripcion": "Punt desde AAA50 bloqueado por #50; #31 recoge en AAA45 y corre a AAA0 (TD)."
+      },
+      "salida_esperada": {
+        "brown": {
+          "no": 1,
+          "yds": 5
+        },
+        "baker": {
+          "no": 0,
+          "yds": 45
+        }
+      },
+      "resultado_actual_codigo": {
+        "brown": null,
+        "baker": null
       },
       "cumple_hoy": false
     },
@@ -1753,7 +2031,7 @@
       "archivo": "shared/stats-lib.js:2024 (computeDefenseStats sin filtro PAT_TRY), 343, 361",
       "funcion": "computeDefenseStats / computeComparisonStats",
       "entrada": {
-        "descripcion": "PAT_TRY pase de 2 pts interceptado por #50; PAT_TRY run de 2 pts con fumble; PAT_TRY run bueno (touchdown=true).",
+        "descripcion": "PAT_TRY pase de 2 pts interceptado por #50; PAT_TRY run de 2 pts con fumble; PAT_TRY run bueno (touchdown=true). Ampliado: tackle de Adams en el regreso de la INT del try, tackle de #50 en el 2 pts bueno, turnovers de A y fila de fumbles.",
         "jugadas": [
           {
             "play_type": "PAT_TRY",
@@ -1848,7 +2126,11 @@
       },
       "salida_esperada": {
         "int50": 0,
+        "adamsTackleOnTry": 0,
+        "brownTackleOnTry": 0,
         "teamFumbles": 0,
+        "turnoversA": 0,
+        "allenFumbles": 0,
         "firstDownsOn2ptGood": 0
       },
       "resultado_actual_codigo": {
@@ -2267,7 +2549,7 @@
       "archivo": "shared/stats-lib.js:343 (sólo result===fumble), 2189 (_fumbleOccurred) y live-stats/capture/wizard.js:1637",
       "funcion": "computeComparisonStats / computeFumbleStats / buildOffenseMaps",
       "entrada": {
-        "descripcion": "Caso 1: SNAP_FUMBLE recuperado por B en AAA22 (LOS AAA30). Caso 2: snap malo recuperado por Adams y RUSH retargeted (snap_fumble:true) con pérdida de 10.",
+        "descripcion": "Caso 1: SNAP_FUMBLE recuperado por B en AAA22 (LOS AAA30). Caso 2: snap malo recuperado por Adams y RUSH retargeted (snap_fumble:true) con pérdida de 10. La atribución de la corrida (Center Pass o el QB) se separó en TC-34b (sin resolver).",
         "jugadas": [
           {
             "play_type": "SNAP_FUMBLE",
@@ -2330,11 +2612,12 @@
         "oppRecovers": {
           "fumbles": 1,
           "fumblesLost": 1,
-          "turnovers": 1
+          "turnovers": 1,
+          "driveEnd": "FUMB"
         },
         "ownRecover": {
-          "adamsRushAtt": 0,
-          "teamFumbles": 1
+          "teamFumbles": 1,
+          "fumblesLost": 0
         }
       },
       "resultado_actual_codigo": {
@@ -2775,7 +3058,7 @@
       "archivo": "shared/stats-lib.js:2075-2126 (computeSpecialTeamsStats no revisa stats_count)",
       "funcion": "computeSpecialTeamsStats",
       "entrada": {
-        "descripcion": "Punt de AAA50 muerto en BBB5; Benton comete falta personal en vuelo; A acepta (first_down, live => stats_count=false).",
+        "descripcion": "Punt de AAA50 muerto en BBB5; Benton comete falta personal en vuelo; A acepta (first_down, live => stats_count=false). Reescrito con el formato actual de banderas: flag_1_enforced = previous.",
         "jugadas": [
           {
             "play_type": "PUNT",
@@ -2811,12 +3094,32 @@
             "yardline_100": 50,
             "net_yards": 0,
             "touchdown": false,
-            "stats_count": false
+            "stats_count": false,
+            "flag_1_enforced": "previous"
           }
         ]
       },
       "salida_esperada": {
         "punterRows": 0
+      },
+      "resultado_actual_codigo": {
+        "punterRows": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Punt con bandera en formato viejo (sin flag_N_enforced): no se sabe si fue desde el spot previo, el punt cuenta (misma regla que _penaltyFirstDown/H-19)",
+      "fuente_manual": "§6 Art.5 A.R.",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeSpecialTeamsStats",
+      "id": "TC-41b",
+      "entrada": {
+        "descripcion": "Igual que TC-41 sin flag_1_enforced (timing live)."
+      },
+      "salida_esperada": {
+        "punterRows": 1
       },
       "resultado_actual_codigo": {
         "punterRows": 1
@@ -3017,6 +3320,242 @@
       "cumple_hoy": false
     },
     {
+      "regla_ncaa": "INT regresada 20 yds; falta de B (block in back) en su regreso, cobrada en el spot de la falta: la INT vale, B conserva en el spot del castigo (§14)",
+      "fuente_manual": "§14 (cobro de faltas); reglamento: falta antes/después del cambio de posesión",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags / computeComparisonStats",
+      "id": "TC-44a",
+      "entrada": {
+        "descripcion": "A en BBB40, 2&10. INT de #50 en BBB30, regreso a BBB50. BI de B en BBB45 (foul_spot) → BBB35, first_down."
+      },
+      "salida_esperada": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 35
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 1,
+        "firstDownsA": 0
+      },
+      "resultado_actual_codigo": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 35
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 1,
+        "firstDownsA": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Fumble perdido recuperado por B; falta de B posterior, en su regreso (foul_spot): el fumble vale, B conserva (§14)",
+      "fuente_manual": "§14 (cobro de faltas); reglamento: falta antes/después del cambio de posesión",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags / computeComparisonStats",
+      "id": "TC-44b",
+      "entrada": {
+        "descripcion": "Rush de A en BBB30, fumble en BBB25, B recupera en BBB24 y regresa a BBB40. HO de B en BBB35 (foul_spot) → BBB25."
+      },
+      "salida_esperada": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 25
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 1,
+        "firstDownsA": 0
+      },
+      "resultado_actual_codigo": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 25
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 1,
+        "firstDownsA": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Pick-six con falta de B durante el regreso (foul_spot): no hay TD, B conserva en el spot del castigo (§14)",
+      "fuente_manual": "§14 (cobro de faltas); reglamento: falta antes/después del cambio de posesión",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags / computeComparisonStats",
+      "id": "TC-44c",
+      "entrada": {
+        "descripcion": "INT en BBB20 regresada hasta la end zone de A (AAA0). BI de B en AAA30 (foul_spot) → AAA40."
+      },
+      "salida_esperada": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "AAA",
+            "yard": 40
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 1,
+        "firstDownsA": 0
+      },
+      "resultado_actual_codigo": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "AAA",
+            "yard": 40
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 6
+        },
+        "turnoversA": 1,
+        "firstDownsA": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "PI de B antes de la INT, aceptada (spot previo): la INT se anula, A conserva con 1er down (§14 Art.3,5)",
+      "fuente_manual": "§14 (cobro de faltas); reglamento: falta antes/después del cambio de posesión",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags / computeComparisonStats",
+      "id": "TC-44d",
+      "entrada": {
+        "descripcion": "INT en BBB10 regresada a BBB30. PI de B (previous) → BBB25, first_down."
+      },
+      "salida_esperada": {
+        "next": {
+          "possession": "AAA",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 25
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 0,
+        "firstDownsA": 1
+      },
+      "resultado_actual_codigo": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 25
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 1,
+        "firstDownsA": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Igual que TC-44d pero cobrada en el spot de la falta, con el campo propuesto flag_1_before_change=true: A conserva (§14)",
+      "fuente_manual": "§14 (cobro de faltas); reglamento: falta antes/después del cambio de posesión",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags / computeComparisonStats",
+      "id": "TC-44e",
+      "entrada": {
+        "descripcion": "INT en BBB10 regresada a BBB30. PI de B en BBB18 (foul_spot) → BBB18, first_down, flag_1_before_change: true (campo que hoy no captura el wizard)."
+      },
+      "salida_esperada": {
+        "next": {
+          "possession": "AAA",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 18
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 0,
+        "firstDownsA": 1
+      },
+      "resultado_actual_codigo": {
+        "next": {
+          "possession": "BBB",
+          "field_pos": {
+            "team": "BBB",
+            "yard": 18
+          },
+          "down": 1,
+          "distance": 10
+        },
+        "score": {
+          "AAA": 0,
+          "BBB": 0
+        },
+        "turnoversA": 1,
+        "firstDownsA": 1
+      },
+      "cumple_hoy": false,
+      "sin_resolver": "Requiere capturar flag_N_before_change (sí/no) en el wizard; sin ese campo la falta de B en el spot de la falta se lee como falta durante el regreso y la INT se mantiene. Ver docs/notas_pendientes.md."
+    },
+    {
       "id": "TC-48",
       "regla_ncaa": "Falta de B aplicada en el kickoff tras el try (§14 Art.4 A.R.3, B.I.4): se captura en el PAT_TRY y se mide desde la yarda del kickoff (KICKOFF_YARD, 35 del que patea); el resultado del try no cambia",
       "fuente_manual": "Manual p.16 §14 Art.4 A.R.3",
@@ -3084,6 +3623,718 @@
         }
       },
       "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "FG con bandera en formato viejo (timing live, sin flag_N_enforced): la regla de compatibilidad sigue → la patada se anula, no anota, se repite el down (C.1 no cambia los FG)",
+      "fuente_manual": "§14 Art.5",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "flagEnforcement / advanceGameState",
+      "id": "TC-49a",
+      "entrada": {
+        "descripcion": "FG bueno desde BBB25 (4&6); offside de B aceptado, repeat_down → BBB20, sin flag_1_enforced."
+      },
+      "salida_esperada": {
+        "voided": true,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "BBB",
+          "yard": 20
+        },
+        "scoreA": 0
+      },
+      "resultado_actual_codigo": {
+        "voided": true,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "BBB",
+          "yard": 20
+        },
+        "scoreA": 3
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "FG con flag_N_enforced = previous explícito: la patada se anula (§14 Art.5)",
+      "fuente_manual": "§14 Art.5",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "flagEnforcement / advanceGameState",
+      "id": "TC-49b",
+      "entrada": {
+        "descripcion": "Igual que TC-49a con flag_1_enforced = previous."
+      },
+      "salida_esperada": {
+        "voided": true,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "BBB",
+          "yard": 20
+        },
+        "scoreA": 0
+      },
+      "resultado_actual_codigo": {
+        "voided": true,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "BBB",
+          "yard": 20
+        },
+        "scoreA": 3
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "FG con flag_N_enforced = end (falta personal de B después de la patada): el FG vale y el castigo se aplica en el kickoff (§14 Art.4 A.R.3)",
+      "fuente_manual": "§14 Art.4",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "flagEnforcement / advanceGameState",
+      "id": "TC-49c",
+      "entrada": {
+        "descripcion": "FG bueno desde BBB25; falta personal de B, end → kickoff desde AAA50."
+      },
+      "salida_esperada": {
+        "voided": false,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "AAA",
+          "yard": 50
+        },
+        "scoreA": 3
+      },
+      "resultado_actual_codigo": {
+        "voided": false,
+        "possession": "AAA",
+        "field_pos": {
+          "team": "AAA",
+          "yard": 50
+        },
+        "scoreA": 3
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Jugada anulada por falta aceptada (spot previo): no se registra, tampoco la defensa (§14 Art.3, 5, 6)",
+      "fuente_manual": "§14 Art.5 (\"The play is nullified and is not recorded\"), Art.6, Art.3; el §16 no trata las jugadas anuladas",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / computePlayerStats",
+      "id": "TC-25b",
+      "entrada": {
+        "descripcion": "Pase completo de A a BBB30 anulado por HO de A (enforced previous); #50 de B en tackle_by (como 2dd8daf7 seq 16 y staging c9192eef seq 21)."
+      },
+      "salida_esperada": {
+        "solo": 0,
+        "soloCard": 0
+      },
+      "resultado_actual_codigo": {
+        "solo": 1,
+        "soloCard": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Jugada anulada por falta aceptada (spot previo): no se registra, tampoco la defensa (§14 Art.3, 5, 6)",
+      "fuente_manual": "§14 Art.5 (\"The play is nullified and is not recorded\"), Art.6, Art.3; el §16 no trata las jugadas anuladas",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / computePlayerStats / computeTurnoverStatsByPlayer / computeTurnoverReturnYardsByTeam",
+      "id": "TC-25c",
+      "entrada": {
+        "descripcion": "INT de #50 en BBB20, regreso a BBB35; HO de A desde el spot previo."
+      },
+      "salida_esperada": {
+        "int": 0,
+        "intCard": 0,
+        "intRows": 0,
+        "teamIntYds": 0
+      },
+      "resultado_actual_codigo": {
+        "int": 1,
+        "intCard": 1,
+        "intRows": 1,
+        "teamIntYds": 15
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Jugada anulada por falta aceptada (spot previo): no se registra, tampoco la defensa (§14 Art.3, 5, 6)",
+      "fuente_manual": "§14 Art.5 (\"The play is nullified and is not recorded\"), Art.6, Art.3; el §16 no trata las jugadas anuladas",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeComparisonStats / computeDefenseStats",
+      "id": "TC-25d",
+      "entrada": {
+        "descripcion": "Corrida de A con pérdida de 4 (tackle de #50) anulada por HO de A."
+      },
+      "salida_esperada": {
+        "teamTfl": 0,
+        "tfl": 0
+      },
+      "resultado_actual_codigo": {
+        "teamTfl": 0,
+        "tfl": 0
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Falta cobrada al final de la jugada: la jugada vale y el sack cuenta (§14 Art.2, 4)",
+      "fuente_manual": "§14 Art.2, Art.4 A.R.1-3",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / computeComparisonStats",
+      "id": "TC-25e",
+      "entrada": {
+        "descripcion": "Sack de #99 (8 yds); falta de B cobrada al final (enforced end)."
+      },
+      "salida_esperada": {
+        "sacks": 1,
+        "solo": 1,
+        "teamSacksMade": 1
+      },
+      "resultado_actual_codigo": {
+        "sacks": 1,
+        "solo": 1,
+        "teamSacksMade": 1
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Falta declinada: la jugada se registra (§14 Art.5 A.R.3, Art.6)",
+      "fuente_manual": "§14 Art.5 A.R.3, Art.6",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats / computeComparisonStats",
+      "id": "TC-25f",
+      "entrada": {
+        "descripcion": "Sack de #99; HO de A declinado."
+      },
+      "salida_esperada": {
+        "sacks": 1,
+        "teamSacksMade": 1
+      },
+      "resultado_actual_codigo": {
+        "sacks": 1,
+        "teamSacksMade": 1
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Jugada anulada por falta aceptada (spot previo): no se registra, tampoco la defensa (§14 Art.3, 5, 6)",
+      "fuente_manual": "§14 Art.5 (\"The play is nullified and is not recorded\"), Art.6, Art.3; el §16 no trata las jugadas anuladas",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeSpecialTeamsStats / viewer _buildIndSpecialTeams",
+      "id": "TC-25g",
+      "entrada": {
+        "descripcion": "Kickoff de A regresado por #31 para TD; falta de A con enforced previous explícito."
+      },
+      "salida_esperada": {
+        "kickoffs": 0,
+        "kickReturns": 0,
+        "indReturnTd": 0
+      },
+      "resultado_actual_codigo": {
+        "kickoffs": 1,
+        "kickReturns": 1,
+        "indReturnTd": 1
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Falta de B durante su regreso cobrada en el spot de la falta: el regreso se acredita hasta la falta, sin TD (§14 Art.1 y A.R.3, por analogía con 'runbacks'; B.I.14)",
+      "fuente_manual": "§14 Art.1 A.R.3; B.I.14",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeTurnoverStatsByPlayer / computeTurnoverReturnYards(ByTeam) / driveEndLabel",
+      "id": "TC-44a-ind",
+      "entrada": {
+        "descripcion": "INT de #50 en BBB30 regresada a BBB50; BI de B en BBB45 (foul_spot)."
+      },
+      "salida_esperada": {
+        "no": 1,
+        "yds": 15,
+        "td": 0,
+        "teamIntYds": 15,
+        "allPurpose": 15,
+        "driveEnd": "INT"
+      },
+      "resultado_actual_codigo": {
+        "no": 1,
+        "yds": 20,
+        "td": 0,
+        "teamIntYds": 20,
+        "allPurpose": 20,
+        "driveEnd": "INT"
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Falta de B durante su regreso cobrada en el spot de la falta: el regreso se acredita hasta la falta, sin TD (§14 Art.1 y A.R.3, por analogía con 'runbacks'; B.I.14)",
+      "fuente_manual": "§14 Art.1 A.R.3; B.I.14",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeTurnoverStatsByPlayer / computeTurnoverReturnYardsByTeam",
+      "id": "TC-44b-ind",
+      "entrada": {
+        "descripcion": "Fumble de A recuperado por #50 en BBB24 y regresado a BBB40; HO de B en BBB35 (foul_spot)."
+      },
+      "salida_esperada": {
+        "yds": 11,
+        "td": 0,
+        "teamFumYds": 11
+      },
+      "resultado_actual_codigo": {
+        "yds": 16,
+        "td": 0,
+        "teamFumYds": 16
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Falta de B durante su regreso cobrada en el spot de la falta: el regreso se acredita hasta la falta, sin TD (§14 Art.1 y A.R.3, por analogía con 'runbacks'; B.I.14)",
+      "fuente_manual": "§14 Art.1 A.R.3; B.I.14",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeTurnoverStatsByPlayer / computeTurnoverReturnYards(ByTeam) / driveEndLabel",
+      "id": "TC-44c-ind",
+      "entrada": {
+        "descripcion": "Pick-six: INT de #50 en BBB20 regresada a AAA0; BI de B en AAA30 (foul_spot)."
+      },
+      "salida_esperada": {
+        "no": 1,
+        "yds": 50,
+        "td": 0,
+        "teamIntYds": 50,
+        "allPurpose": 50,
+        "driveEnd": "INT"
+      },
+      "resultado_actual_codigo": {
+        "no": 1,
+        "yds": 80,
+        "td": 1,
+        "teamIntYds": 80,
+        "allPurpose": 80,
+        "driveEnd": "INTERCEPTION"
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Falta de B por delante del corredor: vale el fin de la carrera (§14 (a), Art.1)",
+      "fuente_manual": "§14 (a), Art.1",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeTurnoverStatsByPlayer / computeTurnoverReturnYards(ByTeam)",
+      "id": "TC-44f",
+      "entrada": {
+        "descripcion": "INT de #50 en BBB20 regresada a BBB45; BI de B en BBB50 (foul_spot, delante del corredor)."
+      },
+      "salida_esperada": {
+        "no": 1,
+        "yds": 25,
+        "td": 0,
+        "teamIntYds": 25,
+        "allPurpose": 25,
+        "driveEnd": "INT"
+      },
+      "resultado_actual_codigo": {
+        "no": 1,
+        "yds": 25,
+        "td": 0,
+        "teamIntYds": 25,
+        "allPurpose": 25,
+        "driveEnd": "INT"
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Regreso del punt bloqueado: 'mismo jugador' = mismo equipo y misma clave; si recupera el que patea, el bloqueador recibe hasta donde se recogió (§7 Art.1 A.R.1-3)",
+      "fuente_manual": "§7 Art.1 A.R.1-3",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeSpecialTeamsStats",
+      "id": "TC-20e",
+      "entrada": {
+        "descripcion": "Punt desde AAA30 bloqueado por #41 de B. (1) #41 de B recoge en AAA20 y corre a AAA0. (2) #41 de A recupera en AAA25."
+      },
+      "salida_esperada": {
+        "mismoEquipo": "BBB #41 1/30",
+        "recuperaElQuePatea": "BBB #41 1/5"
+      },
+      "resultado_actual_codigo": {
+        "mismoEquipo": "BBB #41 1/30",
+        "recuperaElQuePatea": "BBB #41 1/5"
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Snap malo recuperado por A y jugada que sigue con pérdida: la pérdida es de 'Center Pass' (§15) si fue wild pass del centro; del QB si soltó un buen snap (§6 A.R.6)",
+      "fuente_manual": "§15; §6 A.R.6; §3 Art.10 A.R.4",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "buildOffenseMaps / computePlayerStats",
+      "id": "TC-34b",
+      "entrada": {
+        "descripcion": "Snap malo recuperado por Adams y RUSH retargeted (snap_fumble:true) con pérdida de 10. La captura no distingue wild pass de un buen snap mal recibido."
+      },
+      "salida_esperada": {
+        "adamsRushAtt": 0
+      },
+      "resultado_actual_codigo": {
+        "adamsRushAtt": 1
+      },
+      "cumple_hoy": false,
+      "sin_resolver": "Requiere capturar si el snap fue wild pass del centro (Center Pass) o un buen snap que soltó el QB."
+    },
+    {
+      "regla_ncaa": "4ª down corta: pérdida de balón por downs (B.I.9)",
+      "fuente_manual": "B.I.9 (p.3)",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState",
+      "id": "TC-17b",
+      "entrada": {
+        "descripcion": "4ª y 5 en BBB30, corrida a BBB28."
+      },
+      "salida_esperada": {
+        "possession": "BBB",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 28
+        }
+      },
+      "resultado_actual_codigo": {
+        "possession": "AAA",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 28
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "4ª down que logra la distancia: A conserva (1ro y 10)",
+      "fuente_manual": "B.I.9 (p.3); §1",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState",
+      "id": "TC-17c",
+      "entrada": {
+        "descripcion": "4ª y 5 en BBB30, corrida a BBB24."
+      },
+      "salida_esperada": {
+        "possession": "AAA",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 24
+        }
+      },
+      "resultado_actual_codigo": {
+        "possession": "AAA",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 24
+        }
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "4ª down incompleta con PI de B aceptada (first_down): A conserva (§1 Art.6)",
+      "fuente_manual": "§1 Art.6; §14",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags",
+      "id": "TC-17d",
+      "entrada": {
+        "descripcion": "4ª y 5 en BBB30, incompleto; PI de B en BBB12 (foul_spot), first_down."
+      },
+      "salida_esperada": {
+        "possession": "AAA",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 12
+        }
+      },
+      "resultado_actual_codigo": {
+        "possession": "AAA",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 12
+        }
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "4ª down con falta de A cobrada al final y down repetido: A conserva el 4º down",
+      "fuente_manual": "§14",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags",
+      "id": "TC-17e",
+      "entrada": {
+        "descripcion": "4ª y 5 en BBB30, corrida a BBB28; HO de A (end) → BBB38, repeat_down."
+      },
+      "salida_esperada": {
+        "possession": "AAA",
+        "down": 4,
+        "distance": 13,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 38
+        }
+      },
+      "resultado_actual_codigo": {
+        "possession": "AAA",
+        "down": 4,
+        "distance": 13,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 38
+        }
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Pérdida de down en 4ª (intentional grounding): balón para B en el spot",
+      "fuente_manual": "§3 Art.10; B.I.9",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "advanceGameState / applyFlags",
+      "id": "TC-17f",
+      "entrada": {
+        "descripcion": "4ª y 5 en BBB30, IG de A en BBB38 (loss_of_down)."
+      },
+      "salida_esperada": {
+        "possession": "BBB",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 38
+        }
+      },
+      "resultado_actual_codigo": {
+        "possession": "AAA",
+        "down": 1,
+        "distance": 10,
+        "field_pos": {
+          "team": "BBB",
+          "yard": 38
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Fumble forzado y recuperado por A detrás de la línea (jugada con pérdida): solo + TFL al que forzó, y TFL de equipo (§16 Art.6)",
+      "fuente_manual": "§16 Art.6",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_tackleCredits / computeComparisonStats",
+      "id": "TC-40b",
+      "entrada": {
+        "descripcion": "Rush de A desde BBB30; #50 fuerza en BBB27; A recupera en BBB33 (pérdida de 3)."
+      },
+      "salida_esperada": {
+        "ff": 1,
+        "solo": 1,
+        "tfl": 1,
+        "card": {
+          "solo": 1,
+          "tfl": 1
+        },
+        "teamTfl": 1,
+        "teamTflYds": 3
+      },
+      "resultado_actual_codigo": {
+        "ff": 1,
+        "solo": 0,
+        "tfl": 0,
+        "card": {
+          "solo": 0,
+          "tfl": 0
+        },
+        "teamTfl": 0,
+        "teamTflYds": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Strip-sack: el sack ya lleva el tackle solo; el que forzó no recibe otro (§16 Art.1, 6)",
+      "fuente_manual": "§16 Art.1, Art.6 A.R.2",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_tackleCredits / computeDefenseStats",
+      "id": "TC-40c",
+      "entrada": {
+        "descripcion": "Sack de #99 que además fuerza el fumble; B recupera."
+      },
+      "salida_esperada": {
+        "ff": 1,
+        "sacks": 1,
+        "solo": 1,
+        "tfl": 1
+      },
+      "resultado_actual_codigo": {
+        "ff": 1,
+        "sacks": 1,
+        "solo": 1,
+        "tfl": 1
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Fumble forzado en un regreso de kickoff: el solo es del equipo que patea (§16 Art.6)",
+      "fuente_manual": "§16 Art.6",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_tackleCredits",
+      "id": "TC-40d",
+      "entrada": {
+        "descripcion": "Kickoff de A regresado por #31 (B); #40 de A fuerza el fumble y recupera."
+      },
+      "salida_esperada": {
+        "soloAAA40": 1,
+        "soloBBB40": 0
+      },
+      "resultado_actual_codigo": {
+        "soloAAA40": 0,
+        "soloBBB40": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Segundo fumble forzado: el que lo forzó recibe solo y FF (§16 Art.6)",
+      "fuente_manual": "§16 Art.6",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "_tackleCredits",
+      "id": "TC-40e",
+      "entrada": {
+        "descripcion": "A fumbla, Allen (A) recupera y fumbla de nuevo forzado por #50; B recupera."
+      },
+      "salida_esperada": {
+        "ff": 1,
+        "solo": 1
+      },
+      "resultado_actual_codigo": {
+        "ff": 1,
+        "solo": 0
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "INT regresada y perdida en fumble: un turnover para cada equipo; el fumble es de B (§13 Art.1)",
+      "fuente_manual": "§13 Art.1",
+      "grupo": "a",
+      "severidad": "ALTA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeComparisonStats / _fumbleEvents",
+      "id": "TC-12b",
+      "entrada": {
+        "descripcion": "INT de #50 en BBB20, regresa y fumbla en BBB30 forzado por Allen; A recupera."
+      },
+      "salida_esperada": {
+        "A": {
+          "turnovers": 1,
+          "intsThrown": 1,
+          "fumbles": 0
+        },
+        "B": {
+          "turnovers": 1,
+          "fumbles": 1,
+          "fumblesLost": 1
+        }
+      },
+      "resultado_actual_codigo": {
+        "A": {
+          "turnovers": 1,
+          "intsThrown": 1,
+          "fumbles": 0
+        },
+        "B": {
+          "turnovers": 0,
+          "fumbles": 0,
+          "fumblesLost": 0
+        }
+      },
+      "cumple_hoy": false
+    },
+    {
+      "regla_ncaa": "Intentional grounding sin pérdida de yardas: no hay sack (§16 Art.4: 'There can be no pass sack without loss of yardage')",
+      "fuente_manual": "§16 Art.4",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeDefenseStats",
+      "id": "TC-05b",
+      "entrada": {
+        "descripcion": "IG de A en BBB20 con el spot en BBB18 (2 yds de ganancia); presionado por #99."
+      },
+      "salida_esperada": {
+        "sacks": 0,
+        "solo": 0
+      },
+      "resultado_actual_codigo": {
+        "sacks": 0,
+        "solo": 0
+      },
+      "cumple_hoy": true
+    },
+    {
+      "regla_ncaa": "Intentional grounding sin presionador capturado: no hay sack",
+      "fuente_manual": "§16 Art.4 A.R.5",
+      "grupo": "a",
+      "severidad": "MEDIA",
+      "archivo": "shared/stats-lib.js",
+      "funcion": "computeComparisonStats",
+      "id": "TC-05c",
+      "entrada": {
+        "descripcion": "IG de A en BBB20, spot BBB28, sin flag_1_pressured_by."
+      },
+      "salida_esperada": {
+        "teamSacks": 0
+      },
+      "resultado_actual_codigo": {
+        "teamSacks": 0
+      },
+      "cumple_hoy": true
     }
   ]
 }

@@ -22,6 +22,9 @@ Correr desde la raíz del repo:
 | `f56_def_st.mjs` | Defensiva y Equipos Especiales vs "{Apodo} Stats". `-v`: imprime las tablas |
 | `tackles_antes_despues.mjs` | Corrección de tackles: por jugador y equipo, antes y después (rutas en la cabecera) |
 | `tfl_equipo.mjs` | Fila TFL de Team Stats antes y después; ningún otro campo cambia |
+| `team_stats_tabla.mjs` | Tabla Game Stats de Team Stats: (a) = lista de barras, (b) acarreos + intentos = jugadas, (c) tierra + aire = total, (d) promedios, (e) Σ cuartos = Totals, (f) = Individual, (g) = Comparación. `-v`: imprime la tabla |
+| `fg_spot.mjs` | Gol de campo en `advanceGameState`: kickoff tras FG bueno, spot del FG fallado (35…5), FG anulado/declinado, bloqueados. Sin red. `--antes <stats-lib.js>`: los bloqueados deben dar lo mismo que esa versión |
+| `sacks_compartidos.mjs` | TC-04: sacks compartidos (sack_by + otros en tackle_by) en "Capturas" de Individual y la tabla SACKS de Comparación (código real del viewer). Sin red |
 | `check_jsx.cjs` | Compila el JSX de `viewer.html` con Babel 7.29.0 (ruta de Babel en la cabecera) |
 
 Diferencias esperadas contra las pestañas existentes:

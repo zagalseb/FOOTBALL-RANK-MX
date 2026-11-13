@@ -35,6 +35,77 @@
   ::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
   /* Pestaña Individual: foco visible de teclado en sus controles de navegación. */
   .ind-btn:focus-visible { outline:2px solid var(--text); outline-offset:-2px; }
+  /* Team Stats: lista de barras a la izquierda, tabla Game Stats (~440px, sticky) a la derecha.
+     Debajo de 1100px la tabla pasa debajo de la lista. */
+  .ts-cols { display:grid; grid-template-columns:minmax(0,1fr) 440px; gap:28px; align-items:start; }
+  .ts-cols .ts-gs { position:sticky; top:72px; }
+  @media (max-width:1100px) {
+    .ts-cols { grid-template-columns:minmax(0,1fr); }
+    .ts-cols .ts-gs { position:static; }
+  }
+  /* Marcador móvil y tablet (≤900px). Solo reglas dentro de este media query: de 901px
+     en adelante las clases vw-* no tienen ningún estilo y manda el estilo inline de
+     siempre. Los !important son necesarios para ganarle al estilo inline. */
+  @media (max-width:900px) {
+    /* Utilbar: fila 1 = logo + "← Todos los partidos"; fila 2 = liga·semana, EN VIVO, SCORES.
+       El separador vertical se vuelve el salto de línea (flex-basis:100%). */
+    .vw-ub { flex-wrap:wrap; padding:6px 12px !important; gap:2px 10px !important; }
+    .vw-ub-logo { order:0; }
+    .vw-ub-back { order:1; margin-left:auto; font-size:12px !important; min-height:44px; display:inline-flex; align-items:center; }
+    .vw-ub-div { order:2; flex-basis:100%; height:0 !important; background:none !important; }
+    .vw-ub-liga { order:3; flex-shrink:1 !important; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:12px !important; }
+    .vw-ub-rt { order:4; }
+    .vw-ub-scores { order:5; flex:0 0 auto !important; margin-left:auto; }
+    .vw-ub-btn { min-height:44px; padding:4px 14px !important; }
+
+    /* Hero: una sola columna. El bloque central se "disuelve" (display:contents) para
+       reordenar sus hijos: estado → visitante → local → ticker → tabla por cuarto. */
+    .vw-hero { padding:14px 12px 12px !important; }
+    .vw-hero-grid { grid-template-columns:minmax(0,1fr) !important; gap:6px !important; max-width:560px !important; }
+    .vw-center { display:contents; }
+    .vw-st   { order:0; margin-bottom:4px !important; }
+    .vw-team--away { order:1; }
+    .vw-team--home { order:2; }
+    .vw-tick { order:3; margin:4px 0 0 !important; }
+    .vw-qt   { order:4; margin:6px auto 0; max-width:420px; }
+    .vw-qt th:first-child { width:30%; }
+    .vw-qt td:first-child { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+
+    /* Fila de equipo: logo | nombre (1 línea, elipsis) | puntaje — mismo orden para ambos
+       equipos aunque el DOM de local sea puntaje-nombre-logo. */
+    .vw-team { display:grid !important; grid-template-columns:40px minmax(0,1fr) auto; grid-template-areas:"logo name score"; column-gap:10px; align-items:center; }
+    .vw-team--away > :first-child, .vw-team--home > :last-child { grid-area:logo; width:40px !important; height:40px !important; padding:3px !important; }
+    .vw-team--away > :first-child span, .vw-team--home > :last-child span { font-size:13px !important; }
+    .vw-team-name { grid-area:name; min-width:0; text-align:left !important; }
+    .vw-team-name > div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .vw-team-name > :first-child { font-size:18px !important; line-height:1.15 !important; }
+    .vw-team-name > :last-child { font-size:11px !important; margin-top:1px !important; }
+    .vw-team-name > :last-child:empty { display:none; }
+    .vw-score { grid-area:score; font-size:40px !important; line-height:1 !important; margin:0 !important; }
+
+    /* Franja de situación: posesión (ancho completo) → D&D · posición · drive → FieldStrip.
+       El padding lateral centra el contenido en 560px como máximo (tablets). */
+    .vw-sit { padding:10px max(12px, calc(50% - 280px)) !important; gap:8px 12px !important; justify-content:space-around !important; }
+    .vw-sit-poss { flex:1 1 100% !important; justify-content:center; min-width:0; font-size:12px !important; }
+    .vw-sit-poss > span:last-child { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .vw-sit-val { font-size:16px !important; }
+    .vw-sit-field { flex:1 1 100% !important; min-width:0 !important; max-width:none !important; height:44px !important; }
+
+    /* TabBar: con justify-content:center + overflow-x:auto el inicio ("Individual") quedaba
+       fuera de alcance. Aquí las pestañas se acomodan en dos renglones si no caben. */
+    .vw-tabs { flex-wrap:wrap; overflow-x:visible !important; padding:0 8px !important; gap:0 !important; }
+    .vw-tabs > button { min-height:44px; padding:10px 10px !important; }
+
+    /* BasicBoxScore (captura manual): las rejillas de 2 columnas pasan a 1; minmax(0,…)
+       deja que las tablas usen su propio scroll en vez de ensanchar la página. */
+    .vw-box-grid { grid-template-columns:minmax(0,1fr) !important; }
+    /* Para que PASSING (10 columnas) quepa a 360px sin scroll: menos padding en el
+       contenedor y en las celdas, y la columna Jugador a 80px (nombre completo en el title). */
+    .vw-box-wrap { padding:12px 12px 32px !important; }
+    .vw-box-grid table th, .vw-box-grid table td { padding-left:2px !important; padding-right:2px !important; }
+    .vw-box-grid table th:first-child, .vw-box-grid table td:first-child { max-width:80px !important; }
+    .vw-box-grid > div > div + div { padding-left:10px !important; padding-right:10px !important; }
+  }
 </style>
 </head>
 <body>
@@ -81,7 +152,7 @@ let computeDefenseStats, computeSpecialTeamsStats, computeFumbleStats, fumbleSta
 let computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnoverStatsByPlayer;
 let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps, buildRosterIndex, getGameTemporada;
 // Pestaña Individual: helpers ya exportados por stats-lib.js (no se reimplementan).
-let _playerKeyLabel, resolvePlay, playNetYards, fumbleYards, playTouchdown;
+let _playerKeyLabel, resolvePlay, playNetYards, fumbleYards, playTouchdown, _blockedPuntEnd, _blockedPuntRunner;
 // Play by Play: misma detección de jugada anulada (NO PLAY) que formatPlay.
 let flagOutcome;
 // Fase 3: manual-capture path row/lookup builders (BasicBoxScore's data).
@@ -115,6 +186,8 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   getGameTemporada                 = m.getGameTemporada;
   _playerKeyLabel                  = m._playerKeyLabel;
   resolvePlay                      = m.resolvePlay;
+  _blockedPuntEnd                  = m._blockedPuntEnd;
+  _blockedPuntRunner               = m._blockedPuntRunner;
   playNetYards                     = m.playNetYards;
   fumbleYards                      = m.fumbleYards;
   playTouchdown                    = m.playTouchdown;
@@ -170,6 +243,10 @@ function computeCurrentScore(lastPlay, fallbackHome, fallbackAway, homeAbbr, awa
 // "2° & 10 MTY 43 · POSS: MTY · ≈07:00" — the ≈ signals this is the clock as
 // it stood on the last captured play, not a running countdown (no live timer
 // in the browser).
+// Etiqueta de cuarto para mostrar. La captura guarda el tiempo extra como quarter = 5
+// (wizard.js, set_quarter; no distingue 2OT/3OT): se muestra "OT" en lugar de "Q5"/"5".
+function _qLabel(q) { return q >= 5 ? 'OT' : `Q${q}`; }
+function _qShort(q) { return q >= 5 ? 'OT' : q; }
 function _ordinalDown(down) {
   return ['', '1°', '2°', '3°', '4°'][down] || `${down}°`;
 }
@@ -431,7 +508,7 @@ function TeamLogo({ team, size = 72 }) {
 }
 
 // ── FieldStrip ──────────────────────────────────────────────────────────────
-function FieldStrip({ possession, fieldPos, home, away }) {
+function FieldStrip({ possession, fieldPos, home, away, className }) {
   // homeAbbr/awayAbbr: matching keys only, compared against raw play-record
   // strings — never displayed. homeApodo/awayApodo: display-only labels.
   const homeAbbr = home?.abreviatura || '';
@@ -450,7 +527,7 @@ function FieldStrip({ possession, fieldPos, home, away }) {
   const awayFontSize = awayApodo.length > 3 ? 7 : 9;
   const homeFontSize = homeApodo.length > 3 ? 7 : 9;
   return (
-    <div style={{ position:'relative', flex:1, maxWidth:400, height:52, background:'#1a6b3c', borderRadius:3, overflow:'hidden', minWidth:260 }}>
+    <div className={className} style={{ position:'relative', flex:1, maxWidth:400, height:52, background:'#1a6b3c', borderRadius:3, overflow:'hidden', minWidth:260 }}>
       <div style={{ position:'absolute', left:0, top:0, bottom:0, width:'10%', background: away?.color_principal||'#333', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2 }}>
         <span style={{ color: away?.color_texto||'#fff', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:awayFontSize, letterSpacing:0.5 }}>{awayApodo}</span>
       </div>
@@ -480,6 +557,7 @@ function ScoresPanel({ games, currentId }) {
         const active  = g.id === currentId;
         const isLive  = g.status === 'live';
         const isFinal = g.status === 'final';
+        const isHalf  = g.status === 'halftime';
         const ha = g.home?.Apodo || g.home?.abreviatura || '?';
         const aa = g.away?.Apodo || g.away?.abreviatura || '?';
         const sh = g.score_home ?? '—';
@@ -505,10 +583,10 @@ function ScoresPanel({ games, currentId }) {
               fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, letterSpacing:0.5,
               padding: isLive ? '1px 6px' : 0, borderRadius:3,
               border: isLive ? '1px solid #fca5a5' : 'none',
-              color: isLive ? '#dc2626' : isFinal ? 'var(--text3)' : 'var(--text2)',
+              color: isLive ? '#dc2626' : isHalf ? '#b45309' : isFinal ? 'var(--text3)' : 'var(--text2)',
               background: isLive ? '#fef2f2' : 'transparent',
             }}>
-              {isLive ? '● EN VIVO' : isFinal ? 'FINAL' : (g.hora ? g.hora.slice(0,5) : '—')}
+              {isLive ? '● EN VIVO' : isHalf ? 'MEDIO TIEMPO' : isFinal ? 'FINAL' : (g.hora ? g.hora.slice(0,5) : '—')}
             </span>
           </a>
         );
@@ -611,7 +689,7 @@ const SECTION_TITLE_STYLE = { fontFamily:"'Inter',sans-serif", fontWeight:700, f
 // labels depend on which game is loaded.
 function TabBar({ tabs, active, onChange }) {
   return (
-    <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'0 20px', display:'flex', justifyContent:'center', gap:2, overflowX:'auto' }}>
+    <div className="vw-tabs" style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'0 20px', display:'flex', justifyContent:'center', gap:2, overflowX:'auto' }}>
       {tabs.map(t => (
         <button key={t.key} onClick={() => onChange(t.key)} style={{
           background:'none', border:'none',
@@ -703,7 +781,7 @@ function PlayByPlayTab({ drives, homeAbbr, awayAbbr, homeApodo, awayApodo, homeC
                       background: p.touchdown ? 'rgba(22,163,74,0.05)' : 'transparent',
                     }}>
                       <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:52, flexShrink:0, paddingTop:2 }}>
-                        Q{p.quarter}{p.clock ? ` ${p.clock}` : ''}
+                        {_qLabel(p.quarter)}{p.clock ? ` ${p.clock}` : ''}
                       </span>
                       <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color: p.touchdown ? '#16a34a' : 'var(--text)', lineHeight:1.45 }}>
                         {formatPlay ? formatPlay(p) : p.play_type}
@@ -756,7 +834,124 @@ const TEAM_STATS_PERIOD_TABS = [
   { key: 4,     label: '4th Quarter' },
 ];
 
-function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr, homeColor, awayColor }) {
+// TS_GAMESTATS_START
+// Filas de la tabla "Game Stats" de Team Stats. No calcula nada propio: arma
+// las filas con las mismas fuentes que la lista de barras y el panel Team
+// Summary de Comparación —
+//   stats      computeComparisonStats (1st downs, carrera, pase, jugadas,
+//              fumbles, 3er/4to down)
+//   penalties  computePenalties → _teamPenaltySummary
+//   special    computeSpecialTeamsStats → _sumByTeam (KR, PR, despejes)
+//   turnovers  computeTurnoverStatsByPlayer, sumado por equipo (INT y
+//              regresos de fumble del equipo que los hizo)
+// best: 'hi' = gana el mayor, 'lo' = gana el menor, null = no se resalta.
+// Posesión queda en "—": el reloj se captura antes de cada jugada, así que
+// no hay duración de la última jugada de cada drive ni del tiempo entre
+// drives (ver el top de computeDriveRows, que también vale null cuando un
+// drive cruza de cuarto).
+function _gsSumPlayers(map, team) {
+  return Object.values(map?.[team] || {}).reduce((acc, r) => ({ no: acc.no + r.no, yds: acc.yds + r.yds }), { no: 0, yds: 0 });
+}
+
+function _gameStatsRows({ stats, penalties, special, turnovers, homeAbbr, awayAbbr }) {
+  const avg = (num, den) => den > 0 ? (num / den).toFixed(1) : '—';
+  const side = (abbr) => {
+    const s = stats[abbr];
+    const pen = _teamPenaltySummary(penalties, abbr);
+    const kr = _sumByTeam(special.kickReturns, abbr);
+    const pr = _sumByTeam(special.puntReturns, abbr);
+    const pu = _sumByTeam(special.punting, abbr);
+    const ints = _gsSumPlayers(turnovers.interceptions, abbr);
+    const fum  = _gsSumPlayers(turnovers.fumbleReturns, abbr);
+    const totalYds = s.passYds + s.rushYds;
+    return {
+      firstDowns: s.firstDowns,
+      rushAtt: s.rushPlays,
+      rushYds: s.rushYds,
+      rushAvg: avg(s.rushYds, s.rushPlays),
+      rec: s.passCompletions,
+      recYds: s.passYds,
+      recAvg: avg(s.passYds, s.passCompletions),
+      passYds: s.passYds,
+      cai: `${s.passCompletions}-${s.passAttempts}-${s.intsThrown}`,
+      playsYds: `${s.totalPlays}-${totalYds}`,
+      ydsPerPlay: avg(totalYds, s.totalPlays),
+      kr: `${kr.no}-${kr.yds}`,
+      pr: `${pr.no}-${pr.yds}`,
+      ints: `${ints.no}-${ints.yds}`,
+      fumRet: `${fum.no}-${fum.yds}`,
+      fumLost: `${s.fumbles}-${s.fumblesLost}`,
+      pen: `${pen.count}-${pen.yards}`,
+      penYds: pen.yards,
+      punts: pu.no > 0 ? `${pu.no}-${(pu.yds / pu.no).toFixed(1)}` : '0-0',
+      top: '—',
+      third: `${s.thirdConv}-${s.thirdAtt}`,
+      fourth: `${s.fourthConv}-${s.fourthAtt}`,
+    };
+  };
+  const A = side(awayAbbr), H = side(homeAbbr);
+  // [etiqueta, campo, mejor, campo numérico para comparar (si no es el mismo)]
+  const DEF = [
+    ['Primeros downs',             'firstDowns', 'hi'],
+    ['Acarreos',                   'rushAtt',    null],
+    ['Yardas por tierra',          'rushYds',    'hi'],
+    ['Promedio por acarreo',       'rushAvg',    'hi'],
+    ['Recepciones',                'rec',        null],
+    ['Yardas por recepción',       'recYds',     null],
+    ['Promedio por recepción',     'recAvg',     'hi'],
+    ['Yardas por aire',            'passYds',    'hi'],
+    ['Pase C-A-I',                 'cai',        null],
+    ['Jugadas-Yardas',             'playsYds',   null],
+    ['Yardas/Jugada',              'ydsPerPlay', 'hi'],
+    ['Yardas regreso de patada',   'kr',         null],
+    ['Yardas regreso de despeje',  'pr',         null],
+    ['Intercepciones-Yardas',      'ints',       null],
+    ['Fumbles-Yardas',             'fumRet',     null],
+    ['Fumbles perdidos',           'fumLost',    null],
+    ['Penalizaciones',             'pen',        'lo', 'penYds'],
+    ['Despejes',                   'punts',      null],
+    ['Posesión',                   'top',        null],
+    ['3er down',                   'third',      null],
+    ['4to down',                   'fourth',     null],
+  ];
+  return DEF.map(([label, key, best, cmpKey]) => {
+    let lead = null;
+    if (best) {
+      // Se compara el valor mostrado (promedios ya redondeados a 1 decimal):
+      // dos valores que se ven iguales son empate y no se resaltan.
+      const a = Number(A[cmpKey || key]), h = Number(H[cmpKey || key]);
+      if (Number.isFinite(a) && Number.isFinite(h) && a !== h) {
+        lead = (best === 'hi' ? a > h : a < h) ? 'away' : 'home';
+      }
+    }
+    return { label, key, away: A[key], home: H[key], lead };
+  });
+}
+// TS_GAMESTATS_END
+
+// Tabla "Game Stats" (derecha de la lista de Team Stats). Las filas vienen de
+// _gameStatsRows, alimentado con los mismos cálculos del cuarto elegido.
+function GameStatsTable({ rows, home, away }) {
+  const cell = { fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text)', textAlign:'right', fontVariantNumeric:'tabular-nums', padding:'0 4px', whiteSpace:'nowrap' };
+  return (
+    <div className="ts-gs" style={{ border:'1px solid var(--border)', borderRadius:6, overflow:'hidden', background:'var(--card-bg)' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 72px 72px', alignItems:'center', padding:'0 12px', height:52, background:'var(--border)' }}>
+        <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:15, color:'var(--text)' }}>Game Stats</div>
+        <div style={{ display:'flex', justifyContent:'flex-end' }}><TeamLogo team={away} size={32} /></div>
+        <div style={{ display:'flex', justifyContent:'flex-end' }}><TeamLogo team={home} size={32} /></div>
+      </div>
+      {rows.map((r, i) => (
+        <div key={r.key} style={{ display:'grid', gridTemplateColumns:'1fr 72px 72px', alignItems:'center', padding:'0 12px', height:36, background: i % 2 ? 'var(--bg)' : 'var(--card-bg)' }}>
+          <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.label}</div>
+          <div style={{ ...cell, ...(r.lead === 'away' ? { color:'#16a34a', fontWeight:700 } : null) }}>{r.away}</div>
+          <div style={{ ...cell, ...(r.lead === 'home' ? { color:'#16a34a', fontWeight:700 } : null) }}>{r.home}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr, homeColor, awayColor, rosters }) {
   const [period, setPeriod] = useState('all');
   const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
 
@@ -788,6 +983,16 @@ function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr, homeColo
   const A = stats[awayAbbr], H = stats[homeAbbr];
   const penA = _teamPenaltySummary(penalties, awayAbbr);
   const penH = _teamPenaltySummary(penalties, homeAbbr);
+  // Game Stats: mismas jugadas del cuarto elegido (periodPlays) que la lista.
+  const special = useMemo(
+    () => computeSpecialTeamsStats(periodPlays, homeAbbr, awayAbbr, teams, rosters),
+    [periodPlays, homeAbbr, awayAbbr, rosters]
+  );
+  const turnovers = useMemo(
+    () => computeTurnoverStatsByPlayer(periodPlays, homeAbbr, awayAbbr, teams, rosters),
+    [periodPlays, homeAbbr, awayAbbr, rosters]
+  );
+  const gameStatsRows = _gameStatsRows({ stats, penalties, special, turnovers, homeAbbr, awayAbbr });
 
   const fmtRatio = (num, den) => den > 0 ? (num / den).toFixed(1) : '—';
   const totalYdsA = A.passYds + A.rushYds;
@@ -805,6 +1010,8 @@ function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr, homeColo
 
       <SubTabBar tabs={TEAM_STATS_PERIOD_TABS} active={period} onChange={setPeriod} />
 
+      <div className="ts-cols">
+      <div style={{ minWidth:0 }}>
       <StatRow label="Total Yds"  awayVal={totalYdsA} homeVal={totalYdsH} awayBar={totalYdsA} homeBar={totalYdsH} awayColor={awayColor} homeColor={homeColor} />
       <StatRow label="Pass Yds"   awayVal={A.passYds}  homeVal={H.passYds} awayBar={A.passYds} homeBar={H.passYds} awayColor={awayColor} homeColor={homeColor} />
       <StatRow label="Rush Yds"   awayVal={A.rushYds}  homeVal={H.rushYds} awayBar={A.rushYds} homeBar={H.rushYds} awayColor={awayColor} homeColor={homeColor} />
@@ -841,6 +1048,9 @@ function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr, homeColo
         awayBar={A.sacksYds} homeBar={H.sacksYds} awayColor={awayColor} homeColor={homeColor} />
       <StatRow label="TFL (Def Yds)"    awayVal={`${A.tflMade}-${A.tflYds}`}        homeVal={`${H.tflMade}-${H.tflYds}`}
         awayBar={A.tflYds} homeBar={H.tflYds} awayColor={awayColor} homeColor={homeColor} />
+      </div>
+      <GameStatsTable rows={gameStatsRows} home={home} away={away} />
+      </div>
     </div>
   );
 }
@@ -919,13 +1129,14 @@ function OffenseTeamCard({ abbr, label, color, passers, rushers, receivers, qbIn
 }
 
 // ── Defense sub-tab row builders ─────────────────────────────────────────────
-// Sacks shows ONE "Sacks" column, not Solo/Ast — sack_by is multiple:false
-// (a single player per sack), so there's no shared-sack data to split.
+// Sacks shows ONE "Sacks" column: solo sacks + ½ per assisted sack (TC-04,
+// §16 Art.4 A.R.2: a sack shared through tackle_by), e.g. 1.5. Sack Yds of a
+// shared sack are split equally, so they can carry decimals (one shown).
 function _sacksRows(defenseStats, teamAbbr) {
   const data = defenseStats[teamAbbr] || {};
   return Object.entries(data)
-    .filter(([, d]) => d.sacks > 0 || d.qbh > 0)
-    .map(([key, d]) => [d.label ?? key, d.sacks, d.sackYds, d.qbh]);
+    .filter(([, d]) => d.sacks > 0 || (d.asstSacks || 0) > 0 || d.qbh > 0)
+    .map(([key, d]) => [d.label ?? key, d.sacks + (d.asstSacks || 0) / 2, +d.sackYds.toFixed(1), d.qbh]);
 }
 
 // PBU/Int-count come from computeDefenseStats() (same source Team Stats
@@ -1115,7 +1326,7 @@ function BasicBoxScore({
 
       <div>
         <div style={SECTION_TITLE_STYLE}>Líderes del partido</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div className="vw-box-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
           <TeamLeadersCard label={awayApodo} color={awayColor} teamId={awayTeamId} playerManualStats={playerManualStats} />
           <TeamLeadersCard label={homeApodo} color={homeColor} teamId={homeTeamId} playerManualStats={playerManualStats} />
         </div>
@@ -1123,7 +1334,7 @@ function BasicBoxScore({
 
       <div>
         <div style={SECTION_TITLE_STYLE}>Estadísticas por jugador</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <div className="vw-box-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
           <ManualOffenseTeamCard abbr={awayApodo} label={awayApodo} color={awayColor} teamId={awayTeamId} playerManualStats={playerManualStats} />
           <ManualOffenseTeamCard abbr={homeApodo} label={homeApodo} color={homeColor} teamId={homeTeamId} playerManualStats={playerManualStats} />
         </div>
@@ -1269,7 +1480,7 @@ function PenaltiesTable({ rows }) {
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} title={r.context} style={{ borderTop:'1px solid var(--border)' }}>
-              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{r.quarter}</td>
+              <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{_qShort(r.quarter)}</td>
               <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{r.clock || '—'}</td>
               <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.code}{r.label ? ` (${r.label})` : ''}</td>
               <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px' }}>{r.player || '—'}</td>
@@ -1383,7 +1594,7 @@ function ExplosivePlayList({ title, items, homeAbbr, homeColor, awayColor }) {
             return (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderTop: i>0 ? '1px solid var(--border)' : 'none' }}>
                 <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:16, color, minWidth:42 }}>+{p._effYards}</span>
-                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:20 }}>Q{p.quarter}</span>
+                <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', minWidth:20 }}>{_qLabel(p.quarter)}</span>
                 <span style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', lineHeight:1.4 }}>
                   {typeof formatPlay === 'function' ? formatPlay(p) : p.play_type}
                 </span>
@@ -1741,7 +1952,7 @@ function buildTeamSpecialRows(stats, teamAbbr) {
     r.label, r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '0.0', r.tb,
   ]);
   const fgs = stats.fgs.filter(r => r.team === teamAbbr).map(r => [
-    `Q${r.quarter}`, r.clock || '—', r.distance != null ? `${r.distance} yds` : '—', r.result,
+    _qLabel(r.quarter), r.clock || '—', r.distance != null ? `${r.distance} yds` : '—', r.result,
   ]);
   const kickReturns = stats.kickReturns.filter(r => r.team === teamAbbr).map(r => [r.label, r.no, r.yds, r.long]);
   const puntReturns = stats.puntReturns.filter(r => r.team === teamAbbr).map(r => [r.label, r.no, r.yds, r.long]);
@@ -2345,14 +2556,16 @@ function _buildIndPenalties(penalties, plays) {
 // los que solo tienen INT o PBU salen en "Defensa de pase".
 // Defensa de pase: INT y Yds ret. de computeTurnoverStatsByPlayer()
 // (interceptions) y Pases def. = PBU (broken_up_by) de computeDefenseStats().
-// sack_by es de un solo jugador: no hay medias capturas que mostrar.
+// Capturas = sacks solos + ½ por sack asistido (TC-04, §16 Art.4 A.R.2: el
+// sack compartido con los de tackle_by), p. ej. 0.5 o 1.5.
 function _buildIndDefense(defenseStats, interceptions, abbr) {
   const def = defenseStats?.[abbr] || {};
   const ints = interceptions?.[abbr] || {};
   const tackles = Object.values(def)
-    .filter(d => d.solo + d.ast + d.tfl + d.sacks + d.ff > 0)
-    .sort((a, b) => (b.solo + b.ast) - (a.solo + a.ast) || b.sacks - a.sacks || b.tfl - a.tfl)
-    .map(d => ({ label: d.label, solo: d.solo, ast: d.ast, total: d.solo + d.ast, tfl: d.tfl, sacks: d.sacks, ff: d.ff }));
+    .map(d => ({ ...d, sk: d.sacks + (d.asstSacks || 0) / 2 }))
+    .filter(d => d.solo + d.ast + d.tfl + d.sk + d.ff > 0)
+    .sort((a, b) => (b.solo + b.ast) - (a.solo + a.ast) || b.sk - a.sk || b.tfl - a.tfl)
+    .map(d => ({ label: d.label, solo: d.solo, ast: d.ast, total: d.solo + d.ast, tfl: d.tfl, sacks: d.sk, ff: d.ff }));
   const keys = new Set([...Object.keys(def).filter(k => def[k].pbu > 0), ...Object.keys(ints)]);
   const pass = [...keys]
     .map(k => ({ label: def[k]?.label ?? ints[k]?.label ?? k, int: ints[k]?.no || 0, yds: ints[k]?.yds || 0, pbu: def[k]?.pbu || 0 }))
@@ -2368,20 +2581,16 @@ function _buildIndDefense(defenseStats, interceptions, abbr) {
 //   FG:  KICK field_goal con fg_result good/missed/blocked (los mismos que
 //        cuenta la tabla Field Goals existente). Largo = FG anotado más largo.
 //   PAT: PAT_TRY pat_type 'kick' con pat_kick_result good/missed/blocked.
-//   Despejes: mismos campos y reglas que computeSpecialTeamsStats, más las
-//        yardas reales de los que hoy suman 0: downed (hasta punt_downed_at,
-//        con Dentro 20) y muffed (hasta el punto del muff, punt_muff_at,
-//        TC-22). Bloqueado = despeje de 0 yardas (igual que hoy). Fake punt y
-//        snap malo no son despeje y no se cuentan. Un despeje anulado por
-//        bandera (resolvePlay → stats_count false) tampoco se cuenta, igual
-//        que las anuladas en QB Progression (la pestaña existente sí lo cuenta).
-const IND_PUNT_KINDS = ['returned', 'fair_catch', 'touchback', 'oob', 'downed', 'blocked', 'muffed'];
+//   Despejes: computeSpecialTeamsStats().punting, la misma fuente que
+//        Comparación y Game Stats (anulados, fake punts y snaps malos fuera;
+//        downed/muffed medidos; bloqueado = fila "Equipo" de 0 yardas; Dentro
+//        20 donde el balón queda muerto).
 function _buildIndSpecialTeams(plays, st, rosters, homeAbbr, awayAbbr, abbr) {
   const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
   const other = t => t === homeAbbr ? awayAbbr : t === awayAbbr ? homeAbbr : null;
   const kl = (ref, team) => ref ? _playerKeyLabel(ref, rosters?.[team] || null) : null;
 
-  const kick = {}, punt = {}, retTd = {};
+  const kick = {}, retTd = {};
   for (const p of plays) {
     const def = other(p.possession);
     if (!def) continue;
@@ -2401,23 +2610,17 @@ function _buildIndSpecialTeams(plays, st, rosters, homeAbbr, awayAbbr, abbr) {
         if (p.pat_kick_result === 'good') r.patm++;
       }
     }
-    if (p.possession === abbr && p.play_type === 'PUNT' && IND_PUNT_KINDS.includes(p.punt_result) && resolvePlay(p).stats_count !== false) {
-      const k = kl(p.punted_by, abbr);
-      if (k) {
-        const r = punt[k.key] ||= { label: k.label, no: 0, yds: 0, long: 0, in20: 0 };
-        r.no++;
-        const land = { returned: p.punt_kicked_to, fair_catch: p.punt_kicked_to, oob: p.punt_oob_at, downed: p.punt_downed_at,
-                       muffed: p.punt_muff_at, touchback: { team: def, yard: 0 } }[p.punt_result] || null;
-        const d = land && p.field_pos ? calcNetYards(teams, p.possession, p.field_pos, land) : null;
-        if (d != null) { r.yds += d; if (d > r.long) r.long = d; }
-        if (land && ['returned', 'fair_catch', 'oob', 'downed'].includes(p.punt_result) && land.team === def && land.yard > 0 && land.yard <= 20) r.in20++;
-      }
-    }
     // TD de retorno (para las filas de computeSpecialTeamsStats del equipo que regresa).
-    if (def === abbr) {
+    // Una patada anulada por bandera no tiene regreso (H-22).
+    if (def === abbr && resolvePlay(p).stats_count !== false) {
       let ref = null, end = null, kind = null;
       if (p.play_type === 'KICK' && p.kick_type === 'kickoff' && p.kickoff_result === 'returned' && ['tackle', 'oob', 'eop'].includes(p.kick_return_result)) { ref = p.kick_returned_by; end = p.kick_return_at; kind = 'kr'; }
       if (p.play_type === 'PUNT' && p.punt_result === 'returned' && ['tackle', 'oob', 'eop'].includes(p.punt_return_result)) { ref = p.punt_returned_by; end = p.punt_return_at; kind = 'pr'; }
+      // Punt bloqueado (§7 Art.1 A.R.3-4, computeSpecialTeamsStats): el TD es de quien
+      // corrió con el balón; si nadie lo avanzó, del que bloqueó.
+      if (p.play_type === 'PUNT' && p.punt_result === 'blocked' && p.punt_blocked_by && typeof _blockedPuntEnd === 'function') {
+        ref = _blockedPuntRunner(p, def) || p.punt_blocked_by; end = _blockedPuntEnd(p, def); kind = 'pr';
+      }
       const k = kl(ref, def);
       if (k && end && isTouchdown(teams, def, end)) retTd[`${kind}::${k.key}`] = (retTd[`${kind}::${k.key}`] || 0) + 1;
     }
@@ -2426,7 +2629,8 @@ function _buildIndSpecialTeams(plays, st, rosters, homeAbbr, awayAbbr, abbr) {
   return {
     kicking: Object.values(kick).sort((a, b) => (3 * b.fgm + b.patm) - (3 * a.fgm + a.patm))
       .map(r => ({ ...r, pts: 3 * r.fgm + r.patm })),
-    punting: Object.values(punt).sort((a, b) => b.no - a.no || b.yds - a.yds),
+    // Despejes: computeSpecialTeamsStats (misma fuente que Comparación y Game Stats).
+    punting: mine(st?.punting).sort((a, b) => b.no - a.no || b.yds - a.yds),
     kickoffs: mine(st?.kickoffs),
     kickReturns: mine(st?.kickReturns).map(r => ({ ...r, td: retTd[`kr::${r.key}`] || 0 })),
     puntReturns: mine(st?.puntReturns).map(r => ({ ...r, td: retTd[`pr::${r.key}`] || 0 })),
@@ -2476,7 +2680,7 @@ function IndividualBigPlays({ plays, explosivePlays, rosters, home, away, homeAb
               <IndStatTable sticky={false} label={`Big Plays de ${c.apodo}`}
                 cols={['Cuarto', 'Tipo', { label: 'Jugada', align: 'left' }, 'Yds', 'Resultado', { label: 'Contexto', align: 'left' }]}
                 rows={mine.map(r => ({ ...(r.result === 'TD' ? { bg: c.color, fg: c.text } : null),
-                  v: [`Q${r.quarter}`, r.kind, r.play, r.yds, r.result, r.context] }))} />
+                  v: [_qLabel(r.quarter), r.kind, r.play, r.yds, r.result, r.context] }))} />
             </IndBannerColumn>
           );
         })}
@@ -2506,7 +2710,7 @@ function IndividualPenalties({ plays, penalties, home, away, homeAbbr, awayAbbr,
               <IndStatTable sticky={false} label={`Penalties de ${c.apodo}`}
                 cols={['Cuarto', { label: 'Infracción', align: 'left' }, { label: 'Jugador', align: 'left' }, 'Yds', 'Resultado', { label: 'Down resultante', align: 'left' }]}
                 rows={mine.map(r => ({ muted: !r.accepted,
-                  v: [`Q${r.quarter}`, r.infraction, r.player, r.yards ?? '—', r.result, r.down] }))} />
+                  v: [_qLabel(r.quarter), r.infraction, r.player, r.yards ?? '—', r.result, r.down] }))} />
             </IndBannerColumn>
           );
         })}
@@ -2658,7 +2862,7 @@ function ScoringSummaryPanel({ events, homeAbbr, awayAbbr, homeColor, awayColor 
                   <tbody>
                     {events.map((e, i) => (
                       <tr key={i} style={{ borderTop:'1px solid var(--border)' }}>
-                        <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{e.quarter}</td>
+                        <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{_qShort(e.quarter)}</td>
                         <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', padding:'6px' }}>{e.clock || '—'}</td>
                         <td style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px', lineHeight:1.4 }}>{e.desc}</td>
                         <td style={{ textAlign:'center', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:700, color:'var(--text)', padding:'6px', fontVariantNumeric:'tabular-nums' }}>
@@ -2746,7 +2950,7 @@ function SpecialTeamsTab({ plays, homeAbbr, awayAbbr }) {
     `${r.team} · ${r.label}`, r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '0.0', r.tb,
   ]);
   const fgRows = f(stats.fgs).map(r => [
-    r.team, `Q${r.quarter}`, r.clock || '—', r.distance != null ? `${r.distance} yds` : '—', r.result,
+    r.team, _qLabel(r.quarter), r.clock || '—', r.distance != null ? `${r.distance} yds` : '—', r.result,
   ]);
   const krRows = f(stats.kickReturns).map(r => [`${r.team} · ${r.label}`, r.no, r.yds, r.long]);
   const prRows = f(stats.puntReturns).map(r => [`${r.team} · ${r.label}`, r.no, r.yds, r.long]);
@@ -2819,7 +3023,7 @@ function App() {
   const [loading,   setLoading]   = useState(true);
   const [loadErr,   setLoadErr]   = useState(null);
   const [scoresOpen,setScoresOpen]= useState(false);
-  const [activeTab,   setActiveTab]   = useState('away');
+  const [activeTab,   setActiveTab]   = useState('individual');
   const [teamSubTab,  setTeamSubTab]  = useState('stats');
   const [drivesSubTab,setDrivesSubTab]= useState('byteam');
   // Pestaña Individual: entra por defecto a Away · Ofensiva. La unidad (indGroup)
@@ -2936,6 +3140,40 @@ function App() {
     };
   }, [game?.id]);
 
+  // ── estado del juego (sondeo) ───────────────────────────────────────────────
+  // Realtime solo publica `plays`, así que un cambio de games.status (scheduled →
+  // live → halftime → final) no llega por el canal de arriba. Se relee status y
+  // marcador cada 30 s con la misma ruta REST de la carga inicial. Solo se lee cuando
+  // el juego está en live/halftime o a menos de 6 h (antes o después) de su kickoff,
+  // y con la pestaña visible; un juego final o programado para otro día no lee nada.
+  // Si nada cambió se devuelve el mismo objeto (sin re-render); el canal de plays no
+  // se toca (depende solo de game.id).
+  const gameStatus = game?.status;
+  const kickoffMs  = game?.kickoff ? Date.parse(game.kickoff) : NaN;
+  useEffect(() => {
+    if (!gameId || !game?.id || gameStatus === 'final') return;
+    const WINDOW_MS = 6 * 60 * 60 * 1000;
+    // Se evalúa en cada ciclo: un viewer abierto 8 h antes empieza a leer al entrar a la ventana.
+    const inWindow = () => gameStatus === 'live' || gameStatus === 'halftime'
+      || (Number.isFinite(kickoffMs) && Math.abs(Date.now() - kickoffMs) < WINDOW_MS);
+    let stopped = false;
+    async function check() {
+      if (document.hidden || !inWindow()) return;
+      try {
+        const arr = await sbFetch(`games?select=status,score_home,score_away&id=eq.${encodeURIComponent(gameId)}&limit=1`);
+        const g = arr[0];
+        if (stopped || !g) return;
+        setGame(prev => (prev && (prev.status !== g.status || prev.score_home !== g.score_home || prev.score_away !== g.score_away))
+          ? { ...prev, status: g.status, score_home: g.score_home, score_away: g.score_away }
+          : prev);
+      } catch (e) { /* sin red: se reintenta en el siguiente ciclo */ }
+    }
+    const timer = setInterval(check, 30000);
+    const onVisible = () => { if (!document.hidden) check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [game?.id, gameStatus, kickoffMs]);
+
   // ── derived state (always computed, so hook order never changes across renders) ──
   const { home, away } = game || {};
   const homeAbbr  = home?.abreviatura || '';
@@ -2948,6 +3186,8 @@ function App() {
   const awayColor = away?.color_principal || '#f97316';
   const isLive    = game?.status === 'live';
   const isFinal   = game?.status === 'final';
+  // 'halftime' lo pone el operador desde el selector de estado de la captura.
+  const isHalftime = game?.status === 'halftime';
 
   // typeof guard: this useMemo runs on every render (including the very
   // first, before `if (loading) return` further down and before engineReady
@@ -2997,7 +3237,7 @@ function App() {
       rushers, receivers, specialTeamsStats.kickReturns, specialTeamsStats.puntReturns,
       turnoverReturns, homeAbbr, awayAbbr
     );
-    const fumbleMap = fumbleStatsToMap(computeFumbleStats(plays, rosters), homeAbbr, awayAbbr);
+    const fumbleMap = fumbleStatsToMap(computeFumbleStats(plays, rosters, homeAbbr, awayAbbr), homeAbbr, awayAbbr);
     return {
       apRows:     buildRows(apMap, ['RUN','RCV','KR','PR','FR/IR','TOT'], d => [d.run, d.rcv, d.kr, d.pr, d.frir, d.total]),
       fumbleRows: buildRows(fumbleMap, ['NO','LOST'], d => [d.no, d.lost]),
@@ -3043,11 +3283,14 @@ function App() {
   // scoreboard: a quarter's last play can itself be the scoring play, so its
   // stored score_home/score_away (pre-play) undercounts that quarter unless
   // replayed through computeCurrentScore() the same way.
+  // Tiempo extra: la captura guarda OT como quarter = 5 (wizard.js, set_quarter) y no
+  // distingue 2OT/3OT, así que todo quarter >= 5 se agrupa en una sola columna "OT".
+  const hasOt = plays.some(p => p.quarter >= 5);
   function qScores(teamKey) {
-    const out = [0,0,0,0];
+    const out = hasOt ? [0,0,0,0,0] : [0,0,0,0];
     let prev = { home:0, away:0 };
-    for (let q = 1; q <= 4; q++) {
-      const qp = plays.filter(p => p.quarter === q);
+    for (let q = 1; q <= out.length; q++) {
+      const qp = plays.filter(p => q === 5 ? p.quarter >= 5 : p.quarter === q);
       if (qp.length) {
         const lp = qp[qp.length - 1];
         const { home: sh, away: sa } = computeCurrentScore(lp, prev.home, prev.away, homeAbbr, awayAbbr);
@@ -3108,7 +3351,7 @@ function App() {
   const manualHomeStats = teamManualStats.find(r => r.team_id === game?.home_team_id);
   const manualAwayStats = teamManualStats.find(r => r.team_id === game?.away_team_id);
   const manualHasOt = (manualHomeStats?.ot || 0) > 0 || (manualAwayStats?.ot || 0) > 0;
-  const heroQuarterLabels = isManualOnly ? (manualHasOt ? ['1','2','3','4','OT'] : ['1','2','3','4']) : ['1','2','3','4'];
+  const heroQuarterLabels = isManualOnly ? (manualHasOt ? ['1','2','3','4','OT'] : ['1','2','3','4']) : (hasOt ? ['1','2','3','4','OT'] : ['1','2','3','4']);
   const heroQsAway = isManualOnly
     ? ['q1','q2','q3','q4', ...(manualHasOt ? ['ot'] : [])].map(k => manualAwayStats?.[k] || 0)
     : qScoreAway;
@@ -3118,23 +3361,23 @@ function App() {
 
   // Labels depend on the loaded game's real team abbreviations, so this
   // can't be a module-level constant like the old TABS list was.
+  // Las pestañas "{Apodo} Stats" (keys 'away'/'home') ya no tienen entrada en
+  // la barra: Individual ocupa su lugar. TeamStatsTab y su render se conservan.
   const mainTabs = [
-    { key: 'away',    label: `${awayApodo} Stats` },
-    { key: 'home',    label: `${homeApodo} Stats` },
+    { key: 'individual', label: 'Individual' },
     { key: 'compare', label: 'Team Stats' },
     { key: 'comparacion', label: 'Comparación' },
     { key: 'drives',  label: 'Drives' },
     { key: 'scoring', label: 'Anotaciones' },
     { key: 'pbp',     label: 'Play by Play' },
-    { key: 'individual', label: 'Individual' },
   ];
 
   return (
     <div style={{ minHeight:'100vh', background:'var(--bg)', fontFamily:"'Inter',sans-serif", color:'var(--text)' }}>
 
       {/* ── UTILBAR ─────────────────────────────────────────────────────────── */}
-      <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'10px 20px', display:'flex', alignItems:'center', gap:14, position:'sticky', top:0, zIndex:100 }}>
-        <div style={{ display:'flex', flexDirection:'column', lineHeight:1, flexShrink:0 }}>
+      <div className="vw-ub" style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'10px 20px', display:'flex', alignItems:'center', gap:14, position:'sticky', top:0, zIndex:100 }}>
+        <div className="vw-ub-logo" style={{ display:'flex', flexDirection:'column', lineHeight:1, flexShrink:0 }}>
           <span style={{ display:'flex', alignItems:'baseline', fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:20, lineHeight:1 }}>
             <span style={{
               color:'#fff', WebkitTextStroke:'1px #000',
@@ -3145,8 +3388,8 @@ function App() {
           </span>
           <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:8, letterSpacing:1.5, color:'#000', marginTop:1 }}>STATS</span>
         </div>
-        <div style={{ width:1, height:18, background:'var(--border2)' }} />
-        <span style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', letterSpacing:0.3, flexShrink:0 }}>
+        <div className="vw-ub-div" style={{ width:1, height:18, background:'var(--border2)' }} />
+        <span className="vw-ub-liga" style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', letterSpacing:0.3, flexShrink:0 }}>
           {game.liga ? `${game.liga} · ` : ''}{fmtWeek(game.semana)}
         </span>
 
@@ -3154,8 +3397,8 @@ function App() {
             live; reflects the Realtime channel's own state, separate from
             the "EN VIVO" badge in the scoreboard below (that one is the
             game's status, this one is whether updates are actually flowing). */}
-        {isLive && (
-          <span style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }} title="Estado de la conexión en tiempo real">
+        {(isLive || isHalftime) && (
+          <span className="vw-ub-rt" style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }} title="Estado de la conexión en tiempo real">
             <span style={{
               width:7, height:7, borderRadius:'50%', display:'inline-block',
               background: rtStatus === 'live' ? '#16a34a' : rtStatus === 'reconnecting' ? '#f59e0b' : rtStatus === 'error' ? '#dc2626' : '#9ca3af',
@@ -3168,9 +3411,9 @@ function App() {
         )}
 
         {/* Scores toggle — centered */}
-        <div style={{ flex:1, display:'flex', justifyContent:'center' }}>
+        <div className="vw-ub-scores" style={{ flex:1, display:'flex', justifyContent:'center' }}>
           {weekGames.length > 0 && (
-            <button onClick={() => setScoresOpen(o => !o)} style={{
+            <button className="vw-ub-btn" onClick={() => setScoresOpen(o => !o)} style={{
               background:'transparent', border:'1px solid var(--border2)', borderRadius:5,
               color:'var(--text2)', fontFamily:"'Inter',sans-serif", fontWeight:700,
               fontSize:12, letterSpacing:1, padding:'4px 14px', cursor:'pointer',
@@ -3180,7 +3423,7 @@ function App() {
           )}
         </div>
 
-        <a href="index.html" style={{ color:'var(--text2)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, textDecoration:'none', letterSpacing:0.3, flexShrink:0 }}>
+        <a className="vw-ub-back" href="index.html" style={{ color:'var(--text2)', fontFamily:"'Inter',sans-serif", fontSize:13, fontWeight:600, textDecoration:'none', letterSpacing:0.3, flexShrink:0 }}>
           ← Todos los partidos
         </a>
       </div>
@@ -3193,13 +3436,13 @@ function App() {
       )}
 
       {/* ── SCOREBOARD HERO ─────────────────────────────────────────────────── */}
-      <div style={{ background:'var(--bg)', padding:'28px 20px 20px', borderBottom:'1px solid var(--border)' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:16, maxWidth:920, margin:'0 auto', alignItems:'center' }}>
+      <div className="vw-hero" style={{ background:'var(--bg)', padding:'28px 20px 20px', borderBottom:'1px solid var(--border)' }}>
+        <div className="vw-hero-grid" style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:16, maxWidth:920, margin:'0 auto', alignItems:'center' }}>
 
           {/* Away */}
-          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+          <div className="vw-team vw-team--away" style={{ display:'flex', alignItems:'center', gap:14 }}>
             <TeamLogo team={away} size={72} />
-            <div>
+            <div className="vw-team-name">
               <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'var(--text)' }}>
                 {away?.nombre_corto || awayApodo}
               </div>
@@ -3207,20 +3450,20 @@ function App() {
                 {away?.Escuela || ''}
               </div>
             </div>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:awayColor, marginLeft:'auto', fontVariantNumeric:'tabular-nums' }}>
+            <div className="vw-score" style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:awayColor, marginLeft:'auto', fontVariantNumeric:'tabular-nums' }}>
               {scoreAway}
             </div>
           </div>
 
           {/* Center */}
-          <div style={{ textAlign:'center', minWidth:190 }}>
+          <div className="vw-center" style={{ textAlign:'center', minWidth:190 }}>
             {isLive && (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, marginBottom:10 }}>
+              <div className="vw-st" style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, marginBottom:10 }}>
                 <span style={{ width:8, height:8, borderRadius:'50%', background:'#dc2626', display:'inline-block', animation:'pulse 1.5s infinite' }} />
                 <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, letterSpacing:2, color:'#dc2626' }}>EN VIVO</span>
                 {lastPlay?.quarter && (
                   <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:13, color:'var(--text2)', border:'1.5px solid var(--border2)', padding:'1px 8px', borderRadius:3 }}>
-                    Q{lastPlay.quarter}
+                    {_qLabel(lastPlay.quarter)}
                   </span>
                 )}
                 {lastPlay?.clock && (
@@ -3231,21 +3474,24 @@ function App() {
               </div>
             )}
             {isLive && (
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', marginBottom:10, fontVariantNumeric:'tabular-nums' }}>
+              <div className="vw-tick" style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text2)', marginBottom:10, fontVariantNumeric:'tabular-nums' }}>
                 {formatLiveTicker(situation, homeAbbr, awayAbbr, homeApodo, awayApodo)}
               </div>
             )}
-            {isFinal && (
-              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:15, letterSpacing:2, color:'var(--text2)', marginBottom:10 }}>FINAL</div>
+            {isHalftime && (
+              <div className="vw-st" style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:15, letterSpacing:2, color:'#b45309', marginBottom:10 }}>MEDIO TIEMPO</div>
             )}
-            {!isLive && !isFinal && (
-              <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', marginBottom:10 }}>
+            {isFinal && (
+              <div className="vw-st" style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:15, letterSpacing:2, color:'var(--text2)', marginBottom:10 }}>FINAL</div>
+            )}
+            {!isLive && !isFinal && !isHalftime && (
+              <div className="vw-st" style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)', marginBottom:10 }}>
                 {fmtDate(game.kickoff, game.hora)}
               </div>
             )}
 
             {/* Quarter score table */}
-            <table style={{ width:'100%', borderCollapse:'collapse', fontVariantNumeric:'tabular-nums', tableLayout:'fixed' }}>
+            <table className="vw-qt" style={{ width:'100%', borderCollapse:'collapse', fontVariantNumeric:'tabular-nums', tableLayout:'fixed' }}>
               <thead>
                 <tr>
                   <th style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:'var(--text3)', padding:'2px 2px', fontWeight:600, letterSpacing:0.5, textAlign:'left' }}></th>
@@ -3270,20 +3516,16 @@ function App() {
                 ))}
               </tbody>
             </table>
-
-            {/* Timeouts */}
-            <div style={{ display:'flex', justifyContent:'space-between', marginTop:8, padding:'0 2px' }}>
-              <div style={{ display:'flex', gap:4 }}>{[0,1,2].map(i => <span key={i} style={{ fontSize:9, color:awayColor }}>●</span>)}</div>
-              <div style={{ display:'flex', gap:4 }}>{[0,1,2].map(i => <span key={i} style={{ fontSize:9, color:homeColor }}>●</span>)}</div>
-            </div>
+            {/* Tiempos fuera: no se muestran porque el dato no está en la base (el evento
+                'timeout' solo vive en el localStorage del operador). Ver docs/notas_pendientes.md. */}
           </div>
 
           {/* Home */}
-          <div style={{ display:'flex', alignItems:'center', gap:14, justifyContent:'flex-end' }}>
-            <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:homeColor, marginRight:'auto', fontVariantNumeric:'tabular-nums' }}>
+          <div className="vw-team vw-team--home" style={{ display:'flex', alignItems:'center', gap:14, justifyContent:'flex-end' }}>
+            <div className="vw-score" style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:68, lineHeight:0.9, color:homeColor, marginRight:'auto', fontVariantNumeric:'tabular-nums' }}>
               {scoreHome}
             </div>
-            <div style={{ textAlign:'right' }}>
+            <div className="vw-team-name" style={{ textAlign:'right' }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:26, lineHeight:1, color:'var(--text)' }}>
                 {home?.nombre_corto || homeApodo}
               </div>
@@ -3298,8 +3540,8 @@ function App() {
 
       {/* ── SITUATION STRIP (live only) ──────────────────────────────────────── */}
       {isLive && situation && (
-        <div style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'center', gap:18, flexWrap:'wrap' }}>
-          <div style={{
+        <div className="vw-sit" style={{ background:'var(--card-bg)', borderBottom:'1px solid var(--border2)', padding:'12px 20px', display:'flex', alignItems:'center', justifyContent:'center', gap:18, flexWrap:'wrap' }}>
+          <div className="vw-sit-poss" style={{
             display:'flex', alignItems:'center', gap:7, color:'#fff',
             padding:'6px 12px', borderRadius:3, flexShrink:0,
             background: situation.possession === homeAbbr ? homeColor : awayColor,
@@ -3312,7 +3554,7 @@ function App() {
           {situation.down > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, letterSpacing:1.4, color:'var(--text3)', fontWeight:600 }}>DOWN &amp; DIST</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1 }}>
+              <div className="vw-sit-val" style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1 }}>
                 {['','1°','2°','3°','4°'][situation.down] || `${situation.down}°`} &amp; {situation.distance}
               </div>
             </div>
@@ -3321,7 +3563,7 @@ function App() {
           {situation.field_pos && (
             <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, letterSpacing:1.4, color:'var(--text3)', fontWeight:600 }}>POSICIÓN</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1 }}>
+              <div className="vw-sit-val" style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:20, color:'var(--text)', lineHeight:1 }}>
                 {situation.field_pos.team === homeAbbr ? homeApodo : (situation.field_pos.team === awayAbbr ? awayApodo : situation.field_pos.team)} {situation.field_pos.yard}
               </div>
             </div>
@@ -3330,18 +3572,18 @@ function App() {
           {drivePlayCount > 0 && (
             <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
               <div style={{ fontFamily:"'Inter',sans-serif", fontSize:9, letterSpacing:1.4, color:'var(--text3)', fontWeight:600 }}>DRIVE</div>
-              <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:600, fontSize:16, color:'var(--text)', lineHeight:1 }}>
+              <div className="vw-sit-val" style={{ fontFamily:"'Inter',sans-serif", fontWeight:600, fontSize:16, color:'var(--text)', lineHeight:1 }}>
                 {drivePlayCount} jug · {driveYards} yds
               </div>
             </div>
           )}
 
-          <FieldStrip possession={situation.possession} fieldPos={situation.field_pos} home={home} away={away} />
+          <FieldStrip className="vw-sit-field" possession={situation.possession} fieldPos={situation.field_pos} home={home} away={away} />
         </div>
       )}
 
       {isManualOnly ? (
-        <div style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
+        <div className="vw-box-wrap" style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
           <BasicBoxScore
             teamManualStats={teamManualStats} playerManualStats={playerManualStats}
             homeTeamId={game.home_team_id} awayTeamId={game.away_team_id}
@@ -3386,7 +3628,7 @@ function App() {
               />
             )}
             {activeTab === 'compare' && (
-              <ComparisonTab plays={plays} drives={drives} home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
+              <ComparisonTab plays={plays} drives={drives} home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} rosters={rosters} />
             )}
             {activeTab === 'comparacion' && (
               <ComparacionTab
