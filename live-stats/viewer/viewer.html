@@ -81,7 +81,7 @@ let computeDefenseStats, computeSpecialTeamsStats, computeFumbleStats, fumbleSta
 let computeTurnoverReturnYards, computeTurnoverReturnYardsByTeam, computeTurnoverStatsByPlayer;
 let computeAllPurposeMap, computeQBProgression, computeExplosivePlays, buildOffenseMaps, buildRosterIndex, getGameTemporada;
 // Pestaña Individual: helpers ya exportados por stats-lib.js (no se reimplementan).
-let _playerKeyLabel, resolvePlay, playNetYards, fumbleYards;
+let _playerKeyLabel, resolvePlay, playNetYards, fumbleYards, playTouchdown;
 // Fase 3: manual-capture path row/lookup builders (BasicBoxScore's data).
 let _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows;
 const engineReady = import('../../shared/stats-lib.js').then(m => {
@@ -115,6 +115,7 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   resolvePlay                      = m.resolvePlay;
   playNetYards                     = m.playNetYards;
   fumbleYards                      = m.fumbleYards;
+  playTouchdown                    = m.playTouchdown;
   _passerRating                    = m._passerRating;
   _topManualStat                   = m._topManualStat;
   _manualPassingRows               = m._manualPassingRows;
@@ -2027,21 +2028,26 @@ function _indContext(p, toApodo) {
 //   sacks:    capturas (no son intento); yardas = las del QB, igual que la
 //             columna Capturas de Pase (buildOffenseMaps → _carrierYards).
 //   Scrambles e intentional grounding se omiten: son carrera del QB.
-function _buildIndQbData(plays, qbProgression, rosters, homeAbbr, awayAbbr, toApodo) {
-  const groups = qbProgression.map(qb => ({ qb, attempts: [], sacks: [], _i: 0 }));
-  const byKey = {};
-  groups.forEach(g => { byKey[`${g.qb.team}::${g.qb.key}`] = g; });
-
-  // "1ro": _isFirstDownPlay con el inicio de serie de cada equipo, igual que
-  // computeComparisonStats (yardline_100 del último 1er down de esa ofensiva).
+// "1ro" por seq (RUSH/PASS): _isFirstDownPlay con el inicio de serie de cada
+// equipo, igual que computeComparisonStats (yardline_100 del último 1er down
+// de esa ofensiva). Por seq porque Big Plays trabaja con copias de las jugadas.
+function _indFirstDownBySeq(plays, homeAbbr, awayAbbr) {
   const seriesStart = {};
-  const firstDown = new Map();
+  const out = new Map();
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue;
     const own = p.possession === homeAbbr || p.possession === awayAbbr;
     if (own && p.down === 1 && p.yardline_100 != null) seriesStart[p.possession] = p.yardline_100;
-    if (p.play_type === 'PASS') firstDown.set(p, _isFirstDownPlay(p, seriesStart[p.possession] ?? null));
+    if (p.play_type === 'PASS' || p.play_type === 'RUSH') out.set(p.seq, _isFirstDownPlay(p, seriesStart[p.possession] ?? null));
   }
+  return out;
+}
+
+function _buildIndQbData(plays, qbProgression, rosters, homeAbbr, awayAbbr, toApodo) {
+  const groups = qbProgression.map(qb => ({ qb, attempts: [], sacks: [], _i: 0 }));
+  const byKey = {};
+  groups.forEach(g => { byKey[`${g.qb.team}::${g.qb.key}`] = g; });
+  const firstDown = _indFirstDownBySeq(plays, homeAbbr, awayAbbr);
 
   const passPlays = plays.filter(p => p.play_type === 'PASS' && p.pass_by).slice().sort((a, b) => a.seq - b.seq);
   for (const raw of passPlays) {
@@ -2071,7 +2077,7 @@ function _buildIndQbData(plays, qbProgression, rosters, homeAbbr, awayAbbr, toAp
     let target = '—';
     if (row.receiver) target = row.receiver;
     else if (!isInt && p.intended_for) target = _playerKeyLabel(p.intended_for, rosters?.[p.possession] || null)?.label || '—';
-    const result = voided ? '' : row.note === 'TD' ? 'TD' : isInt ? 'INT' : firstDown.get(raw) ? '1ro' : '';
+    const result = voided ? '' : row.note === 'TD' ? 'TD' : isInt ? 'INT' : firstDown.get(raw.seq) ? '1ro' : '';
     g.attempts.push({
       voided, complete: row.isComplete, isInt, result, context, target, seq: p.seq,
       yds: voided ? null : (row.isComplete ? (row.netYards ?? 0) : 0),
@@ -2250,8 +2256,146 @@ function IndividualQbProgression({ plays, qbProgression, rosters, home, away, ho
   );
 }
 
+// ── Individual · Big Plays y Penalties ───────────────────────────────────────
+// IND_F4_BUILDERS_START (bloque sin JSX; debug lo extrae para verificarlo en Node)
+const IND_BIG_PASS_MIN = 20;   // el Big Plays existente usa 15 para pase; este es independiente
+const IND_BIG_RUSH_MIN = 10;   // mismo umbral de carrera que computeExplosivePlays
+
+// Big Plays: filtra computeExplosivePlays() (fuente del Big Plays existente:
+// playNetYards, solo RUSH/PASS de scrimmage, scramble = carrera, anuladas = 0)
+// a pase 20+ / carrera 10+ y lo ordena cronológicamente.
+function _buildIndBigPlays(explosivePlays, firstDownBySeq, rosters, toApodo) {
+  const label = (ref, team) => ref ? (_playerKeyLabel(ref, rosters?.[team] || null)?.label || '—') : '—';
+  const passes = (explosivePlays?.passing || []).filter(p => p._effYards >= IND_BIG_PASS_MIN)
+    .map(p => ({ p, kind: 'Pase', play: `${label(p.pass_by, p.possession)} → ${label(p.received_by, p.possession)}` }));
+  const rushes = (explosivePlays?.rushing || []).filter(p => p._effYards >= IND_BIG_RUSH_MIN)
+    .map(p => ({ p, kind: 'Carrera', play: p.play_type === 'PASS' ? `${label(p.pass_by, p.possession)} (scramble)` : label(p.rush_by, p.possession) }));
+  return [...passes, ...rushes].sort((a, b) => a.p.seq - b.p.seq).map(({ p, kind, play }) => ({
+    team: p.possession, seq: p.seq, quarter: p.quarter, kind, play, yds: p._effYards,
+    result: playTouchdown(p) ? 'TD' : firstDownBySeq.get(p.seq) ? '1ro' : '',
+    context: _indContext(p, toApodo),
+  }));
+}
+
+// Penalties: las filas de computePenalties() (jugadas PENALTY + flag_1/flag_2;
+// team = equipo penalizado) más su down resultante. computePenalties no lo
+// devuelve, así que se toma de la jugada en el mismo orden en que las empuja:
+// por seq, primero la PENALTY y luego flag_1, flag_2 (mismas condiciones:
+// infracción y equipo presentes).
+const IND_PEN_RESULT = { accepted: 'Aceptada', declined: 'Declinada', offsetting: 'Compensada' };
+const IND_PEN_DOWN = { repeat_down: 'Repite down', loss_of_down: 'Pérdida de down', first_down: '1er down automático' };
+function _buildIndPenalties(penalties, plays) {
+  const downs = new Map();
+  for (const p of plays) {
+    if (p.play_type === 'GAME_CTRL') continue;
+    const list = [];
+    if (p.play_type === 'PENALTY' && p.penalty_team && p.penalty_infraction) list.push(p.penalty_down_result);
+    for (const n of [1, 2]) if (p[`flag_${n}_infraction`] && p[`flag_${n}_team`]) list.push(p[`flag_${n}_down_result`]);
+    if (list.length) downs.set(p.seq, list);
+  }
+  const used = new Map();
+  return penalties.map(r => {
+    const i = used.get(r.seq) || 0;
+    used.set(r.seq, i + 1);
+    const accepted = r.result === 'accepted';
+    const down = accepted ? (downs.get(r.seq) || [])[i] : null;
+    return {
+      team: r.team, seq: r.seq, quarter: r.quarter, accepted,
+      infraction: `${r.code}${r.label ? ` · ${r.label}` : ''}`,
+      player: r.player || '—',
+      // Solo las aceptadas tienen yardas (declinadas/compensadas no suman).
+      yards: accepted ? r.yards : null,
+      result: IND_PEN_RESULT[r.result] || r.result || '—',
+      down: down ? (IND_PEN_DOWN[down] || down) : '—',
+    };
+  });
+}
+// IND_F4_BUILDERS_END
+
+// Columna de un equipo con banner, fichas, tabla y nota al pie.
+function IndBannerColumn({ title, color, textColor, chips, children }) {
+  return (
+    <section style={{ minWidth:0, display:'flex', flexDirection:'column', gap:12 }}>
+      <h2 style={{ margin:0, background:color, color:textColor, borderRadius:6, padding:'12px 14px', textAlign:'center',
+                   fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:18, letterSpacing:1 }}>{title}</h2>
+      <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+        {chips.map(([l, v]) => <IndChip key={l} label={l} value={v} />)}
+      </div>
+      <div style={CARD_STYLE}>{children}</div>
+    </section>
+  );
+}
+
+const IND_FOOTNOTE = { fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text3)', margin:'14px 0 0' };
+
+function _indTeamCols(home, away, homeAbbr, awayAbbr, homeColor, awayColor) {
+  return [
+    { abbr: awayAbbr, apodo: away?.Apodo || awayAbbr, color: awayColor, text: teamTextColor(away, awayColor) },
+    { abbr: homeAbbr, apodo: home?.Apodo || homeAbbr, color: homeColor, text: teamTextColor(home, homeColor) },
+  ];
+}
+
+function IndividualBigPlays({ plays, explosivePlays, rosters, home, away, homeAbbr, awayAbbr, homeColor, awayColor }) {
+  const cols = _indTeamCols(home, away, homeAbbr, awayAbbr, homeColor, awayColor);
+  const toApodo = a => cols.find(c => c.abbr === a)?.apodo || a;
+  const rows = useMemo(
+    () => _buildIndBigPlays(explosivePlays, _indFirstDownBySeq(plays, homeAbbr, awayAbbr), rosters, toApodo),
+    [explosivePlays, plays, rosters, homeAbbr, awayAbbr, cols[0].apodo, cols[1].apodo]
+  );
+  return (
+    <div>
+      <IndSideBySide>
+        {cols.map(c => {
+          const mine = rows.filter(r => r.team === c.abbr);
+          const np = mine.filter(r => r.kind === 'Pase').length;
+          return (
+            <IndBannerColumn key={c.abbr} title={`${c.apodo} · BIG PLAYS`} color={c.color} textColor={c.text}
+              chips={[[`Pases ${IND_BIG_PASS_MIN}+`, np], [`Carreras ${IND_BIG_RUSH_MIN}+`, mine.length - np], ['Total', mine.length]]}>
+              <IndStatTable sticky={false} label={`Big Plays de ${c.apodo}`}
+                cols={['Cuarto', 'Tipo', { label: 'Jugada', align: 'left' }, 'Yds', 'Resultado', { label: 'Contexto', align: 'left' }]}
+                rows={mine.map(r => ({ ...(r.result === 'TD' ? { bg: c.color, fg: c.text } : null),
+                  v: [`Q${r.quarter}`, r.kind, r.play, r.yds, r.result, r.context] }))} />
+            </IndBannerColumn>
+          );
+        })}
+      </IndSideBySide>
+      <p style={IND_FOOTNOTE}>
+        Umbral: pase de {IND_BIG_PASS_MIN}+ yardas · carrera de {IND_BIG_RUSH_MIN}+ yardas (incluye scrambles), con las yardas propias de la ofensiva, sin contar penalizaciones.
+      </p>
+    </div>
+  );
+}
+
+function IndividualPenalties({ plays, penalties, home, away, homeAbbr, awayAbbr, homeColor, awayColor }) {
+  const cols = _indTeamCols(home, away, homeAbbr, awayAbbr, homeColor, awayColor);
+  const rows = useMemo(() => _buildIndPenalties(penalties, plays), [penalties, plays]);
+  return (
+    <div>
+      <IndSideBySide>
+        {cols.map(c => {
+          const mine = rows.filter(r => r.team === c.abbr);
+          // Fichas = solo aceptadas (mismo criterio que "Penalties" de Team Stats,
+          // _teamPenaltySummary). Declinadas/compensadas siguen en la tabla, en gris.
+          const acc = mine.filter(r => r.accepted);
+          const yds = acc.reduce((a, r) => a + (r.yards || 0), 0);
+          return (
+            <IndBannerColumn key={c.abbr} title={`${c.apodo} · PENALTIES`} color={c.color} textColor={c.text}
+              chips={[['Flags (aceptadas)', acc.length], ['Yardas', yds]]}>
+              <IndStatTable sticky={false} label={`Penalties de ${c.apodo}`}
+                cols={['Cuarto', { label: 'Infracción', align: 'left' }, { label: 'Jugador', align: 'left' }, 'Yds', 'Resultado', { label: 'Down resultante', align: 'left' }]}
+                rows={mine.map(r => ({ muted: !r.accepted,
+                  v: [`Q${r.quarter}`, r.infraction, r.player, r.yards ?? '—', r.result, r.down] }))} />
+            </IndBannerColumn>
+          );
+        })}
+      </IndSideBySide>
+      <p style={IND_FOOTNOTE}>Las yardas de penalizaciones declinadas no se suman al total.</p>
+    </div>
+  );
+}
+
 function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, sub, onSubChange, grp, onGrpChange,
-                         passers, rushers, receivers, qbProgression, plays, rosters }) {
+                         passers, rushers, receivers, qbProgression, plays, rosters, explosivePlays, penalties }) {
   const [qbFilt, setQbFilt] = useState('both');
   const qbIntMap = useMemo(() => {
     const m = {};
@@ -2292,7 +2436,13 @@ function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, s
           ? <IndividualQbProgression plays={plays} qbProgression={qbProgression} rosters={rosters}
               home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
               filt={qbFilt} onFiltChange={setQbFilt} />
-          : <Placeholder text={placeholderText} />}
+          : sub === 'big'
+            ? <IndividualBigPlays plays={plays} explosivePlays={explosivePlays} rosters={rosters}
+                home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
+            : sub === 'pen'
+              ? <IndividualPenalties plays={plays} penalties={penalties}
+                  home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />
+              : <Placeholder text={placeholderText} />}
     </div>
   );
 }
@@ -3037,7 +3187,7 @@ function App() {
                 sub={indSubTab} onSubChange={setIndSubTab}
                 grp={indGroup} onGrpChange={setIndGroup}
                 passers={passers} rushers={rushers} receivers={receivers} qbProgression={qbProgression}
-                plays={plays} rosters={rosters}
+                plays={plays} rosters={rosters} explosivePlays={explosivePlays} penalties={penalties}
               />
             )}
             {activeTab === 'away' && (
