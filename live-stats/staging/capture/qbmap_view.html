@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[ENTRENAMIENTO] qbmap_view</title>
+<script>
+// Entrada de ENTRENAMIENTO: abre la página real (capture/qbmap_view.html) en modo staging
+// (datos de covercero_staging). Conserva el resto de la URL (?game=, ?cat=, #...).
+// No contiene lógica de la app: el código sigue viviendo en capture/qbmap_view.html.
+(function () {
+  var target = new URL('../../capture/qbmap_view.html', location.href)
+  var q = new URLSearchParams(location.search)
+  q.set('env', 'staging')
+  target.search = q.toString()
+  target.hash = location.hash
+  location.replace(target.href)
+})()
+</script>
+</head>
+<body>
+<noscript><p>Abre <a href="../../capture/qbmap_view.html?env=staging">qbmap_view en modo entrenamiento</a>.</p></noscript>
+</body>
+</html>

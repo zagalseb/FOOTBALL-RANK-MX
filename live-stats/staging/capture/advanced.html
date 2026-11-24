@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[ENTRENAMIENTO] advanced</title>
+<script>
+// Entrada de ENTRENAMIENTO: abre la página real (capture/advanced.html) en modo staging
+// (datos de covercero_staging). Conserva el resto de la URL (?game=, ?cat=, #...).
+// No contiene lógica de la app: el código sigue viviendo en capture/advanced.html.
+(function () {
+  var target = new URL('../../capture/advanced.html', location.href)
+  var q = new URLSearchParams(location.search)
+  q.set('env', 'staging')
+  target.search = q.toString()
+  target.hash = location.hash
+  location.replace(target.href)
+})()
+</script>
+</head>
+<body>
+<noscript><p>Abre <a href="../../capture/advanced.html?env=staging">advanced en modo entrenamiento</a>.</p></noscript>
+</body>
+</html>
