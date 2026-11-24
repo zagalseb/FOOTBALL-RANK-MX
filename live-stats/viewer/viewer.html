@@ -39,6 +39,10 @@
      Debajo de 1100px la tabla pasa debajo de la lista. */
   .ts-cols { display:grid; grid-template-columns:minmax(0,1fr) 440px; gap:28px; align-items:start; }
   .ts-cols .ts-gs { position:sticky; top:72px; }
+  /* Comparación: en móvil el panel de resumen ocupa todo el ancho debajo de los equipos. */
+  @media (max-width:900px) {
+    .vw-comp-sum { max-width:none !important; flex-basis:100% !important; }
+  }
   @media (max-width:1100px) {
     .ts-cols { grid-template-columns:minmax(0,1fr); }
     .ts-cols .ts-gs { position:static; }
@@ -157,6 +161,10 @@ let _playerKeyLabel, resolvePlay, playNetYards, fumbleYards, playTouchdown, _blo
 let flagOutcome;
 // Fase 3: manual-capture path row/lookup builders (BasicBoxScore's data).
 let _passerRating, _topManualStat, _manualPassingRows, _manualRushingRows, _manualReceivingRows;
+// Captura manual · pestaña Individual (adaptadores de stats-lib.js).
+let manualIndOffense, manualIndDefense, manualIndSpecialTeams, manualIndSpecialTeamsHasData, manualTeamStatRows, fmtManualHalf, fmtSignedYds;
+// Comparación (rediseño): por cuarto, tablas con Total y resumen manual.
+let computeQuarterSplits, quarterSplitCells, compOffenseRows, manualCompOffense, manualCompSummaryRows;
 const engineReady = import('../../shared/stats-lib.js').then(m => {
   formatPlay          = m.formatPlay;
   advanceGameState     = m.advanceGameState;
@@ -197,6 +205,18 @@ const engineReady = import('../../shared/stats-lib.js').then(m => {
   _manualPassingRows               = m._manualPassingRows;
   _manualRushingRows               = m._manualRushingRows;
   _manualReceivingRows             = m._manualReceivingRows;
+  manualIndOffense                 = m.manualIndOffense;
+  manualIndDefense                 = m.manualIndDefense;
+  manualIndSpecialTeams            = m.manualIndSpecialTeams;
+  manualIndSpecialTeamsHasData     = m.manualIndSpecialTeamsHasData;
+  manualTeamStatRows               = m.manualTeamStatRows;
+  fmtManualHalf                    = m.fmtManualHalf;
+  fmtSignedYds                     = m.fmtSignedYds;
+  computeQuarterSplits             = m.computeQuarterSplits;
+  quarterSplitCells                = m.quarterSplitCells;
+  compOffenseRows                  = m.compOffenseRows;
+  manualCompOffense                = m.manualCompOffense;
+  manualCompSummaryRows            = m.manualCompSummaryRows;
 });
 
 // engine.js stores each play's score_home/score_away (and down/distance/
@@ -1055,13 +1075,12 @@ function ComparisonTab({ plays, drives, home, away, homeAbbr, awayAbbr, homeColo
   );
 }
 
-// ── Tab: Comparación (Offense / Defense-Tackling / Special Teams) ───────────
-// Only "Offense" exists so far — Defense/Tackling and Special Teams sub-tabs,
-// plus the per-quarter progression table, are a separate follow-up and
-// deliberately not started here.
+// ── Tab: Comparación (Offense / Defense / Special Teams) ─────────────────────
+// Special Teams es por ahora un espacio reservado (sin datos).
 const COMPARACION_SUBTABS = [
   { key: 'offense', label: 'Offense' },
   { key: 'defense', label: 'Defense' },
+  { key: 'st',      label: 'Special Teams' },
 ];
 
 // _passerRating() moved to stats-lib.js (Fase 3 of the 2026-09-29 refactor —
@@ -1344,11 +1363,13 @@ function BasicBoxScore({
 }
 
 function ComparacionTab({
-  plays, drives, homeAbbr, awayAbbr, homeApodo, awayApodo, homeColor, awayColor,
+  plays, drives, home, away, homeAbbr, awayAbbr, homeApodo, awayApodo, homeColor, awayColor,
   passers, rushers, receivers, qbProgression, specialTeamsStats, penalties, defenseStats, rosters,
 }) {
   const [subTab, setSubTab] = useState('offense');
   const teams = { home: { name: homeAbbr }, away: { name: awayAbbr } };
+  // Por cuarto: mismas reglas que computeComparisonStats (ver stats-lib.js).
+  const quarterSplits = useMemo(() => computeQuarterSplits(plays, homeAbbr, awayAbbr, teams, rosters), [plays, homeAbbr, awayAbbr, rosters]);
 
   const stats = useMemo(() => computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams), [plays, drives, homeAbbr, awayAbbr]);
   const turnoverYdsByTeam = useMemo(() => computeTurnoverReturnYardsByTeam(plays, homeAbbr, awayAbbr, teams), [plays, homeAbbr, awayAbbr]);
@@ -1403,29 +1424,243 @@ function ComparacionTab({
     <div>
       <SubTabBar tabs={COMPARACION_SUBTABS} active={subTab} onChange={setSubTab} />
       {subTab === 'offense' && (
-        // Passing alone is 10 columns wide (Comp/Att/Pct/Yds/TD/Int/Long/
-        // Sacked/Rating) — the away/home side gets most of the row's width
-        // via flex, the summary sidebar stays a capped, narrower column next
-        // to it (SimpleStatTable's own overflow-x:auto is still the real
-        // safety net if either side gets squeezed on a narrow viewport).
-        <div style={{ display:'flex', gap:16, flexWrap:'wrap', alignItems:'flex-start' }}>
-          <div style={{ flex:'3 1 640px', display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16 }}>
-            <OffenseTeamCard abbr={awayAbbr} label={awayApodo} color={awayColor} passers={passers} rushers={rushers} receivers={receivers} qbIntMap={qbIntMap} />
-            <OffenseTeamCard abbr={homeAbbr} label={homeApodo} color={homeColor} passers={passers} rushers={rushers} receivers={receivers} qbIntMap={qbIntMap} />
-          </div>
-          <div style={{ flex:'1 1 280px', maxWidth:340 }}>
-            <TeamSummaryPanel awayAbbr={awayApodo} homeAbbr={homeApodo} awayColor={awayColor} homeColor={homeColor} rows={summaryRows} />
-          </div>
-        </div>
+        // Dos columnas de equipo (flex 3) + panel de resumen (flex 1, máx. 340);
+        // en móvil apila: equipos y luego el resumen. OffenseTeamCard/
+        // DefenseTeamCard/TeamSummaryPanel se conservan (ya no se usan aquí).
+        <CompOffenseLayout
+          teams={[
+            { abbr: awayAbbr, team: away, name: away?.nombre_corto || awayApodo, color: awayColor, kr: krA },
+            { abbr: homeAbbr, team: home, name: home?.nombre_corto || homeApodo, color: homeColor, kr: krH },
+          ].map(t => ({
+            ...t,
+            content: <CompLiveOffenseTeam t={t} data={compOffenseRows(passers, rushers, receivers, qbIntMap, t.abbr)}
+                       quarterSplits={quarterSplits} total={stats[t.abbr]} />,
+          }))}
+          summary={<CompSummaryPanel awayLabel={awayAbbr} homeLabel={homeAbbr} rows={summaryRows} />}
+        />
       )}
       {subTab === 'defense' && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(320px, 1fr))', gap:16, alignItems:'start' }}>
-          <DefenseTeamCard abbr={awayAbbr} label={awayApodo} color={awayColor} defenseStats={defenseStats}
-            interceptions={turnoverStatsByPlayer.interceptions} fumbleReturns={turnoverStatsByPlayer.fumbleReturns} />
-          <DefenseTeamCard abbr={homeAbbr} label={homeApodo} color={homeColor} defenseStats={defenseStats}
-            interceptions={turnoverStatsByPlayer.interceptions} fumbleReturns={turnoverStatsByPlayer.fumbleReturns} />
-        </div>
+        <CompTwoTeams teams={[
+          { abbr: awayAbbr, team: away, name: away?.nombre_corto || awayApodo, color: awayColor },
+          { abbr: homeAbbr, team: home, name: home?.nombre_corto || homeApodo, color: homeColor },
+        ].map(t => ({ ...t, content: <CompLiveDefenseTeam t={t} defenseStats={defenseStats} interceptions={turnoverStatsByPlayer.interceptions} /> }))} />
       )}
+      {subTab === 'st' && <CompSpecialTeamsPlaceholder />}
+    </div>
+  );
+}
+
+// ── Comparación: piezas compartidas (juegos con jugadas y captura manual) ────
+// Barra superior en el color del equipo ("EQUIPO · SECCIÓN", texto con
+// teamTextColor) y la tabla debajo en tarjeta blanca con borde. Las tablas son
+// IndStatTable compact; la fila Total va en gris claro y negritas.
+const COMP_TOTAL_ROW = { bg: '#f3f4f6', fg: 'var(--text)' };
+const _compSplit = l => { const s = _splitPlayerLabel(l); return [s.uni, s.name]; };
+const _compTotal = cells => ({ v: ['', 'Total', ...cells], ...COMP_TOTAL_ROW });
+const _compFix1 = v => v == null ? '—' : v.toFixed(1);
+
+function CompTeamSection({ t, title, children }) {
+  return (
+    <section style={{ minWidth:0 }}>
+      <div style={{
+        background:t.color, color:teamTextColor(t.team, t.color), borderRadius:'6px 6px 0 0',
+        fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:11, letterSpacing:0.8,
+        textTransform:'uppercase', padding:'7px 10px', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+      }}>{t.name} · {title}</div>
+      <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderTop:'none', borderRadius:'0 0 6px 6px', padding:'4px 6px 6px' }}>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function CompTeamColumn({ t, children }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14, minWidth:0 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ width:10, height:10, borderRadius:'50%', background:t.color, display:'inline-block', flexShrink:0 }} />
+        <span style={{ fontFamily:"'Inter',sans-serif", fontWeight:800, fontSize:15, color:'var(--text)', letterSpacing:0.3 }}>{t.name}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const COMP_TEAMS_GRID = { display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap:16, alignItems:'start' };
+
+function CompTwoTeams({ teams }) {
+  return (
+    <div style={COMP_TEAMS_GRID}>
+      {teams.map(t => <CompTeamColumn key={t.abbr} t={t}>{t.content}</CompTeamColumn>)}
+    </div>
+  );
+}
+
+function CompOffenseLayout({ teams, summary }) {
+  return (
+    <div style={{ display:'flex', gap:16, flexWrap:'wrap', alignItems:'flex-start' }}>
+      <div style={{ flex:'3 1 600px', minWidth:0, ...COMP_TEAMS_GRID }}>
+        {teams.map(t => <CompTeamColumn key={t.abbr} t={t}>{t.content}</CompTeamColumn>)}
+      </div>
+      <div className="vw-comp-sum" style={{ flex:'1 1 280px', maxWidth:340, minWidth:0 }}>{summary}</div>
+    </div>
+  );
+}
+
+// Panel de resumen: encabezado oscuro con las abreviaturas (away | home).
+function CompSummaryPanel({ awayLabel, homeLabel, rows }) {
+  const th = { fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:800, letterSpacing:0.5, padding:'8px 10px', color:'#ffffff', whiteSpace:'nowrap' };
+  const td = { fontFamily:"'Inter',sans-serif", fontSize:12, color:'var(--text)', padding:'6px 10px', whiteSpace:'nowrap', borderTop:'1px solid var(--border)', fontVariantNumeric:'tabular-nums' };
+  return (
+    <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:6, overflow:'hidden' }}>
+      <table aria-label="Resumen" style={{ width:'100%', borderCollapse:'collapse' }}>
+        <thead>
+          <tr style={{ background:'#111827' }}>
+            <th scope="col" style={{ ...th, textAlign:'left' }}>Estadística</th>
+            <th scope="col" style={{ ...th, textAlign:'right' }}>{awayLabel}</th>
+            <th scope="col" style={{ ...th, textAlign:'right' }}>{homeLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.label}>
+              <td style={{ ...td, color:'var(--text2)', fontWeight:600, fontSize:11, letterSpacing:0.3 }}>{r.label}</td>
+              <td style={{ ...td, textAlign:'right' }}>{r.away}</td>
+              <td style={{ ...td, textAlign:'right' }}>{r.home}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CompSpecialTeamsPlaceholder() {
+  return (
+    <div style={{ border:'2px dashed var(--border2)', borderRadius:8, padding:'28px 16px', textAlign:'center' }}>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontWeight:700, fontSize:16, color:'var(--text)', marginBottom:6 }}>Special Teams</div>
+      <div style={{ fontFamily:"'Inter',sans-serif", fontSize:13, color:'var(--text2)' }}>Espacio reservado. Aún sin datos.</div>
+    </div>
+  );
+}
+
+const COMP_QUARTER_COLS = [
+  { label: 'Cuarto', align: 'left' },
+  ...['1st DWN', 'RUSH-YDS', 'PASS-YDS', 'PASS-CAI', 'YDS-PP', 'KR-YDS', '3rd EFF', '4th EFF'].map(label => ({ label, wrap: true })),
+];
+
+// Juegos con jugadas. data = compOffenseRows(); total = el mismo objeto de
+// computeComparisonStats que alimenta el panel de resumen y t.kr = el mismo
+// _sumByTeam(kickReturns) del resumen → la fila Total de "Por cuarto"
+// coincide con el panel por construcción.
+function CompLiveOffenseTeam({ t, data, quarterSplits, total }) {
+  const pass = data.passing.map(r => [..._compSplit(r.label), _compFix1(r.rating), r.comp, r.att, r.int, r.yds, _compFix1(r.pct), r.td, r.long,
+    r.sacked ? `${r.sacked}-${r.sackedYds}` : 0]);
+  if (data.passTotal) { const s = data.passTotal;
+    pass.push(_compTotal([_compFix1(s.rating), s.comp, s.att, s.int, s.yds, _compFix1(s.pct), s.td, s.long, `${s.sacked}-${s.sackedYds}`])); }
+  const rush = data.rushing.map(r => [..._compSplit(r.label), r.att, r.gained, r.yds, _compFix1(r.avg), r.td, r.long]);
+  if (data.rushTotal) { const s = data.rushTotal; rush.push(_compTotal([s.att, s.gained, s.yds, _compFix1(s.avg), s.td, s.long])); }
+  const rec = data.receiving.map(r => [..._compSplit(r.label), r.rec, r.yds, _compFix1(r.avg), r.td, r.long]);
+  if (data.recTotal) { const s = data.recTotal; rec.push(_compTotal([s.rec, s.yds, _compFix1(s.avg), s.td, s.long])); }
+  const qRows = [
+    ...quarterSplits.map(q => [q.label, ...quarterSplitCells(q.stats[t.abbr], q.kr[t.abbr])]),
+    { v: ['Total', ...quarterSplitCells(total, t.kr)], ...COMP_TOTAL_ROW },
+  ];
+  return (
+    <>
+      <CompTeamSection t={t} title="Pase">
+        <IndStatTable compact label={`Pase de ${t.name}`} rows={pass} cols={['Uni','Nombre','QBR','Comp','Att','Int','Yds','%','TD','Long','Sack']} />
+      </CompTeamSection>
+      <CompTeamSection t={t} title="Carrera">
+        <IndStatTable compact label={`Carrera de ${t.name}`} rows={rush} cols={['Uni','Nombre','Att','Gn','Net','Prom','TD','Long']} />
+      </CompTeamSection>
+      <CompTeamSection t={t} title="Recepción">
+        <IndStatTable compact label={`Recepción de ${t.name}`} rows={rec} cols={['Uni','Nombre','Rec','Yds','Prom','TD','Long']} />
+      </CompTeamSection>
+      <CompTeamSection t={t} title="Por cuarto">
+        <IndStatTable compact sticky={false} label={`Por cuarto de ${t.name}`} rows={qRows} cols={COMP_QUARTER_COLS} />
+      </CompTeamSection>
+    </>
+  );
+}
+
+// Mismo _buildIndDefense que IndividualDefense; sin fila Total.
+function CompLiveDefenseTeam({ t, defenseStats, interceptions }) {
+  const { tackles, pass } = _buildIndDefense(defenseStats, interceptions, t.abbr);
+  return (
+    <>
+      <CompTeamSection t={t} title="Tackles y presión">
+        <IndStatTable compact label={`Tackles y presión de ${t.name}`}
+          cols={['Uni', 'Nombre', 'Solo', 'Ast', 'Total', 'TFL', 'Sacks', 'FF']}
+          rows={tackles.map(r => [..._compSplit(r.label), r.solo, r.ast, r.total, r.tfl, r.sacks, r.ff])} />
+      </CompTeamSection>
+      <CompTeamSection t={t} title="Defensa de pase">
+        <IndStatTable compact label={`Defensa de pase de ${t.name}`}
+          cols={['Uni', 'Nombre', 'INT', 'Yds ret.', 'PBU']}
+          rows={pass.map(r => [..._compSplit(r.label), r.int, r.int ? r.yds : '—', r.pbu])} />
+      </CompTeamSection>
+    </>
+  );
+}
+
+// ── Comparación en captura manual (isManualOnly) ─────────────────────────────
+// Mismas tablas sin las columnas que la carga manual no tiene; sin "Por cuarto".
+function CompManualOffenseTeam({ t, data }) {
+  const avg = v => v == null ? '—' : fmtSignedYds(v, 1);
+  const rating = v => v == null ? '—' : fmtSignedYds(v, 1);
+  const pass = data.passing.map(r => [..._compSplit(r.label), rating(r.rating), r.comp, r.att, r.int, fmtSignedYds(r.yds), _compFix1(r.pct), r.td]);
+  if (data.passTotal) { const s = data.passTotal;
+    pass.push(_compTotal([rating(s.rating), s.comp, s.att, s.int, fmtSignedYds(s.yds), _compFix1(s.pct), s.td])); }
+  const rush = data.rushing.map(r => [..._compSplit(r.label), r.att, fmtSignedYds(r.yds), avg(r.avg), r.td]);
+  if (data.rushTotal) { const s = data.rushTotal; rush.push(_compTotal([s.att, fmtSignedYds(s.yds), avg(s.avg), s.td])); }
+  const rec = data.receiving.map(r => [..._compSplit(r.label), r.rec, fmtSignedYds(r.yds), avg(r.avg), r.td]);
+  if (data.recTotal) { const s = data.recTotal; rec.push(_compTotal([s.rec, fmtSignedYds(s.yds), avg(s.avg), s.td])); }
+  return (
+    <>
+      <CompTeamSection t={t} title="Pase">
+        <IndStatTable compact label={`Pase de ${t.name}`} rows={pass} cols={['Uni','Nombre','QBR','Comp','Att','Int','Yds','%','TD']} />
+      </CompTeamSection>
+      <CompTeamSection t={t} title="Carrera">
+        <IndStatTable compact label={`Carrera de ${t.name}`} rows={rush} cols={['Uni','Nombre','Att','Net','Prom','TD']} />
+      </CompTeamSection>
+      <CompTeamSection t={t} title="Recepción">
+        <IndStatTable compact label={`Recepción de ${t.name}`} rows={rec} cols={['Uni','Nombre','Rec','Yds','Prom','TD']} />
+      </CompTeamSection>
+    </>
+  );
+}
+
+function CompManualDefenseTeam({ t, rows }) {
+  return (
+    <CompTeamSection t={t} title="Tackles y presión">
+      <IndStatTable compact label={`Tackles y presión de ${t.name}`}
+        cols={['Uni', 'Nombre', 'Tackles', 'TFL', 'Sacks', 'FF', 'FR', 'INT']}
+        rows={rows.map(r => [..._compSplit(r.label), fmtManualHalf(r.tackles), fmtManualHalf(r.tfl), fmtManualHalf(r.sacks), r.ff, r.fum_rec, r.ints])} />
+    </CompTeamSection>
+  );
+}
+
+function ManualComparacionTab({ home, away, homeColor, awayColor, homeTeamId, awayTeamId, teamManualStats, playerManualStats }) {
+  const [subTab, setSubTab] = useState('offense');
+  const sides = [
+    { abbr: 'away', id: awayTeamId, team: away, name: away?.nombre_corto || away?.Apodo || away?.abreviatura || 'Away', color: awayColor },
+    { abbr: 'home', id: homeTeamId, team: home, name: home?.nombre_corto || home?.Apodo || home?.abreviatura || 'Home', color: homeColor },
+  ];
+  const summaryRows = useMemo(() => manualCompSummaryRows(teamManualStats, playerManualStats, awayTeamId, homeTeamId),
+    [teamManualStats, playerManualStats, awayTeamId, homeTeamId]);
+  return (
+    <div>
+      <SubTabBar tabs={COMPARACION_SUBTABS} active={subTab} onChange={setSubTab} />
+      {subTab === 'offense' && (
+        <CompOffenseLayout
+          teams={sides.map(t => ({ ...t, content: <CompManualOffenseTeam t={t} data={manualCompOffense(playerManualStats, t.id)} /> }))}
+          summary={<CompSummaryPanel awayLabel={away?.abreviatura || 'Away'} homeLabel={home?.abreviatura || 'Home'} rows={summaryRows} />}
+        />
+      )}
+      {subTab === 'defense' && (
+        <CompTwoTeams teams={sides.map(t => ({ ...t, content: <CompManualDefenseTeam t={t} rows={manualIndDefense(playerManualStats, t.id)} /> }))} />
+      )}
+      {subTab === 'st' && <CompSpecialTeamsPlaceholder />}
     </div>
   );
 }
@@ -2138,24 +2373,40 @@ const IND_STICKY = [
   { position:'sticky', left:IND_UNI_W, zIndex:1, background:'var(--card-bg)', minWidth:130, textAlign:'left', fontWeight:600, boxShadow:'inset -1px 0 0 var(--border)' },
 ];
 
-// cols: 'Etiqueta' o { label, align:'left' }.
+// Variante compacta (Comparación: la tabla cabe en media columna). Solo se usa
+// con compact; sin compact todo queda como IND_STICKY/IND_CELL/IND_HEAD.
+const IND_UNI_W_COMPACT = 40;
+const IND_STICKY_COMPACT = [
+  { ...IND_STICKY[0], width:IND_UNI_W_COMPACT, minWidth:IND_UNI_W_COMPACT },
+  { ...IND_STICKY[1], left:IND_UNI_W_COMPACT, minWidth:96 },
+];
+const IND_CELL_COMPACT = { ...IND_CELL, padding:'6px 4px', minWidth:40 };
+const IND_HEAD_COMPACT = { ...IND_HEAD, padding:'4px 4px', minWidth:40 };
+
+// cols: 'Etiqueta' o { label, align:'left', wrap:true } (wrap: el encabezado
+//   puede partirse en dos líneas).
 // rows: arrays [uni, nombre, ...valores], u objetos { v:[...], bg, fg, muted }
-//   bg/fg: fondo y texto de toda la fila (p. ej. TD en color del equipo);
+//   bg/fg: fondo y texto de toda la fila (p. ej. TD en color del equipo),
+//   también en las columnas fijas (rowStyle va después del estilo sticky);
 //   muted: fila apagada (jugada anulada por bandera).
 // sticky (default true): Uni y Nombre (columnas 0 y 1) fijas a la izquierda;
 //   false para tablas sin esas columnas (QB Progression).
+// compact (default false): celdas y Nombre más angostos (Comparación).
 // Sin filas → "Sin datos".
-function IndStatTable({ cols, rows, label, sticky = true }) {
+function IndStatTable({ cols, rows, label, sticky = true, compact = false }) {
   if (!rows.length) return <EmptyState text="Sin datos" />;
   const defs = cols.map(c => typeof c === 'string' ? { label: c } : c);
-  const stickyOf = i => (sticky && IND_STICKY[i]) || null;
+  const STICKY = compact ? IND_STICKY_COMPACT : IND_STICKY;
+  const CELL = compact ? IND_CELL_COMPACT : IND_CELL;
+  const HEAD = compact ? IND_HEAD_COMPACT : IND_HEAD;
+  const stickyOf = i => (sticky && STICKY[i]) || null;
   return (
     <div style={{ overflowX:'auto' }}>
       <table aria-label={label} style={{ width:'100%', borderCollapse:'separate', borderSpacing:0 }}>
         <thead>
           <tr>
             {defs.map((c, i) => (
-              <th key={c.label} scope="col" style={{ ...IND_HEAD, textAlign: c.align || 'center', ...stickyOf(i), color:'var(--text3)', fontWeight:600 }}>{c.label}</th>
+              <th key={c.label} scope="col" style={{ ...HEAD, textAlign: c.align || 'center', ...(c.wrap ? { whiteSpace:'normal' } : null), ...stickyOf(i), color:'var(--text3)', fontWeight:600 }}>{c.label}</th>
             ))}
           </tr>
         </thead>
@@ -2170,7 +2421,7 @@ function IndStatTable({ cols, rows, label, sticky = true }) {
             return (
               <tr key={ri}>
                 {row.v.map((v, j) => (
-                  <td key={j} style={{ ...IND_CELL, textAlign: defs[j]?.align || 'center', ...stickyOf(j), ...rowStyle }}>{v}</td>
+                  <td key={j} style={{ ...CELL, textAlign: defs[j]?.align || 'center', ...stickyOf(j), ...rowStyle }}>{v}</td>
                 ))}
               </tr>
             );
@@ -2824,6 +3075,168 @@ function IndividualTab({ home, away, homeAbbr, awayAbbr, homeColor, awayColor, s
             : <IndividualPenalties plays={plays} penalties={penalties}
                 home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor} />}
     </div>
+  );
+}
+
+// ── Individual · captura manual (isManualOnly) ───────────────────────────────
+// Mismo diseño que IndividualTab, alimentado por player_game_stats_manual /
+// team_game_stats_manual vía los adaptadores puros de stats-lib.js
+// (manualIndOffense/manualIndDefense/manualIndSpecialTeams/manualTeamStatRows).
+// Solo columnas que existen en la carga manual (sin Largo/Capturas/Ganadas/Solo/Ast).
+function ManualIndOffense({ color, playerManualStats, teamId }) {
+  const d = useMemo(() => manualIndOffense(playerManualStats, teamId), [playerManualStats, teamId]);
+  const split = l => { const s = _splitPlayerLabel(l); return [s.uni, s.name]; };
+  const avg = v => v == null ? '—' : fmtSignedYds(v, 1);
+  const passRows = d.passing.map(r => [
+    ...split(r.label),
+    r.comp, r.att,
+    r.pct != null ? r.pct.toFixed(1) : '—',
+    fmtSignedYds(r.yds), r.td, r.int,
+    r.rating != null ? fmtSignedYds(r.rating, 1) : '—',
+  ]);
+  const recRows  = d.receiving.map(r => [...split(r.label), r.rec, fmtSignedYds(r.yds), avg(r.avg), r.td]);
+  const rushRows = d.rushing.map(r => [...split(r.label), r.att, fmtSignedYds(r.yds), avg(r.avg), r.td]);
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16 }}>
+      <IndSection title="Pase" color={color}>
+        <IndStatTable label="Pase" rows={passRows} cols={['Uni','Nombre','Comp','Att','%','Yds','TD','Int','Rating']} />
+      </IndSection>
+      <IndSection title="Recepción" color={color}>
+        <IndStatTable label="Recepción" rows={recRows} cols={['Uni','Nombre','Rec','Yds','Prom','TD']} />
+      </IndSection>
+      <IndSection title="Carrera" color={color}>
+        <IndStatTable label="Carrera" rows={rushRows} cols={['Uni','Nombre','Att','Yds','Prom','TD']} />
+      </IndSection>
+    </div>
+  );
+}
+
+function ManualIndDefense({ color, playerManualStats, teamId }) {
+  const rows = useMemo(() => manualIndDefense(playerManualStats, teamId), [playerManualStats, teamId]);
+  const split = l => { const s = _splitPlayerLabel(l); return [s.uni, s.name]; };
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16 }}>
+      <IndSection title="Tackles y presión" color={color}>
+        <IndStatTable label="Tackles y presión"
+          cols={['Uni', 'Nombre', 'Tackles', 'TFL', 'Capturas', 'FF', 'FR', 'INT']}
+          rows={rows.map(r => [...split(r.label), fmtManualHalf(r.tackles), fmtManualHalf(r.tfl), fmtManualHalf(r.sacks), r.ff, r.fum_rec, r.ints])} />
+      </IndSection>
+    </div>
+  );
+}
+
+// Cada sección solo si tiene filas (hoy el adaptador devuelve vacío).
+function ManualIndSpecialTeams({ color, st }) {
+  const split = l => { const s = _splitPlayerLabel(l); return [s.uni, s.name]; };
+  const retRows = rows => rows.map(r => [...split(r.label), r.no, fmtSignedYds(r.yds), r.no ? fmtSignedYds(r.yds / r.no, 1) : '—', r.td]);
+  const sections = [
+    { title: 'Goles de campo y PAT', cols: ['Uni', 'Nombre', 'FG', 'PAT', 'Pts'],
+      rows: st.kicking.map(r => [...split(r.label), `${r.fgm}-${r.fga}`, `${r.patm}-${r.pata}`, r.pts]) },
+    { title: 'Patadas de salida', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom'],
+      rows: st.kickoffs.map(r => [...split(r.label), r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '—']) },
+    { title: 'Despejes', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom'],
+      rows: st.punting.map(r => [...split(r.label), r.no, r.yds, r.no ? (r.yds / r.no).toFixed(1) : '—']) },
+    { title: 'Retorno de patada', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom', 'TD'], rows: retRows(st.kickReturns) },
+    { title: 'Retorno de despeje', cols: ['Uni', 'Nombre', 'No.', 'Yds', 'Prom', 'TD'], rows: retRows(st.puntReturns) },
+  ].filter(s => s.rows.length);
+  if (!sections.length) return <div style={CARD_STYLE}><EmptyState text="Sin datos" /></div>;
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16 }}>
+      {sections.map(s => (
+        <IndSection key={s.title} title={s.title} color={color}>
+          <IndStatTable label={s.title} cols={s.cols} rows={s.rows} />
+        </IndSection>
+      ))}
+    </div>
+  );
+}
+
+function ManualIndTeam({ teamManualStats, awayTeamId, homeTeamId, awayName, homeName }) {
+  const rows = useMemo(() => manualTeamStatRows(teamManualStats, awayTeamId, homeTeamId), [teamManualStats, awayTeamId, homeTeamId]);
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:16 }}>
+      <IndSection title="Estadísticas de equipo" color="var(--border2)">
+        <IndStatTable sticky={false} label="Estadísticas de equipo"
+          cols={[{ label: 'Estadística', align: 'left' }, awayName, homeName]}
+          rows={rows.map(r => [r.label, r.away, r.home])} />
+      </IndSection>
+    </div>
+  );
+}
+
+function ManualIndividualTab({ home, away, homeColor, awayColor, homeTeamId, awayTeamId,
+                               playerManualStats, sub, onSubChange, grp, onGrpChange }) {
+  const homeName = home?.nombre_corto || home?.Apodo || home?.abreviatura || 'Home';
+  const awayName = away?.nombre_corto || away?.Apodo || away?.abreviatura || 'Away';
+  const subTabs = [
+    { key: 'away',   label: awayName, color: awayColor },
+    { key: 'home',   label: homeName, color: homeColor },
+  ];
+  // sub viene del estado compartido con IndividualTab; cualquier otra clave → Away.
+  const curSub = subTabs.some(t => t.key === sub) ? sub : 'away';
+  const team   = curSub === 'home' ? home : away;
+  const teamId = curSub === 'home' ? homeTeamId : awayTeamId;
+  const color  = curSub === 'home' ? homeColor : awayColor;
+
+  const st = useMemo(() => manualIndSpecialTeams(playerManualStats, teamId), [playerManualStats, teamId]);
+  const groups = INDIVIDUAL_GROUPS.filter(g => g.key !== 'st' || manualIndSpecialTeamsHasData(st));
+  const curGrp = groups.some(g => g.key === grp) ? grp : 'off';
+
+  return (
+    <div>
+      <IndividualSubTabs tabs={subTabs} active={curSub} onChange={onSubChange} />
+      <IndividualSegmented groups={groups} active={curGrp} onChange={onGrpChange}
+        color={color} textColor={teamTextColor(team, color)} />
+      {curGrp === 'def'
+        ? <ManualIndDefense color={color} playerManualStats={playerManualStats} teamId={teamId} />
+        : curGrp === 'st'
+          ? <ManualIndSpecialTeams color={color} st={st} />
+          : <ManualIndOffense color={color} playerManualStats={playerManualStats} teamId={teamId} />}
+    </div>
+  );
+}
+
+// Cuerpo del viewer en captura manual: barra principal [Individual] [Equipo]
+// (Equipo al nivel de Individual, no junto a las pestañas de equipo).
+const MANUAL_MAIN_TABS = [
+  { key: 'individual',  label: 'Individual' },
+  { key: 'comparacion', label: 'Comparación' },
+  { key: 'equipo',      label: 'Equipo' },
+];
+
+// activeTab/onTabChange: el mismo estado activeTab de App (inicial 'individual').
+// Una clave que no exista en esta barra (no debería pasar) cae en Individual.
+function ManualGameView({ home, away, homeColor, awayColor, homeTeamId, awayTeamId,
+                          teamManualStats, playerManualStats, sub, onSubChange, grp, onGrpChange,
+                          activeTab, onTabChange }) {
+  const tab = MANUAL_MAIN_TABS.some(t => t.key === activeTab) ? activeTab : 'individual';
+  const homeName = home?.nombre_corto || home?.Apodo || home?.abreviatura || 'Home';
+  const awayName = away?.nombre_corto || away?.Apodo || away?.abreviatura || 'Away';
+  return (
+    <>
+      <TabBar tabs={MANUAL_MAIN_TABS} active={tab} onChange={onTabChange} />
+      <div style={{ padding:'16px 20px 40px', maxWidth: tab === 'equipo' ? 1200 : 1360, margin:'0 auto' }}>
+        <div style={{ display:'flex', justifyContent:'center', marginBottom:12 }}>
+          <span style={{
+            fontFamily:"'Inter',sans-serif", fontSize:10, fontWeight:700, color:'var(--text2)',
+            background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:4,
+            padding:'2px 8px', letterSpacing:0.5,
+          }}>CAPTURA MANUAL</span>
+        </div>
+        {tab === 'equipo'
+          ? <ManualIndTeam teamManualStats={teamManualStats} awayTeamId={awayTeamId} homeTeamId={homeTeamId}
+              awayName={awayName} homeName={homeName} />
+          : tab === 'comparacion'
+          ? <ManualComparacionTab home={home} away={away} homeColor={homeColor} awayColor={awayColor}
+              homeTeamId={homeTeamId} awayTeamId={awayTeamId}
+              teamManualStats={teamManualStats} playerManualStats={playerManualStats} />
+          : <ManualIndividualTab
+              home={home} away={away} homeColor={homeColor} awayColor={awayColor}
+              homeTeamId={homeTeamId} awayTeamId={awayTeamId}
+              playerManualStats={playerManualStats}
+              sub={sub} onSubChange={onSubChange} grp={grp} onGrpChange={onGrpChange} />}
+      </div>
+    </>
   );
 }
 
@@ -3490,7 +3903,8 @@ function App() {
               </div>
             )}
 
-            {/* Quarter score table */}
+            {/* Quarter score table: en juegos de captura manual (isManualOnly) no se muestra; solo el marcador grande. */}
+            {!isManualOnly && (
             <table className="vw-qt" style={{ width:'100%', borderCollapse:'collapse', fontVariantNumeric:'tabular-nums', tableLayout:'fixed' }}>
               <thead>
                 <tr>
@@ -3516,6 +3930,7 @@ function App() {
                 ))}
               </tbody>
             </table>
+            )}
             {/* Tiempos fuera: no se muestran porque el dato no está en la base (el evento
                 'timeout' solo vive en el localStorage del operador). Ver docs/notas_pendientes.md. */}
           </div>
@@ -3583,14 +3998,16 @@ function App() {
       )}
 
       {isManualOnly ? (
-        <div className="vw-box-wrap" style={{ padding:'16px 20px 40px', maxWidth:1200, margin:'0 auto' }}>
-          <BasicBoxScore
-            teamManualStats={teamManualStats} playerManualStats={playerManualStats}
-            homeTeamId={game.home_team_id} awayTeamId={game.away_team_id}
-            homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeApodo={homeApodo} awayApodo={awayApodo}
-            homeColor={homeColor} awayColor={awayColor}
-          />
-        </div>
+        // Captura manual: pestañas Individual y Equipo (BasicBoxScore se conserva
+        // en el archivo pero ya no se renderiza aquí).
+        <ManualGameView
+          home={home} away={away} homeColor={homeColor} awayColor={awayColor}
+          homeTeamId={game.home_team_id} awayTeamId={game.away_team_id}
+          teamManualStats={teamManualStats} playerManualStats={playerManualStats}
+          sub={indSubTab} onSubChange={setIndSubTab}
+          grp={indGroup} onGrpChange={setIndGroup}
+          activeTab={activeTab} onTabChange={setActiveTab}
+        />
       ) : (
         <>
           {/* ── TABS ──────────────────────────────────────────────────────────── */}
@@ -3598,7 +4015,7 @@ function App() {
 
           {/* ── TAB CONTENT ───────────────────────────────────────────────────── */}
           {/* Individual usa un contenedor más ancho (1360) para sus vistas lado a lado; el resto sigue en 1200. */}
-          <div style={{ padding:'16px 20px 40px', maxWidth: activeTab === 'individual' ? 1360 : 1200, margin:'0 auto' }}>
+          <div style={{ padding:'16px 20px 40px', maxWidth: (activeTab === 'individual' || activeTab === 'comparacion') ? 1360 : 1200, margin:'0 auto' }}>
             {activeTab === 'individual' && (
               <IndividualTab
                 home={home} away={away} homeAbbr={homeAbbr} awayAbbr={awayAbbr} homeColor={homeColor} awayColor={awayColor}
@@ -3632,7 +4049,7 @@ function App() {
             )}
             {activeTab === 'comparacion' && (
               <ComparacionTab
-              rosters={rosters}
+              rosters={rosters} home={home} away={away}
                 plays={plays} drives={drives} homeAbbr={homeAbbr} awayAbbr={awayAbbr}
                 homeApodo={homeApodo} awayApodo={awayApodo} homeColor={homeColor} awayColor={awayColor}
                 passers={passers} rushers={rushers} receivers={receivers}

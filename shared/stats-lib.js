@@ -770,27 +770,56 @@ export function _effectiveNetYards(p, teams) {
   return eff
 }
 
-export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
-  plays = _resolvePlays(plays)
-  const blank = () => ({
+function _comparisonBlank() {
+  return {
     passYds: 0, rushYds: 0, totalPlays: 0,
     passCompletions: 0, passAttempts: 0, rushPlays: 0, sackAdjRushYds: 0, sackAdjRushPlays: 0,
     firstDowns: 0, thirdAtt: 0, thirdConv: 0, fourthAtt: 0, fourthConv: 0,
     redZoneTrips: 0, redZoneTDs: 0,
     turnovers: 0, fumbles: 0, fumblesLost: 0, intsThrown: 0,
     sacksMade: 0, sacksYds: 0, tflMade: 0, tflYds: 0,
+  }
+}
+
+export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams) {
+  plays = _resolvePlays(plays)
+  const out = { [homeAbbr]: _comparisonBlank(), [awayAbbr]: _comparisonBlank() }
+  _accumulateComparison(plays, homeAbbr, awayAbbr, () => out)
+
+  drives.forEach((d, i) => {
+    const t = out[d.possession]
+    if (!t) return
+    const enteredRedZone = d.plays.some(p =>
+      p.play_type !== 'PAT_TRY' && p.yardline_100 != null && p.yardline_100 <= 20
+    )
+    if (!enteredRedZone) return
+    t.redZoneTrips++
+    if (driveEndLabel(d.plays, i === drives.length - 1, teams) === 'TD') t.redZoneTDs++
   })
-  const out = { [homeAbbr]: blank(), [awayAbbr]: blank() }
+
+  return out
+}
+
+// Per-play part of computeComparisonStats (everything except red zone, which
+// is per drive). Extracted so computeQuarterSplits runs the SAME rules over
+// the SAME play sequence (series state included) and only changes where each
+// play's numbers land. plays must already be resolved. outFor(p) returns the
+// { [homeAbbr], [awayAbbr] } bucket that play accumulates into, or null to
+// skip accumulating it (its series state is still tracked).
+function _accumulateComparison(plays, homeAbbr, awayAbbr, outFor) {
   const otherTeam = t => (t === homeAbbr ? awayAbbr : (t === awayAbbr ? homeAbbr : null))
+  const valid = t => t === homeAbbr || t === awayAbbr
   // yardline_100 of each team's latest 1st down (start of its current series).
   const seriesStart = {}
+  const NONE = {}
 
   for (const p of plays) {
     if (p.play_type === 'GAME_CTRL') continue
     // TC-26 (§11 Art.4): a try is not a play from scrimmage — no team fumble,
     // turnover, sack, TFL, first down or play of any kind in these totals.
     if (p.play_type === 'PAT_TRY') continue
-    if (p.down === 1 && p.yardline_100 != null && out[p.possession]) seriesStart[p.possession] = p.yardline_100
+    const out = outFor(p) || NONE
+    if (p.down === 1 && p.yardline_100 != null && valid(p.possession)) seriesStart[p.possession] = p.yardline_100
     const firstDowns = _firstDownsOnPlay(p, seriesStart[p.possession] ?? null)
 
     // intsThrown mirrors viewer.html's Comparación team summary panel split
@@ -894,19 +923,111 @@ export function computeComparisonStats(plays, drives, homeAbbr, awayAbbr, teams)
       if (p.pass_result === 'complete') t.passCompletions++
     }
   }
+}
 
-  drives.forEach((d, i) => {
-    const t = out[d.possession]
-    if (!t) return
-    const enteredRedZone = d.plays.some(p =>
-      p.play_type !== 'PAT_TRY' && p.yardline_100 != null && p.yardline_100 <= 20
-    )
-    if (!enteredRedZone) return
-    t.redZoneTrips++
-    if (driveEndLabel(d.plays, i === drives.length - 1, teams) === 'TD') t.redZoneTDs++
+// ── Comparación · Por cuarto ─────────────────────────────────────────────────
+// Splits computeComparisonStats' per-play numbers by quarter (1-4, OT = every
+// quarter >= 5 together). Same rules via _accumulateComparison over the whole
+// game in order, so a series that crosses a quarter keeps its first-down
+// state: for every additive field, the quarters sum to computeComparisonStats.
+// Kick returns per quarter: computeSpecialTeamsStats on that quarter's plays
+// (it has no cross-play state), summed per team as {no, yds}.
+// OT row only when some play has quarter >= 5. Plays without a quarter count
+// only in the game total (the caller's computeComparisonStats).
+export function _quarterKey(q) {
+  const n = Number(q)
+  if (!Number.isFinite(n) || n < 1) return null
+  return n >= 5 ? 'OT' : String(Math.floor(n))
+}
+
+export function computeQuarterSplits(plays, homeAbbr, awayAbbr, teams, rosters = null) {
+  const raw = Array.isArray(plays) ? plays : []
+  const hasOt = raw.some(p => p.play_type !== 'GAME_CTRL' && _quarterKey(p.quarter) === 'OT')
+  const keys = ['1', '2', '3', '4', ...(hasOt ? ['OT'] : [])]
+  const buckets = Object.fromEntries(keys.map(k => [k, { [homeAbbr]: _comparisonBlank(), [awayAbbr]: _comparisonBlank() }]))
+  _accumulateComparison(_resolvePlays(raw), homeAbbr, awayAbbr, p => buckets[_quarterKey(p.quarter)] || null)
+
+  const krSum = (rows, team) => rows.filter(r => r.team === team)
+    .reduce((acc, r) => ({ no: acc.no + r.no, yds: acc.yds + r.yds }), { no: 0, yds: 0 })
+  return keys.map(k => {
+    const st = computeSpecialTeamsStats(raw.filter(p => _quarterKey(p.quarter) === k), homeAbbr, awayAbbr, teams, rosters)
+    return {
+      key: k,
+      label: k === 'OT' ? 'OT' : `${k}º`,
+      stats: buckets[k],
+      kr: { [homeAbbr]: krSum(st.kickReturns, homeAbbr), [awayAbbr]: krSum(st.kickReturns, awayAbbr) },
+    }
   })
+}
 
-  return out
+// One "Por cuarto" row for a team: stats = a computeComparisonStats team
+// object (or a quarter bucket), kr = {no, yds}. Columns: 1st DWN, RUSH-YDS,
+// PASS-YDS, PASS-CAI, YDS-PP, KR-YDS, 3rd EFF, 4th EFF. YDS-PP uses the same
+// formula/format as the summary panel's (one decimal, '0.0' without plays).
+export function quarterSplitCells(stats, kr) {
+  const s = stats || _comparisonBlank()
+  const k = kr || { no: 0, yds: 0 }
+  const total = s.passYds + s.rushYds
+  return [
+    s.firstDowns, s.rushYds, s.passYds,
+    `${s.passCompletions}-${s.passAttempts}-${s.intsThrown}`,
+    s.totalPlays > 0 ? (total / s.totalPlays).toFixed(1) : '0.0',
+    `${k.no}-${k.yds}`,
+    `${s.thirdConv}-${s.thirdAtt}`,
+    `${s.fourthConv}-${s.fourthAtt}`,
+  ]
+}
+
+// ── Comparación · Offense (juegos con jugadas) ───────────────────────────────
+// From the same buildOffenseMaps() maps OffenseTeamCard reads (+ qbIntMap from
+// computeQBProgression). Raw numbers; each table gets a `total` (null when it
+// has no rows). Order: Pase/Recepción by Yds, Carrera by Net, descending.
+const _long = v => (v == null || v === -Infinity ? 0 : v)
+export function compOffenseRows(passers, rushers, receivers, qbIntMap, abbr) {
+  const passing = Object.entries(passers?.[abbr] || {}).map(([key, d]) => {
+    const int = qbIntMap?.[`${abbr}::${key}`] || 0
+    return { label: d.label ?? key, comp: d.comp, att: d.att, int, yds: d.yds, td: d.td, long: _long(d.long),
+             sacked: d.sacked || 0, sackedYds: d.sackedYds || 0,
+             pct: d.att ? (d.comp / d.att) * 100 : null, rating: _passerRating(d.comp, d.att, d.yds, d.td, int) }
+  }).sort((a, b) => b.yds - a.yds)
+  const rushing = Object.entries(rushers?.[abbr] || {}).map(([key, d]) => ({
+    label: d.label ?? key, att: d.att, gained: d.gained || 0, yds: d.yds, td: d.td, long: _long(d.long),
+    avg: d.att ? d.yds / d.att : null,
+  })).sort((a, b) => b.yds - a.yds)
+  const receiving = Object.entries(receivers?.[abbr] || {}).map(([key, d]) => ({
+    label: d.label ?? key, rec: d.rec, yds: d.yds, td: d.td, long: _long(d.long),
+    avg: d.rec ? d.yds / d.rec : null,
+  })).sort((a, b) => b.yds - a.yds)
+  return {
+    passing, rushing, receiving,
+    passTotal: _passTotal(passing, true),
+    rushTotal: _rushTotal(rushing, true),
+    recTotal: _recTotal(receiving, true),
+  }
+}
+
+const _sum = (rows, f) => rows.reduce((s, r) => s + (r[f] || 0), 0)
+const _max = (rows, f) => rows.reduce((m, r) => Math.max(m, r[f] ?? 0), -Infinity)
+function _passTotal(rows, live) {
+  if (!rows.length) return null
+  const comp = _sum(rows, 'comp'), att = _sum(rows, 'att'), int = _sum(rows, 'int'), yds = _sum(rows, 'yds'), td = _sum(rows, 'td')
+  const t = { label: 'Total', comp, att, int, yds, td, pct: att ? (comp / att) * 100 : null, rating: _passerRating(comp, att, yds, td, int) }
+  if (live) Object.assign(t, { long: _max(rows, 'long'), sacked: _sum(rows, 'sacked'), sackedYds: _sum(rows, 'sackedYds') })
+  return t
+}
+function _rushTotal(rows, live) {
+  if (!rows.length) return null
+  const att = _sum(rows, 'att'), yds = _sum(rows, 'yds')
+  const t = { label: 'Total', att, yds, td: _sum(rows, 'td'), avg: att ? yds / att : null }
+  if (live) Object.assign(t, { gained: _sum(rows, 'gained'), long: _max(rows, 'long') })
+  return t
+}
+function _recTotal(rows, live) {
+  if (!rows.length) return null
+  const rec = _sum(rows, 'rec'), yds = _sum(rows, 'yds')
+  const t = { label: 'Total', rec, yds, td: _sum(rows, 'td'), avg: rec ? yds / rec : null }
+  if (live) t.long = _max(rows, 'long')
+  return t
 }
 
 // Box Score's "Penalties" row needs computePenalties() too (Comparación
@@ -3505,6 +3626,165 @@ export function _manualReceivingRows(playerManualStats, teamId) {
       const rec = r.rec || 0, yds = r.rec_yds || 0
       return [playerShortLabel(r.player), rec, yds, rec ? (yds / rec).toFixed(1) : '0.0', r.rec_td || 0, '—']
     })
+}
+
+// ── Manual-capture path: pestaña "Individual" (viewer.html, isManualOnly) ─────
+// Adaptadores puros (sin fetch ni DOM) de player_game_stats_manual /
+// team_game_stats_manual al formato de la pestaña Individual de los juegos en
+// vivo. Devuelven datos crudos + etiqueta "#15 F. Sarabia"; el viewer da formato.
+// Solo jugadores con actividad, filtrados por player.team_id.
+
+// tackles/tfl/sacks admiten múltiplos de 0.5: 1 decimal solo si no es entero.
+export function fmtManualHalf(v) {
+  const n = Number(v) || 0
+  return Number.isInteger(n) ? String(n) : n.toFixed(1)
+}
+
+// Yardas/promedios con signo menos tipográfico (U+2212) cuando son negativos.
+// decimals: null → entero tal cual; número → toFixed(decimals).
+export function fmtSignedYds(v, decimals = null) {
+  const n = Number(v) || 0
+  const s = decimals == null ? String(Math.abs(n)) : Math.abs(n).toFixed(decimals)
+  return n < 0 && Number(s) !== 0 ? `−${s}` : s
+}
+
+const _byDesc = field => (a, b) => (b[field] || 0) - (a[field] || 0)
+
+export function manualIndOffense(playerManualStats, teamId) {
+  const mine = (playerManualStats || []).filter(r => r.player?.team_id === teamId)
+  const label = r => playerShortLabel(r.player)
+
+  const passing = mine
+    .filter(r => (r.pass_att || 0) > 0 || (r.pass_comp || 0) > 0 || (r.pass_yds || 0) !== 0 || (r.pass_td || 0) > 0 || (r.pass_int || 0) > 0)
+    .map(r => {
+      const comp = r.pass_comp || 0, att = r.pass_att || 0, yds = r.pass_yds || 0, td = r.pass_td || 0, int = r.pass_int || 0
+      return { label: label(r), player: r.player, comp, att, int, yds, td,
+               pct: att ? (comp / att) * 100 : null,
+               rating: _passerRating(comp, att, yds, td, int) }
+    })
+    .sort(_byDesc('yds'))
+
+  const receiving = mine
+    .filter(r => (r.rec || 0) > 0 || (r.rec_yds || 0) !== 0 || (r.rec_td || 0) > 0)
+    .map(r => {
+      const rec = r.rec || 0, yds = r.rec_yds || 0
+      return { label: label(r), player: r.player, rec, yds, td: r.rec_td || 0, avg: rec ? yds / rec : null }
+    })
+    .sort(_byDesc('yds'))
+
+  const rushing = mine
+    .filter(r => (r.rush_att || 0) > 0 || (r.rush_yds || 0) !== 0 || (r.rush_td || 0) > 0)
+    .map(r => {
+      const att = r.rush_att || 0, yds = r.rush_yds || 0
+      return { label: label(r), player: r.player, att, yds, td: r.rush_td || 0, avg: att ? yds / att : null }
+    })
+    .sort(_byDesc('yds'))
+
+  return { passing, receiving, rushing }
+}
+
+// Una sola tabla "Tackles y presión" (sin Solo/Ast: la carga manual solo trae total).
+export function manualIndDefense(playerManualStats, teamId) {
+  return (playerManualStats || [])
+    .filter(r => r.player?.team_id === teamId)
+    .map(r => ({
+      label: playerShortLabel(r.player), player: r.player,
+      tackles: Number(r.tackles) || 0, tfl: Number(r.tfl) || 0, sacks: Number(r.sacks) || 0,
+      ff: r.ff || 0, fum_rec: r.fum_rec || 0, ints: r.ints || 0,
+    }))
+    .filter(d => d.tackles || d.tfl || d.sacks || d.ff || d.fum_rec || d.ints)
+    .sort(_byDesc('tackles'))
+}
+
+// Equipos especiales: las tablas manuales todavía no traen estos datos (la
+// fuente se define después). Misma forma que tendrá cuando exista; vacío por ahora.
+// eslint-disable-next-line no-unused-vars
+export function manualIndSpecialTeams(playerManualStats, teamId) {
+  return { kicking: [], kickoffs: [], punting: [], kickReturns: [], puntReturns: [] }
+}
+
+export function manualIndSpecialTeamsHasData(st) {
+  return !!st && Object.values(st).some(rows => Array.isArray(rows) && rows.length > 0)
+}
+
+// Tabla Estadística | Away | Home desde team_game_stats_manual.
+export function manualTeamStatRows(teamManualStats, awayTeamId, homeTeamId) {
+  const rows = teamManualStats || []
+  const A = rows.find(r => r.team_id === awayTeamId) || {}
+  const H = rows.find(r => r.team_id === homeTeamId) || {}
+  const n = (r, k) => r[k] || 0
+  const pair = (a, b) => r => `${n(r, a)}-${n(r, b)}`
+  const one = k => r => String(n(r, k))
+  const defs = [
+    ['First Downs',        one('first_downs')],
+    ['Total Yds',          r => fmtSignedYds(n(r, 'total_yds'))],
+    ['Pass Yds',           r => fmtSignedYds(n(r, 'pass_yds'))],
+    ['Rush Yds',           r => fmtSignedYds(n(r, 'rush_yds'))],
+    ['Penalties - Yds',    pair('penalties', 'penalty_yds')],
+    ['3rd Down',           pair('third_down_conv', 'third_down_att')],
+    ['4th Down',           pair('fourth_down_conv', 'fourth_down_att')],
+    ['Red Zone (TD-Trips)', pair('red_zone_td', 'red_zone_trips')],
+    ['Turnovers',          one('turnovers')],
+    ['Fumbles - Lost',     pair('fumbles', 'fumbles_lost')],
+    ['Sacks',              r => fmtManualHalf(n(r, 'sacks'))],
+    ['TFL',                r => fmtManualHalf(n(r, 'tfl'))],
+    ['Time of Possession', r => secondsToMMSS(r.time_of_possession_sec) || '—'],
+  ]
+  return defs.map(([label, f]) => ({ label, away: f(A), home: f(H) }))
+}
+
+// ── Manual-capture path: pestaña "Comparación" ───────────────────────────────
+// Offense: las filas de manualIndOffense (mismo filtro de actividad y orden)
+// más una fila Total por tabla (null si la tabla no tiene filas). Sin columnas
+// que la carga manual no tiene (Long, Gn, Sack).
+export function manualCompOffense(playerManualStats, teamId) {
+  const d = manualIndOffense(playerManualStats, teamId)
+  return {
+    ...d,
+    passTotal: _passTotal(d.passing, false),
+    rushTotal: _rushTotal(d.rushing, false),
+    recTotal: _recTotal(d.receiving, false),
+  }
+}
+
+// Panel de resumen de Comparación para captura manual: solo filas que existen
+// en las tablas manuales. De team_game_stats_manual: 1st DWN, PASS-YDS,
+// TOTAL-YDS, SACKS, TFL, FUM-LST, PEN, RED ZONE, POS, 3RD/4TH EFF. De la suma
+// de player_game_stats_manual: RUSH-ATT/YDS/AVG, REC/REC-YDS/REC-AVG y
+// PASS-CAI (no hay intentos de carrera ni comp/att/int por equipo en la tabla
+// de equipo; RUSH-YDS sale de jugadores para que RUSH-AVG sea coherente con
+// RUSH-ATT). Sin fila de equipo → esas filas en 0 (POS '0:00'), sin romper.
+export function manualCompSummaryRows(teamManualStats, playerManualStats, awayTeamId, homeTeamId) {
+  const side = teamId => {
+    const t = (teamManualStats || []).find(r => r.team_id === teamId) || {}
+    const ps = (playerManualStats || []).filter(r => r.player?.team_id === teamId)
+    const s = f => ps.reduce((acc, r) => acc + (Number(r[f]) || 0), 0)
+    const n = k => Number(t[k]) || 0
+    return { t, n, s }
+  }
+  const A = side(awayTeamId), H = side(homeTeamId)
+  const avg = (num, den) => den ? fmtSignedYds(num / den, 1) : '0.0'
+  const defs = [
+    ['1st DWN',   x => String(x.n('first_downs'))],
+    ['RUSH-ATT',  x => String(x.s('rush_att'))],
+    ['RUSH-YDS',  x => fmtSignedYds(x.s('rush_yds'))],
+    ['RUSH-AVG',  x => avg(x.s('rush_yds'), x.s('rush_att'))],
+    ['REC',       x => String(x.s('rec'))],
+    ['REC-YDS',   x => fmtSignedYds(x.s('rec_yds'))],
+    ['REC-AVG',   x => avg(x.s('rec_yds'), x.s('rec'))],
+    ['PASS-YDS',  x => fmtSignedYds(x.n('pass_yds'))],
+    ['PASS-CAI',  x => `${x.s('pass_comp')}-${x.s('pass_att')}-${x.s('pass_int')}`],
+    ['TOTAL-YDS', x => fmtSignedYds(x.n('total_yds'))],
+    ['SACKS',     x => fmtManualHalf(x.n('sacks'))],
+    ['TFL',       x => fmtManualHalf(x.n('tfl'))],
+    ['FUM-LST',   x => String(x.n('fumbles_lost'))],
+    ['PEN',       x => `${x.n('penalties')}-${x.n('penalty_yds')}`],
+    ['RED ZONE',  x => `${x.n('red_zone_td')}-${x.n('red_zone_trips')}`],
+    ['POS',       x => secondsToMMSS(x.n('time_of_possession_sec')) || '0:00'],
+    ['3RD EFF',   x => `${x.n('third_down_conv')}-${x.n('third_down_att')}`],
+    ['4TH EFF',   x => `${x.n('fourth_down_conv')}-${x.n('fourth_down_att')}`],
+  ]
+  return defs.map(([label, f]) => ({ label, away: f(A), home: f(H) }))
 }
 
 // ── Player identity (C1/C2 of the duplicate-number refactor, 2026-10-05) ──────
