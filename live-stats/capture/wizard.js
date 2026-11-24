@@ -108,7 +108,7 @@ const STEPS_BY_TYPE = {
   PASS: [
     { id: 'play_type',   label: 'Pass' },
     { id: 'pass_by',     label: 'Passed By', component: 'BY',
-      config: { stateKey: 'pass_by', multiple: false, optional: false } },
+      config: { stateKey: 'pass_by', multiple: false, optional: false, rememberLast: 'passer' } },
     { id: 'pass_result', label: 'Result', component: 'PASS_RESULT',
       config: { stateKey: 'pass_result' } },
   ],
@@ -600,8 +600,22 @@ function _exitEditMode() {
   editCursor    = -1
 }
 
+// Last player picked per (memory key, team) — e.g. the QB of the last pass, so
+// the operator doesn't retype him every play. In-memory only; when empty it is
+// seeded from the game's already-captured plays (so a page reload keeps it).
+const _lastBy = {}
+function _lastByFor(memKey, teamName, stateKey) {
+  const k = `${memKey}|${teamName}`
+  if (_lastBy[k]) return _lastBy[k]
+  for (let i = plays.length - 1; i >= 0; i--) {
+    const pl = plays[i]
+    if (pl && pl.possession === teamName && pl[stateKey] && pl[stateKey].number != null) return pl[stateKey]
+  }
+  return null
+}
+
 export function renderByMenu(config) {
-  const { optional, multiple, onComplete, team, teamFrom, invertTeamFrom } = config
+  const { optional, multiple, onComplete, team, teamFrom, invertTeamFrom, rememberLast, stateKey } = config
   _setContext('BY')
   KEYBOARD_CONTEXTS.BY = { Escape: goBack }
 
@@ -635,6 +649,9 @@ export function renderByMenu(config) {
   let typedDigits = ''
   let notice = ''
   const container = _container()
+  // Edit mode must not pre-suggest or overwrite the memory.
+  const memTeam = teamName ?? gameState.possession
+  const lastPick = (rememberLast && !multiple && !editMode) ? _lastByFor(rememberLast, memTeam, stateKey) : null
 
   // Numbers can repeat within a team (league rule). A repeated number is shown
   // with the player's name in the grid; a player with no name gets "#N (sin nombre)".
@@ -668,8 +685,13 @@ export function renderByMenu(config) {
       : (multiple && selections.length === 1 ? '<div class="by-hint">Agregar 2do jugador (opcional)</div>' : '')
     const showContinue = multiple && selections.length >= 1
 
+    const lastHTML = lastPick ? `<button class="btn-continue by-last" id="btn-last" style="width:100%;margin-bottom:10px">
+          Mismo QB: #${lastPick.number}${[lastPick.nombre, lastPick.apellido].filter(Boolean).length ? ' ' + [lastPick.nombre, lastPick.apellido].filter(Boolean).join(' ') : ''} · Enter
+        </button>` : ''
+
     container.innerHTML = `
       <div class="by-menu">
+        ${lastHTML}
         <div class="by-input-row">
           <input id="by-input" class="by-input" type="text" inputmode="numeric"
             placeholder="Escribe # y Enter" autocomplete="off" value="${typedDigits}">
@@ -683,8 +705,11 @@ export function renderByMenu(config) {
     `
 
     const input = document.getElementById('by-input')
-    input.focus()
+    // On touch screens focusing the input pops the keyboard over the grid
+    if (!window.matchMedia('(pointer: coarse)').matches) input.focus()
     if (typedDigits) _highlightNum(parseInt(typedDigits, 10))
+    const lastBtn = document.getElementById('btn-last')
+    if (lastBtn) lastBtn.addEventListener('click', () => { onComplete({ ...lastPick }) })
 
     container.querySelectorAll('.player-btn').forEach(btn => {
       btn.addEventListener('click', () => _selectPlayer(roster[parseInt(btn.dataset.ridx, 10)]))
@@ -725,7 +750,11 @@ export function renderByMenu(config) {
     const player = rosterPlayer
       ? { ...(rosterPlayer.id ? { player_id: rosterPlayer.id } : {}), number: rosterPlayer.number, nombre: rosterPlayer.nombre || '', apellido: rosterPlayer.apellido || '', position: rosterPlayer.position || '' }
       : { number: num, nombre: '', apellido: '', position: '' }
-    if (!multiple) { onComplete(player); return }
+    if (!multiple) {
+      if (rememberLast && !editMode) _lastBy[`${rememberLast}|${memTeam}`] = player
+      onComplete(player)
+      return
+    }
     if (selections.length >= 2 || selections.some(s => (rosterPlayer ? _sameAsRoster(s, rosterPlayer) : s.number === num))) return
     selections.push(player)
     typedDigits = ''
@@ -773,6 +802,9 @@ export function renderByMenu(config) {
       e.preventDefault()
       if (typedDigits) {
         _confirmTyped()
+      } else if (lastPick && selections.length === 0) {
+        // Enter with nothing typed: same player as last time (the QB)
+        onComplete({ ...lastPick })
       } else if (selections.length >= 1) {
         // Enter with no digits typed = confirm current selections and advance
         onComplete(multiple ? selections : selections[0])

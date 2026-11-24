@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Cover Cero Stats</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -37,9 +37,12 @@
       color: var(--text);
       font-family: 'IBM Plex Sans', sans-serif;
       height: 100vh;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
     }
 
     /* ── TOP BAR ── */
@@ -1430,6 +1433,65 @@
 
     .reports-download-btn:hover { opacity: 0.9; }
 
+
+    /* ── MOBILE (<= 768px) ── */
+    .sidebar-toggle { display: none; }
+
+    @media (max-width: 768px) {
+      .topbar {
+        height: auto; min-height: 48px; padding: 6px 10px; gap: 12px;
+        overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+        padding-top: max(6px, env(safe-area-inset-top));
+      }
+      .topbar::-webkit-scrollbar { display: none; }
+      .topbar > * { flex-shrink: 0; }
+      .topbar__divider, .topbar__stat:has(#gameid-display) { display: none; }
+      .topbar__nav { margin-left: 0; }
+      .nav-btn { min-height: 38px; padding: 8px 12px; font-size: 13px; }
+      .sidebar-toggle { display: inline-block; }
+
+      /* Sidebar = drawer over the content */
+      .sidebar {
+        position: absolute; top: 0; bottom: 0; left: 0; z-index: 40;
+        width: min(86vw, 320px);
+        transform: translateX(-100%); transition: transform 0.2s ease;
+        box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+      }
+      body.sidebar-open .sidebar { transform: translateX(0); }
+
+      .possession-bar { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
+      .wizard-area { padding: 14px 12px calc(14px + env(safe-area-inset-bottom)); }
+
+      /* Bigger touch targets, full-width grids */
+      .play-grid { max-width: none; gap: 8px; }
+      .play-btn { padding: 22px 14px; min-height: 64px; }
+      .play-btn__key { display: none; }          /* keyboard hints are useless on touch */
+      .result-btn__kbd, .submit-kbd { display: none; }
+
+      .result-menu { flex-wrap: wrap; max-width: none; }
+      .result-btn { flex: 1 1 calc(50% - 10px); min-height: 72px; }
+
+      .by-menu, .at-field { max-width: none; }
+      .by-input { font-size: 16px; }             /* >=16px stops iOS zoom-on-focus */
+      .by-grid { grid-template-columns: repeat(4, 1fr); max-height: none; }
+      .player-btn { min-height: 60px; }
+      .btn-continue, .btn-skip, .btn-back, .submit-btn { min-height: 48px; }
+      .at-input, .edit-input, .reports-select { font-size: 16px; }
+
+      .progress-bar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+      .progress-step { padding: 6px 10px; }
+
+      .submit-actions { flex-direction: column; }
+
+      /* Reports: config on top, preview below */
+      .reports-view { flex-direction: column; overflow-y: auto; }
+      .reports-config { width: 100%; border-right: 0; border-bottom: 1px solid var(--border); overflow: visible; }
+      .reports-preview { padding: 12px; min-height: 60vh; }
+    }
+
+    @media (max-width: 380px) {
+      .by-grid { grid-template-columns: repeat(3, 1fr); }
+    }
   </style>
 </head>
 <body>
@@ -1472,6 +1534,7 @@
       <span class="topbar__stat-value" id="hud-distance">10</span>
     </div>
     <nav class="topbar__nav">
+      <button class="nav-btn sidebar-toggle" id="nav-sidebar-toggle">Jugadas</button>
       <button class="nav-btn nav-btn--active" id="nav-tab-addplay">Add Play</button>
       <button class="nav-btn" id="nav-tab-reports">Reports</button>
       <select class="nav-btn" id="game-status-select" style="cursor:pointer">
@@ -1605,6 +1668,16 @@
     </div>
   </div>
 
+  <script>
+    // Mobile: drawer for the plays sidebar; closes on tapping outside or on a play.
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#nav-sidebar-toggle')) { document.body.classList.toggle('sidebar-open'); return }
+      if (document.body.classList.contains('sidebar-open') &&
+          (!e.target.closest('.sidebar') || e.target.closest('.recent-play__edit, .play-row'))) {
+        document.body.classList.remove('sidebar-open')
+      }
+    })
+  </script>
   <script type="module">
     import { renderAddPlay, renderEditPlay } from './wizard.js'
     import { loadPlays, plays, onPlaySubmitted,
