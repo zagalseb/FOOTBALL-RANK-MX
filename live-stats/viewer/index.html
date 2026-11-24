@@ -59,12 +59,6 @@
     }
     .site-nav__link:hover { color: var(--text); background: #f3f4f6; }
 
-    .capture-btn {
-      text-decoration: none; font-size: 12px; font-weight: 700; color: #fff;
-      background: #111827; padding: 7px 14px; border-radius: 8px; white-space: nowrap;
-    }
-    .capture-btn:hover { background: #374151; }
-
     .wordmark { display: flex; flex-direction: column; line-height: 1; }
 
     .wordmark__line {
@@ -483,8 +477,8 @@
       .logo-wrap  { width: 42px; height: 42px; }
     }
 
-    /* Móvil y tablet (≤900px): el encabezado (marca + Líderes + indicador en vivo +
-       Modo captura) no cabía a 360–390px y la página se desplazaba de lado. Por encima
+    /* Móvil y tablet (≤900px): el encabezado (marca + Líderes + indicador en vivo)
+       no cabía a 360–390px y la página se desplazaba de lado. Por encima
        de 900px nada de esto aplica. */
     @media (max-width: 900px) {
       .site-header__inner { padding: 0 12px; gap: 8px; }
@@ -494,7 +488,6 @@
     @media (max-width: 480px) {
       .brand__league { display: none; }
       .site-nav__link { padding: 6px 8px; }
-      .capture-btn { padding: 7px 10px; }
       /* Queda el punto de color (con su title); el texto no cabe junto a los botones. */
       #rt-indicator__label { display: none; }
     }
@@ -518,7 +511,6 @@
           <span id="rt-indicator__dot" style="width:7px;height:7px;border-radius:50%;display:inline-block;background:#9ca3af"></span>
           <span id="rt-indicator__label" style="font-size:11px;font-weight:700;letter-spacing:0.6px;color:var(--text2)">CONECTANDO</span>
         </span>
-        <a class="capture-btn" href="../capture/games.html">Modo captura</a>
       </div>
     </div>
   </header>
