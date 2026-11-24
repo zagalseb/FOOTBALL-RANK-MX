@@ -334,7 +334,12 @@ function computeScoringPlays(plays, homeAbbr, awayAbbr) {
   return events;
 }
 
-const gameId = new URLSearchParams(location.search).get('game_id');
+// La URL trae ?game= o ?game_id= con UUID o slug (shared/game-ref.js). gameId
+// es SIEMPRE el UUID resuelto: se asigna una sola vez en la carga inicial,
+// antes de setGame, así que los efectos que dependen de `game` ya lo ven.
+const gameRefMod = import('../../shared/game-ref.js');
+const competitionMod = import('../../shared/competition.js');
+let gameId = null;
 
 async function sbFetch(path) {
   await configReady;
@@ -583,7 +588,7 @@ function ScoresPanel({ games, currentId }) {
         const sh = g.score_home ?? '—';
         const sa = g.score_away ?? '—';
         return (
-          <a key={g.id} href={`viewer.html?game_id=${g.id}`} style={{
+          <a key={g.id} href={`viewer.html?game=${encodeURIComponent(g.slug || g.id)}`} style={{
             display:'flex', flexDirection:'column', alignItems:'center', gap:5,
             padding:'7px 12px', borderRadius:6, textDecoration:'none', flexShrink:0,
             background: active ? 'rgba(17,24,39,0.06)' : 'var(--card-bg)',
@@ -3435,6 +3440,7 @@ function App() {
   const [rosters, setRosters] = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [loadErr,   setLoadErr]   = useState(null);
+  const [noGameRef, setNoGameRef] = useState(false);
   const [scoresOpen,setScoresOpen]= useState(false);
   const [activeTab,   setActiveTab]   = useState('individual');
   const [teamSubTab,  setTeamSubTab]  = useState('stats');
@@ -3446,12 +3452,19 @@ function App() {
 
   // ── initial load ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!gameId) { setLoading(false); return; }
     (async () => {
       try {
+        const [{ readGameRef, resolveGameRef, withSlug, canonicalGameUrl }, { withCompetition, gameCategory }] = await Promise.all([gameRefMod, competitionMod]);
+        const ref = readGameRef();
+        if (!ref) { setNoGameRef(true); return; }
+        const resolved = await resolveGameRef(ref, sbFetch);
+        if (!resolved.id) { setLoadErr(resolved.message); return; }
+        gameId = resolved.id;
         const teamFields = 'nombre_corto,abreviatura,Apodo,Escuela,color_principal,color_texto,logo_url';
+        // Categoría/conferencia de cada equipo (si el schema las tiene) solo para
+        // que el ScoresPanel no mezcle categorías.
         const [gArr, pArr, tmArr, pmArr] = await Promise.all([
-          sbFetch(`games?select=*,home:home_team_id(${teamFields}),away:away_team_id(${teamFields})&id=eq.${encodeURIComponent(gameId)}&limit=1`),
+          withCompetition(sbFetch, c => withSlug(sbFetch, s => `games?select=*${s},home:home_team_id(${teamFields}${c}),away:away_team_id(${teamFields}${c})&id=eq.${encodeURIComponent(gameId)}&limit=1`)),
           sbFetch(`plays?select=*&game_id=eq.${encodeURIComponent(gameId)}&order=seq.asc`),
           sbFetch(`team_game_stats_manual?select=*&game_id=eq.${encodeURIComponent(gameId)}`),
           sbFetch(`player_game_stats_manual?select=*,player:player_id(id,number,nombre,apellido,team_id,position)&game_id=eq.${encodeURIComponent(gameId)}`),
@@ -3475,9 +3488,16 @@ function App() {
         setPlays((pArr || []).map(_flattenPlay));
         setTeamManualStats(tmArr || []);
         setPlayerManualStats(pmArr || []);
+        // URL canónica con el slug (solo en el viewer). Sin slug (schema sin
+        // la función) la URL se queda como llegó.
+        const canon = canonicalGameUrl(location.href, g?.slug);
+        if (canon) history.replaceState(history.state, '', canon);
         if (g?.semana) {
-          const wArr = await sbFetch(`games?select=id,status,score_home,score_away,hora,home:home_team_id(nombre_corto,abreviatura,Apodo,logo_url),away:away_team_id(nombre_corto,abreviatura,Apodo,logo_url)&semana=eq.${encodeURIComponent(g.semana)}&order=kickoff.asc.nullslast`);
-          setWeekGames(wArr || []);
+          const wArr = await withCompetition(sbFetch, c => withSlug(sbFetch, s => `games?select=id${s},status,score_home,score_away,hora,home:home_team_id(nombre_corto,abreviatura,Apodo,logo_url${c}),away:away_team_id(nombre_corto,abreviatura,Apodo,logo_url${c})&semana=eq.${encodeURIComponent(g.semana)}&order=kickoff.asc.nullslast`));
+          // Solo juegos de la misma categoría que el abierto (sin categoría en
+          // el schema, gameCategory es null y no se filtra: como antes).
+          const cat = gameCategory(g);
+          setWeekGames((wArr || []).filter(x => !cat || gameCategory(x) === cat));
         }
       } catch (e) {
         setLoadErr(e.message);
@@ -3669,15 +3689,15 @@ function App() {
     return computeDriveRows(drives, teams);
   }, driveRowsNeeded, [drives, homeAbbr, awayAbbr], []);
 
-  // ── no game_id ──────────────────────────────────────────────────────────────
-  if (!gameId) return (
+  if (loading) return <SkeletonLoader />;
+
+  // ── no game_id / game ───────────────────────────────────────────────────────
+  if (noGameRef) return (
     <div style={{ minHeight:'100vh', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Inter',sans-serif" }}>
       <div style={{ fontSize:26, fontWeight:700, color:'var(--text2)', letterSpacing:1 }}>No se especificó un partido.</div>
       <a href="index.html" style={{ color:'var(--text2)', fontSize:15, textDecoration:'none' }}>← Todos los partidos</a>
     </div>
   );
-
-  if (loading) return <SkeletonLoader />;
 
   if (loadErr || !game) return (
     <div style={{ minHeight:'100vh', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:14, fontFamily:"'Inter',sans-serif" }}>

@@ -349,6 +349,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { withCompetition, categoryPrefix, loadCompetitions, teamCategoryCode } from '../../shared/competition.js'
     import { rosterDuplicate, getGameTemporada } from '../../shared/stats-lib.js'
     import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
     import { secondsToMMSS } from '../../shared/stats-lib.js'
@@ -376,6 +377,9 @@
 
     let teams   = []
     let games   = []
+    // Categorías del schema; null = no existen (prod antes de migrar): sin
+    // filtro de visitante ni validación de categoría, como antes.
+    let competitions = null
     let selectedGameId = null
     let selectedTeamSide = null // 'home' | 'away'
     let selectedTeamId   = null
@@ -444,15 +448,31 @@
     // 1. PARTIDO
     // ══════════════════════════════════════════════════════════════════════════
 
-    function populateTeamSelects() {
-      const opts = teams
-        .slice()
-        .sort((a, b) => (a.nombre_corto || '').localeCompare(b.nombre_corto || ''))
-        .map(t => `<option value="${t.id}">${esc(t.nombre_corto)} (${esc(t.abreviatura)})</option>`)
-        .join('')
-      document.getElementById('ng-home-select').innerHTML = opts
-      document.getElementById('ng-away-select').innerHTML = opts
+    // Igual que setup.html: con categorías en el schema, la opción dice
+    // "… · LM" y el visitante se limita a la categoría del local. Sin
+    // categorías (prod antes de migrar), como antes.
+    function teamOptionLabel(t) {
+      const base = `${t.nombre_corto} (${t.abreviatura})`
+      return competitions ? `${base} · ${teamCategoryCode(t, competitions) ?? 'sin categoría'}` : base
     }
+    const sortedTeams = () => teams.slice().sort((a, b) => (a.nombre_corto || '').localeCompare(b.nombre_corto || ''))
+    const teamOptions = list => list.map(t => `<option value="${t.id}">${esc(teamOptionLabel(t))}</option>`).join('')
+
+    function populateTeamSelects() {
+      document.getElementById('ng-home-select').innerHTML = teamOptions(sortedTeams())
+      populateAwaySelect()
+    }
+
+    function populateAwaySelect() {
+      const sel = document.getElementById('ng-away-select')
+      const prev = sel.value
+      const home = teams.find(t => t.id === document.getElementById('ng-home-select').value)
+      const list = sortedTeams().filter(t => !competitions || !home || t.category_id === home.category_id)
+      sel.innerHTML = teamOptions(list)
+      if (prev && list.some(t => t.id === prev)) sel.value = prev
+    }
+
+    document.getElementById('ng-home-select').addEventListener('change', () => populateAwaySelect())
 
     function populateSemanaSelect() {
       document.getElementById('ng-semana-select').innerHTML = WEEK_OPTIONS
@@ -466,13 +486,14 @@
       const semana = WEEK_LABEL[g.semana] || (g.semana ? `Sem. ${g.semana}` : 'Sin semana')
       const temporada = g.temporada ? ` · ${g.temporada}` : ''
       const score = (g.status === 'final' || g.score_home || g.score_away) ? ` (${g.score_away ?? 0}-${g.score_home ?? 0})` : ''
-      return `${away} @ ${home} — ${semana}${temporada}${score}`
+      return `${categoryPrefix(g)}${away} @ ${home} — ${semana}${temporada}${score}`
     }
 
     async function loadGames() {
       try {
-        games = await sbGet(
-          `games?select=*,home:home_team_id(id,nombre_corto,abreviatura,color_principal),away:away_team_id(id,nombre_corto,abreviatura,color_principal)` +
+        // Categoría del local solo para la etiqueta; sin categorías en el schema, etiqueta como antes.
+        games = await withCompetition(sbGet, c =>
+          `games?select=*,home:home_team_id(id,nombre_corto,abreviatura,color_principal${c}),away:away_team_id(id,nombre_corto,abreviatura,color_principal)` +
           `&order=kickoff.desc.nullslast`
         )
         const sel = document.getElementById('game-select')
@@ -514,6 +535,15 @@
         errorEl.textContent = 'El equipo local y visitante no pueden ser el mismo.'
         errorEl.classList.add('form-error--visible')
         return
+      }
+      if (competitions) {
+        const home = teams.find(t => t.id === homeId), away = teams.find(t => t.id === awayId)
+        if (home?.category_id !== away?.category_id) {
+          const code = t => teamCategoryCode(t, competitions) ?? 'sin categoría'
+          errorEl.textContent = `Local y visitante deben ser de la misma categoría (${home?.abreviatura} es ${code(home)}, ${away?.abreviatura} es ${code(away)}).`
+          errorEl.classList.add('form-error--visible')
+          return
+        }
       }
 
       const body = {
@@ -983,7 +1013,12 @@
     async function init() {
       populateSemanaSelect()
       try {
-        teams = await sbGet('teams?select=*&order=nombre_corto.asc')
+        ;[teams, competitions] = await Promise.all([
+          sbGet('teams?select=*&order=nombre_corto.asc'),
+          loadCompetitions(sbGet),
+        ])
+        // Sin teams.category_id (schema sin categorías) no hay nada que validar.
+        if (!teams.some(t => 'category_id' in t)) competitions = null
         populateTeamSelects()
       } catch (err) {
         console.error(err)

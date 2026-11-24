@@ -1617,6 +1617,7 @@
              computeDrives, computeComparisonStats, computePenalties } from '../../shared/stats-lib.js'
     import { drawPlayerCard, drawBoxScore, drawStatCard } from './player_card.js'
     import { SUPABASE_URL, SUPABASE_HEADERS, envKey } from '../../shared/supabase/supabase_config.js'
+    import { readGameRef, resolveGameRef, isUuid } from '../../shared/game-ref.js'
 
     const DOWN_LABELS = ['', '1st', '2nd', '3rd', '4th']
 
@@ -1705,16 +1706,32 @@
       console.warn('[Cover Cero] Supabase not available:', e.message)
     }
 
-    // Read game_id: URL → localStorage → error overlay
-    const _urlGameId = new URLSearchParams(window.location.search).get('game_id')
+    // Partido: URL (?game_id= o ?game=, UUID o slug) → localStorage → overlay de error.
+    // El resolver corre ANTES de setGameId: setGameId, localStorage, Realtime y
+    // las escrituras de plays reciben SIEMPRE el UUID resuelto. Si la URL trae un
+    // valor que no resuelve, no se cae al partido de localStorage (sería otro juego).
+    const _urlRef = readGameRef(window.location.search)
     const _localGameId = localStorage.getItem(envKey('covercero_game_id'))
-    const _activeGameId = _urlGameId || _localGameId
     const _urlTab = new URLSearchParams(window.location.search).get('tab')
+    let _activeGameId = null
+    let _noGameMsg = 'No se especificó un partido.'
+    if (_urlRef) {
+      const resolved = await resolveGameRef(_urlRef, async path => {
+        const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: SUPABASE_HEADERS })
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      if (isUuid(resolved.id)) _activeGameId = resolved.id
+      else _noGameMsg = resolved.message
+    } else if (isUuid(_localGameId)) {
+      _activeGameId = _localGameId
+    }
 
-    if (!_activeGameId) {
+    if (!isUuid(_activeGameId)) {
+      const _esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
       document.body.insertAdjacentHTML('beforeend', `
         <div class="no-game-overlay">
-          <div class="no-game-overlay__title">No se especificó un partido.</div>
+          <div class="no-game-overlay__title">${_esc(_noGameMsg)}</div>
           <a class="no-game-overlay__link" href="games.html">← Ir a la lista de partidos</a>
         </div>
       `)

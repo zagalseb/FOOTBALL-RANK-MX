@@ -106,25 +106,28 @@
 
   <script type="module">
     import { SUPABASE_HEADERS as SB_HEADERS, SUPABASE_URL as SB_URL } from '../../shared/supabase/supabase_config.js'
+    import { withSlug, gameUrlRef } from '../../shared/game-ref.js'
+    import { withCompetition, categoryPrefix } from '../../shared/competition.js'
 
     // Each entry is one kind of advanced capture. To add another, append an
     // object here and give it a page — nothing else in this file changes.
     //   needsTeam: show the home/away picker before opening
-    //   href(gameId, side): URL of the capture page (side is null if !needsTeam)
+    //   href(gameRef, side): URL of the capture page; gameRef is the slug, or the
+    //   UUID when the schema has no slug (side is null if !needsTeam)
     const ADVANCED_TYPES = [
       {
         id: 'qbmap',
         label: 'QB Map',
         description: 'Launch y target de cada pase, revisando el video',
         needsTeam: true,
-        href: (gameId, side) => `QBMAP.html?game=${encodeURIComponent(gameId)}&side=${side}`,
+        href: (gameRef, side) => `QBMAP.html?game=${encodeURIComponent(gameRef)}&side=${side}`,
       },
       {
         id: 'qbmap_view',
         label: 'QB Map — Visor',
         description: 'Pases capturados en perspectiva desde atrás del QB',
         needsTeam: false,   // the viewer has its own team picker
-        href: gameId => `qbmap_view.html?game=${encodeURIComponent(gameId)}`,
+        href: gameRef => `qbmap_view.html?game=${encodeURIComponent(gameRef)}`,
       },
     ]
 
@@ -138,14 +141,18 @@
       const home = g.home?.abreviatura || '?', away = g.away?.abreviatura || '?'
       const semana = WEEK_LABEL[g.semana] || (g.semana ? `Sem. ${g.semana}` : 'Sin semana')
       const score = (g.status === 'final' || g.score_home || g.score_away) ? ` (${g.score_away ?? 0}-${g.score_home ?? 0})` : ''
-      return `${away} @ ${home} — ${semana}${score}`
+      return `${categoryPrefix(g)}${away} @ ${home} — ${semana}${score}`
     }
 
     async function loadGames() {
       try {
-        const res = await fetch(`${SB_URL}/rest/v1/games?select=*,home:home_team_id(id,nombre_corto,abreviatura),away:away_team_id(id,nombre_corto,abreviatura)&order=kickoff.desc.nullslast`, { headers: SB_HEADERS })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        games = await res.json()
+        const read = async path => {
+          const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        }
+        // Categoría del local solo para la etiqueta; sin categorías en el schema, etiqueta como antes.
+        games = await withCompetition(read, c => withSlug(read, s => `games?select=*${s},home:home_team_id(id,nombre_corto,abreviatura${c}),away:away_team_id(id,nombre_corto,abreviatura)&order=kickoff.desc.nullslast`))
         $('game-select').innerHTML = '<option value="">Selecciona un partido…</option>' +
           games.map(g => `<option value="${g.id}">${esc(gameLabel(g))}</option>`).join('')
       } catch (err) {
@@ -190,7 +197,7 @@
       const ready = game && type && (!type.needsTeam || side)
       const go = $('go')
       go.hidden = !ready
-      if (ready) go.href = type.href(game.id, side)
+      if (ready) go.href = type.href(gameUrlRef(game), side)
     }
 
     $('game-select').addEventListener('change', e => {

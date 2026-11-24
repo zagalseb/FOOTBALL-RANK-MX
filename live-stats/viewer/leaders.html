@@ -205,6 +205,7 @@
       TEMPORADA_ACTIVA, LEADER_MIN_PER_TEAM_GAME,
       selectLeaderGames, buildLeaders, rankLeaders, fetchAllRows,
     } from '../../shared/stats-lib.js'
+    import { loadCompetitions, defaultCategory, ambiguousAbbreviations, teamCategoryCode } from '../../shared/competition.js'
 
     const PAGE_SIZE = 1000
     const WEEK_ORDER = ['1','2','3','4','5','6','7','8','9','10','QF','SF','F']
@@ -217,6 +218,9 @@
       error: null,                // { title, msg }
       games: [], stats: [], teams: new Map(),
       teamId: '', semana: '',
+      // Categorías del schema; null = sin categorías (prod antes de migrar): sin filtros nuevos.
+      competitions: null,
+      categoryId: '', conferenceId: '',   // ids de categories / conferences ('' = todas)
       showAll: { pass: false, rush: false, rec: false },
       sort: { pass: { key: 'yds', dir: 'desc' }, rush: { key: 'yds', dir: 'desc' }, rec: { key: 'yds', dir: 'desc' } },
       view: null,
@@ -268,18 +272,35 @@
     const q = o => new URLSearchParams(o).toString()
     async function loadAll() {
       const statCols = 'id,game_id,player_id,pass_att,pass_comp,pass_yds,pass_td,pass_int,rush_att,rush_yds,rush_td,rush_fum,rec,rec_yds,rec_td,rec_fum,updated_at,player:player_id(id,number,nombre,apellido,team_id,temporada)'
-      const [games, stats, teams] = await Promise.all([
+      const teamCols = 'id,nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url'
+      const [games, stats, teams, competitions] = await Promise.all([
         readAll('games?' + q({ select: 'id,semana,status,temporada,kickoff,home_team_id,away_team_id', status: 'eq.final', or: '(semana.neq.TEST,semana.is.null)', order: 'id.asc' }), 'partidos'),
         readAll('player_game_stats_manual?' + q({ select: statCols, order: 'id.asc' }), 'estadísticas de jugadores'),
-        readAll('teams?' + q({ select: 'id,nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url', order: 'id.asc' }), 'equipos'),
+        // category_id/conference_id solo existen si el schema tiene categorías;
+        // si no, se leen los equipos como antes.
+        readAll('teams?' + q({ select: teamCols + ',category_id,conference_id', order: 'id.asc' }), 'equipos')
+          .catch(() => readAll('teams?' + q({ select: teamCols, order: 'id.asc' }), 'equipos')),
+        loadCompetitions(async path => {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json()
+        }),
       ])
-      return { games, stats, teams: new Map(teams.map(t => [t.id, t])) }
+      // Sin category_id en equipos no se puede filtrar: se ignoran las categorías.
+      const hasTeamCats = teams.some(t => 'category_id' in t)
+      return { games, stats, teams: new Map(teams.map(t => [t.id, t])), competitions: hasTeamCats ? competitions : null }
     }
+
+    // Filtros de categoría/conferencia vigentes (null = sin filtro).
+    const compFilter = () => ({
+      categoryId: state.competitions && state.categoryId ? state.categoryId : null,
+      conferenceId: state.competitions && state.conferenceId ? state.conferenceId : null,
+    })
 
     // ── Derived data ─────────────────────────────────────────────────────────
     function computeView() {
-      const f = { temporada: TEMPORADA_ACTIVA, semana: state.semana || null, teamId: state.teamId || null }
-      const res = buildLeaders(state.games, state.stats, { ...f, teams: state.teams })
+      const f = { temporada: TEMPORADA_ACTIVA, semana: state.semana || null, teamId: state.teamId || null, ...compFilter(), teams: state.teams }
+      const res = buildLeaders(state.games, state.stats, f)
       // Games in the filter that have no valid player row (for the "partial data" detail).
       const sel = selectLeaderGames(state.games, f)
       const withRows = new Set()
@@ -287,7 +308,8 @@
         const g = r.player && sel.find(x => x.id === r.game_id)
         if (!g) continue
         const t = r.player.team_id
-        if ((t === g.home_team_id || t === g.away_team_id) && (!f.teamId || t === f.teamId)) withRows.add(g.id)
+        if ((t === g.home_team_id || t === g.away_team_id) && (!f.teamId || t === f.teamId) &&
+            (!f.conferenceId || state.teams.get(t)?.conference_id === f.conferenceId)) withRows.add(g.id)
       }
       res.missing = sel.filter(g => !withRows.has(g.id))
       return res
@@ -427,16 +449,35 @@
     }
 
     function renderFilters() {
-      const f = { temporada: TEMPORADA_ACTIVA }
+      const f = { temporada: TEMPORADA_ACTIVA, ...compFilter(), teams: state.teams }
       const all = selectLeaderGames(state.games, f)
       const weeks = WEEK_ORDER.filter(w => all.some(g => String(g.semana) === w))
       const teamIds = new Set(all.flatMap(g => [g.home_team_id, g.away_team_id]))
-      const teams = [...teamIds].map(id => state.teams.get(id)).filter(Boolean).sort((a, b) => a.abreviatura.localeCompare(b.abreviatura))
+      const teams = [...teamIds].map(id => state.teams.get(id)).filter(Boolean)
+        .filter(t => !f.conferenceId || t.conference_id === f.conferenceId)
+        .sort((a, b) => a.abreviatura.localeCompare(b.abreviatura))
+      // La categoría solo se muestra cuando la abreviatura se repite entre categorías (MTY en LM e INT).
+      const dup = ambiguousAbbreviations(teams)
+      const teamText = t => `${t.abreviatura} · ${t.Apodo || t.nombre_corto}` +
+        (dup.has(String(t.abreviatura).toUpperCase()) ? ` (${teamCategoryCode(t, state.competitions) ?? 'sin categoría'})` : '')
+      const cats = state.competitions || []
+      const cat = cats.find(c => c.id === state.categoryId)
+      const confs = cat?.conferences || []
+      const compFields = state.competitions ? `
+          <div class="field"><label for="f-cat">Categoría</label>
+            <select id="f-cat">
+              ${cats.map(c => `<option value="${esc(c.id)}"${c.id === state.categoryId ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}
+              <option value=""${!state.categoryId ? ' selected' : ''}>Todas las categorías</option>
+            </select></div>
+          <div class="field"><label for="f-conf">Conferencia</label>
+            <select id="f-conf"${confs.length ? '' : ' disabled'}><option value="">Todas las conf.</option>
+              ${confs.map(c => `<option value="${esc(c.id)}"${c.id === state.conferenceId ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}
+            </select></div>` : ''
       document.getElementById('filters').innerHTML = `
-        <div class="filters">
+        <div class="filters">${compFields}
           <div class="field"><label for="f-team">Equipo</label>
             <select id="f-team"><option value="">Todos los equipos</option>
-              ${teams.map(t => `<option value="${esc(t.id)}"${t.id === state.teamId ? ' selected' : ''}>${esc(t.abreviatura)} · ${esc(t.Apodo || t.nombre_corto)}</option>`).join('')}
+              ${teams.map(t => `<option value="${esc(t.id)}"${t.id === state.teamId ? ' selected' : ''}>${esc(teamText(t))}</option>`).join('')}
             </select></div>
           <div class="field"><label for="f-semana">Semana</label>
             <select id="f-semana"><option value="">Todas</option>
@@ -446,6 +487,11 @@
         </div>`
       document.getElementById('f-team').addEventListener('change', e => { state.teamId = e.target.value; update() })
       document.getElementById('f-semana').addEventListener('change', e => { state.semana = e.target.value; update() })
+      // Cambiar categoría o conferencia cambia los equipos y semanas disponibles:
+      // se limpian equipo/semana y se vuelve a pintar la barra.
+      const resetAndRender = () => { state.teamId = ''; state.semana = ''; renderFilters(); update() }
+      document.getElementById('f-cat')?.addEventListener('change', e => { state.categoryId = e.target.value; state.conferenceId = ''; resetAndRender() })
+      document.getElementById('f-conf')?.addEventListener('change', e => { state.conferenceId = e.target.value; resetAndRender() })
     }
 
     function renderCoverage() {
@@ -564,6 +610,8 @@
       }
       state.status = 'ready'
       state.teamId = ''; state.semana = ''
+      state.categoryId = defaultCategory(state.competitions)?.id ?? ''   // LM por defecto
+      state.conferenceId = ''
       renderFilters()
       update()
     }

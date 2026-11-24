@@ -4094,12 +4094,20 @@ export const LEADER_AVG_KEYS = new Set(['pct', 'ypa', 'ypg', 'rating', 'ypc', 'y
 
 // Final games of one season, TEST excluded. Season = getGameTemporada (games.temporada,
 // else kickoff year). semana/teamId are optional filters (null = all).
-export function selectLeaderGames(games, { temporada, semana = null, teamId = null } = {}) {
+// categoryId / conferenceId (optional, null = all) need `teams` (Map or object
+// id -> { category_id, conference_id }): a game's category is its home team's
+// (same rule as the slug); a game is in a conference if EITHER team is.
+const _teamOf = (teams, id) => (teams instanceof Map ? teams.get(id) : teams?.[id])
+export function selectLeaderGames(games, { temporada, semana = null, teamId = null, categoryId = null, conferenceId = null, teams = null } = {}) {
   return (games || []).filter(g =>
     g.status === 'final' && g.semana !== 'TEST' &&
     getGameTemporada(g) === String(temporada) &&
     (semana == null || String(g.semana) === String(semana)) &&
-    (teamId == null || g.home_team_id === teamId || g.away_team_id === teamId))
+    (teamId == null || g.home_team_id === teamId || g.away_team_id === teamId) &&
+    (categoryId == null || _teamOf(teams, g.home_team_id)?.category_id === categoryId) &&
+    (conferenceId == null ||
+      _teamOf(teams, g.home_team_id)?.conference_id === conferenceId ||
+      _teamOf(teams, g.away_team_id)?.conference_id === conferenceId))
 }
 
 // One row per (game_id, player_id). On a repeat the later updated_at wins, else the first.
@@ -4123,7 +4131,9 @@ const LEADER_ACTIVE = {
   rec:  r => (r.rec || 0) > 0 || (r.rec_yds || 0) !== 0,
 }
 
-// teams (optional): Map or object id -> { abreviatura }, only used to build `label`.
+// teams (optional): Map or object id -> { abreviatura, category_id, conference_id }:
+// abreviatura builds `label`; category_id/conference_id serve categoryId/conferenceId.
+// conferenceId also limits the ranked players to teams of that conference.
 // Returns { games: { total, withData }, teamGames, players: { pass, rush, rec },
 //           excluded, duplicates }.
 //   - games.total: games that match the filters; withData: those with at least one
@@ -4133,8 +4143,8 @@ const LEADER_ACTIVE = {
 //   - suspected: same game + team + jersey under two player_ids (possible double count);
 //     the players involved carry dupSuspect: true. Reported, never merged.
 // Aggregates by player_id, never by name or number.
-export function buildLeaders(games, rows, { temporada, semana = null, teamId = null, teams = null } = {}) {
-  const sel = selectLeaderGames(games, { temporada, semana, teamId })
+export function buildLeaders(games, rows, { temporada, semana = null, teamId = null, categoryId = null, conferenceId = null, teams = null } = {}) {
+  const sel = selectLeaderGames(games, { temporada, semana, teamId, categoryId, conferenceId, teams })
   const gameById = new Map(sel.map(g => [g.id, g]))
   const { rows: uniq, duplicates } = dedupStatRows((rows || []).filter(r => gameById.has(r.game_id)))
 
@@ -4147,6 +4157,7 @@ export function buildLeaders(games, rows, { temporada, semana = null, teamId = n
     const g = gameById.get(r.game_id)
     if (p.team_id !== g.home_team_id && p.team_id !== g.away_team_id) { excluded.teamNotInGame++; continue }
     if (teamId != null && p.team_id !== teamId) continue
+    if (conferenceId != null && _teamOf(teams, p.team_id)?.conference_id !== conferenceId) continue
     valid.push(r)
   }
 

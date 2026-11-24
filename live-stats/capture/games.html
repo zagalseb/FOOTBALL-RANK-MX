@@ -555,6 +555,7 @@
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
     import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
+    import { withSlug, gameUrlRef } from '../../shared/game-ref.js'
 
     const DAYS   = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
     const MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -564,15 +565,16 @@
 
     // ── Fetch ──────────────────────────────────────────────────────────────────
 
+    // slug solo para los links; si el schema no lo tiene, withSlug repite sin él (links con UUID).
     async function fetchGames() {
-      const url = `${SB_URL}/rest/v1/games` +
-        `?select=*,home:home_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url)` +
+      return withSlug(async path => {
+        const res = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      }, s => `games` +
+        `?select=*${s},home:home_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url)` +
         `,away:away_team_id(nombre_corto,abreviatura,color_principal,color_texto,logo_url)` +
-        `&order=kickoff.asc.nullslast`
-
-      const res = await fetch(url, { headers: SB_HEADERS })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return res.json()
+        `&order=kickoff.asc.nullslast`)
     }
 
     async function load() {
@@ -639,7 +641,7 @@
     }
 
     function actionBtn(game) {
-      const href = `covercero_live.html?game_id=${encodeURIComponent(game.id)}`
+      const href = `covercero_live.html?game=${encodeURIComponent(gameUrlRef(game))}`
       switch (game.status) {
         case 'live':
           return `<div class="action-btn-group">

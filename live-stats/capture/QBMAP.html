@@ -257,6 +257,7 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { readGameRef, resolveGameRef, isUuid } from '../../shared/game-ref.js'
     import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
     import { installHotkeys, showCombo } from '../../shared/hotkeys.js'
     import { mountSettingsPanel } from '../../shared/settings-panel.js'
@@ -269,7 +270,8 @@
     } from './qbmap_geometry.js'
 
     const QS       = new URLSearchParams(location.search)
-    const GAME_ID  = QS.get('game')
+    const GAME_REF = readGameRef(QS)            // ?game= (o ?game_id=), UUID o slug
+    let   GAME_ID  = null                       // UUID resuelto en boot(); lo único que se usa en consultas
     const SIDE     = QS.get('side')            // 'home' | 'away'
     const VIDEO_LS = 'qbmap_video_url'         // one YouTube link covers every game
     const SVG_NS   = 'http://www.w3.org/2000/svg'
@@ -828,10 +830,16 @@
 
     // ── Boot ─────────────────────────────────────────────────────────────────
     async function boot() {
-      if (!GAME_ID || (SIDE !== 'home' && SIDE !== 'away')) {
+      if (!GAME_REF || (SIDE !== 'home' && SIDE !== 'away')) {
         screenMsg('Falta el partido o el equipo. <a href="advanced.html">Volver a Advanced Stats</a>')
         return
       }
+      const resolved = await resolveGameRef(GAME_REF, sbGet)
+      if (!isUuid(resolved.id)) {
+        screenMsg(`${esc(resolved.message)} <a href="advanced.html">Volver a Advanced Stats</a>`)
+        return
+      }
+      GAME_ID = resolved.id
       try {
         const [games, rows] = await Promise.all([
           sbGet(`games?id=eq.${encodeURIComponent(GAME_ID)}&select=id,semana,home:home_team_id(abreviatura),away:away_team_id(abreviatura)`),

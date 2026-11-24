@@ -76,6 +76,8 @@
 
   <script type="module">
     import { SUPABASE_URL as SB_URL, SUPABASE_HEADERS as SB_HEADERS } from '../../shared/supabase/supabase_config.js'
+    import { readGameRef, withSlug } from '../../shared/game-ref.js'
+    import { withCompetition, categoryPrefix } from '../../shared/competition.js'
     import { driveDir, toAbs, relFromAbs, FIELD_WIDTH } from './qbmap_geometry.js'
     import { CFG, u, project, arcPath, markerRadii } from './qbmap_projection.js'
     import { mountSettingsPanel } from '../../shared/settings-panel.js'
@@ -117,16 +119,20 @@
       const home = g.home?.abreviatura || '?', away = g.away?.abreviatura || '?'
       const semana = WEEK_LABEL[g.semana] || (g.semana ? `Sem. ${g.semana}` : 'Sin semana')
       const score = (g.status === 'final' || g.score_home || g.score_away) ? ` (${g.score_away ?? 0}-${g.score_home ?? 0})` : ''
-      return `${away} @ ${home} — ${semana}${score}`
+      return `${categoryPrefix(g)}${away} @ ${home} — ${semana}${score}`
     }
 
     async function loadGames() {
       try {
-        games = await sbGet('games?select=*,home:home_team_id(id,nombre_corto,abreviatura),away:away_team_id(id,nombre_corto,abreviatura)&order=kickoff.desc.nullslast')
+        // Categoría del local solo para la etiqueta; sin categorías en el schema, etiqueta como antes.
+        games = await withCompetition(sbGet, c => withSlug(sbGet, s => `games?select=*${s},home:home_team_id(id,nombre_corto,abreviatura${c}),away:away_team_id(id,nombre_corto,abreviatura)&order=kickoff.desc.nullslast`))
         $('game-select').innerHTML = '<option value="">Selecciona un partido…</option>' +
           games.map(g => `<option value="${g.id}">${esc(gameLabel(g))}</option>`).join('')
-        const pre = new URLSearchParams(location.search).get('game')   // from advanced.html
-        if (pre && games.some(g => g.id === pre)) { $('game-select').value = pre; $('game-select').dispatchEvent(new Event('change')) }
+        // ?game= (o ?game_id=) desde advanced.html: UUID o slug. El <select> usa siempre el UUID.
+        const pre = readGameRef()
+        const preUp = pre?.toUpperCase()
+        const hit = pre && games.find(g => g.id === pre.toLowerCase() || (g.slug && g.slug === preUp))
+        if (hit) { $('game-select').value = hit.id; $('game-select').dispatchEvent(new Event('change')) }
       } catch (err) {
         console.error(err)
         $('meta').innerHTML = `<div class="error">Error al cargar partidos: ${esc(err.message)}</div>`

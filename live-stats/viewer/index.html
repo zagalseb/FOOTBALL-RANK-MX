@@ -160,6 +160,27 @@
     .week-tab--test { color: var(--text3); font-style: italic; }
     .week-tab--test.week-tab--active { color: var(--text2); border-bottom-color: var(--text3); }
 
+    /* ── CATEGORÍA / CONFERENCIA (solo si el schema tiene categorías) ── */
+    .comp-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 0 2px;
+    }
+    .comp-filters[hidden] { display: none; }
+    .comp-filters select {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 28px 6px 10px;
+      max-width: 100%;
+    }
+    .comp-filters select:disabled { color: var(--text3); }
+
     /* ── MAIN CONTAINER ── */
     .container {
       max-width: 1200px;
@@ -505,6 +526,7 @@
   <!-- WEEK TABS -->
   <div class="week-bar" id="week-bar" style="display:none">
     <div class="week-bar__inner">
+      <div class="comp-filters" id="comp-filters" hidden></div>
       <div class="week-tabs" id="week-tabs"></div>
     </div>
   </div>
@@ -535,6 +557,8 @@
 
   <script type="module">
     import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_HEADERS as SB_HEADERS, SCHEMA } from '../../shared/supabase/supabase_config.js'
+    import { withSlug, gameUrlRef } from '../../shared/game-ref.js'
+    import { withCompetition, loadCompetitions, defaultCategory, findCategory, filterGames } from '../../shared/competition.js'
 
     // stats-lib.js is the pure calc/display module shared with capture/ (split
     // out of capture/engine.js on 2026-09-08 specifically so viewer/ never has
@@ -745,12 +769,30 @@
 
     let allGames   = []
     let activeWeek = null
+    // Categorías/conferencias del schema; null = el schema no las tiene (prod
+    // antes de migrar): no hay filtros y se muestra todo, como antes.
+    let competitions = null
+    // Códigos elegidos (null = todas). Por defecto LM; se refleja en ?cat=&conf=.
+    const compFilter = { categoria: null, conferencia: null }
 
     // ── Fetch ─────────────────────────────────────────────────────────────────
 
+    async function sbRead(path) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: SB_HEADERS })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    }
+
+    // slug (campo calculado) solo para armar los links; categoría/conferencia
+    // de cada equipo solo para filtrar. Si el schema no los tiene, se repite la
+    // consulta sin ellos: links con UUID y sin filtros.
     async function fetchGames() {
+      return withCompetition(sbRead, c => withSlug(sbRead, s => `games?${gamesQuery(s, c)}`))
+    }
+
+    function gamesQuery(slugCol, compCols = '') {
       const qs = new URLSearchParams({
-        select: '*,home:home_team_id(nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url),away:away_team_id(nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url)',
+        select: `*${slugCol},home:home_team_id(nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url${compCols}),away:away_team_id(nombre_corto,abreviatura,Apodo,color_principal,color_texto,logo_url${compCols})`,
         order:  'kickoff.asc.nullslast',
         // Test games (semana='TEST') never belong in the public listing —
         // filtered server-side so they're never fetched, not hidden after the
@@ -759,9 +801,7 @@
         // explicitly kept.
         or: '(semana.neq.TEST,semana.is.null)',
       })
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/games?${qs}`, { headers: SB_HEADERS })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return res.json()
+      return qs.toString()
     }
 
     // ── Week helpers ──────────────────────────────────────────────────────────
@@ -874,7 +914,7 @@
            </div>`
         : ''
 
-      return `<div class="game-card" data-id="${esc(game.id)}"
+      return `<div class="game-card" data-id="${esc(game.id)}" data-ref="${esc(gameUrlRef(game))}"
           role="button" tabindex="0"
           aria-label="${homeName} vs ${awayName}">
         <div class="card-status">${renderStatus(game)}</div>
@@ -918,8 +958,81 @@
 
     // ── Render games for active week ───────────────────────────────────────────
 
+    // ── Categoría / conferencia ────────────────────────────────────────────────
+
+    // Juegos que pasan el filtro; sin categorías en el schema, todos.
+    function visibleGames() {
+      return competitions ? filterGames(allGames, compFilter) : allGames
+    }
+
+    function initCompFilter() {
+      if (!competitions) { compFilter.categoria = null; compFilter.conferencia = null; return }
+      const qs = new URLSearchParams(location.search)
+      const wantCat = qs.get('cat')
+      const cat = wantCat === 'all' ? null : defaultCategory(competitions, wantCat?.toUpperCase())
+      compFilter.categoria = cat?.codigo ?? null
+      const wantConf = qs.get('conf')?.toUpperCase()
+      compFilter.conferencia = cat?.conferences.some(c => c.codigo === wantConf) ? wantConf : null
+    }
+
+    // ?cat= / ?conf= (sin tocar env ni otros parámetros). LM sin conferencia = URL limpia.
+    function syncCompUrl() {
+      const url = new URL(location.href)
+      if (compFilter.categoria === 'LM' || !competitions) url.searchParams.delete('cat')
+      else url.searchParams.set('cat', compFilter.categoria ?? 'all')
+      if (compFilter.conferencia) url.searchParams.set('conf', compFilter.conferencia)
+      else url.searchParams.delete('conf')
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash)
+    }
+
+    function renderCompFilters() {
+      const el = document.getElementById('comp-filters')
+      if (!competitions) { el.hidden = true; el.innerHTML = ''; return }
+      const cat = findCategory(competitions, compFilter.categoria)
+      const confs = cat?.conferences || []
+      el.hidden = false
+      el.innerHTML = `
+        <select id="f-cat" aria-label="Categoría">
+          ${competitions.map(c => `<option value="${esc(c.codigo)}"${c.codigo === compFilter.categoria ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}
+          <option value=""${compFilter.categoria == null ? ' selected' : ''}>Todas las categorías</option>
+        </select>
+        <select id="f-conf" aria-label="Conferencia"${confs.length ? '' : ' disabled'}>
+          <option value="">Todas las conferencias</option>
+          ${confs.map(c => `<option value="${esc(c.codigo)}"${c.codigo === compFilter.conferencia ? ' selected' : ''}>${esc(c.nombre)}</option>`).join('')}
+        </select>`
+      el.querySelector('#f-cat').addEventListener('change', e => {
+        compFilter.categoria = e.target.value || null
+        compFilter.conferencia = null
+        applyCompFilter()
+      })
+      el.querySelector('#f-conf').addEventListener('change', e => {
+        compFilter.conferencia = e.target.value || null
+        applyCompFilter()
+      })
+    }
+
+    function applyCompFilter() {
+      syncCompUrl()
+      renderCompFilters()
+      const games = visibleGames()
+      const weeks = computeWeeks(games)
+      if (!weeks.includes(activeWeek)) activeWeek = findInitialWeek(games, weeks)
+      renderTabs(weeks)
+      renderGames()
+    }
+
     function renderGames() {
-      const weekGames = allGames.filter(g => g.semana === activeWeek)
+      if (activeWeek == null) {
+        // Solo pasa con un filtro de categoría/conferencia sin partidos.
+        document.getElementById('week-heading').innerHTML = ''
+        document.getElementById('games-container').innerHTML = `<div class="state-box">
+          <div class="state-box__icon">📅</div>
+          <div class="state-box__title">Sin partidos</div>
+          <div class="state-box__msg">No hay partidos para esta categoría o conferencia.</div>
+        </div>`
+        return
+      }
+      const weekGames = visibleGames().filter(g => g.semana === activeWeek)
       const label     = WEEK_LABEL[activeWeek] || activeWeek
       const isTest    = activeWeek === 'TEST'
 
@@ -945,7 +1058,9 @@
 
       container.querySelectorAll('.game-card').forEach(card => {
         const go = () => {
-          location.href = `viewer.html?game_id=${encodeURIComponent(card.dataset.id)}`
+          // data-id (UUID) sigue siendo la llave de la tarjeta para Realtime;
+          // data-ref es solo para la URL (slug, o UUID si el schema no tiene slug).
+          location.href = `viewer.html?game=${encodeURIComponent(card.dataset.ref || card.dataset.id)}`
         }
         card.addEventListener('click', go)
         card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go() } })
@@ -983,7 +1098,7 @@
         </div>`
 
       try {
-        allGames = await fetchGames()
+        ;[allGames, competitions] = await Promise.all([fetchGames(), loadCompetitions(sbRead)])
       } catch (err) {
         console.error('[Cover Cero] Error loading games:', err)
         showError('No se pudieron cargar los partidos. Verifica tu conexión.')
@@ -1000,8 +1115,10 @@
         return
       }
 
-      const weeks = computeWeeks(allGames)
-      activeWeek  = findInitialWeek(allGames, weeks)
+      initCompFilter()
+      renderCompFilters()
+      const weeks = computeWeeks(visibleGames())
+      activeWeek  = findInitialWeek(visibleGames(), weeks)
 
       document.getElementById('week-bar').style.display = ''
       renderTabs(weeks)

@@ -483,6 +483,15 @@
             <label class="field-label">Abreviatura</label>
             <input class="input" type="text" id="team-abrev-input" maxlength="6">
           </div>
+          <!-- Solo visibles si el schema tiene categorías (prod antes de migrar: ocultos). -->
+          <div class="field" id="team-category-field" hidden>
+            <label class="field-label" for="team-category-select">Categoría</label>
+            <select class="input" id="team-category-select"></select>
+          </div>
+          <div class="field" id="team-conference-field" hidden>
+            <label class="field-label" for="team-conference-select">Conferencia</label>
+            <select class="input" id="team-conference-select"></select>
+          </div>
           <div class="field">
             <label class="field-label">Color principal</label>
             <div class="input--color-pair">
@@ -520,12 +529,17 @@
     // require role=authenticated). Reads (sbGet) stay on the static anon
     // SB_HEADERS — SELECT is still public.
     import { getAuthHeaders } from '../../shared/supabase/auth_client.js'
+    import { loadCompetitions, teamCategoryCode } from '../../shared/competition.js'
 
     const WEEK_OPTIONS = ['1','2','3','4','5','6','7','8','9','10','QF','SF','F','TEST']
     const WEEK_LABEL    = { QF: 'Cuartos de Final', SF: 'Semifinales', F: 'Final', TEST: 'TEST' }
 
     let teams   = []
     let games   = []
+    // Categorías/conferencias del schema; null = no existen (prod antes de
+    // migrar): sin selects nuevos, sin validación de categoría y los PATCH de
+    // equipos no mandan category_id/conference_id.
+    let competitions = null
     let roster  = []           // players of rosterTeamId in rosterSeason (what the screen shows)
     let rosterAll = []         // every season of rosterTeamId
     let rosterSeason = TEMPORADA_ACTIVA
@@ -599,12 +613,19 @@
     // SECCIÓN 1 — ROSTER
     // ══════════════════════════════════════════════════════════════════════════
 
+    // "Borregos MTY (MTY) · LM": la categoría distingue las filas de una misma
+    // escuela en LM / INT / JUV. Sin categorías en el schema, como antes.
+    function teamOptionLabel(t) {
+      const base = `${t.nombre_corto} (${t.abreviatura})`
+      if (!competitions) return base
+      return `${base} · ${teamCategoryCode(t, competitions) ?? 'sin categoría'}`
+    }
+
+    const sortedTeams = () => teams.slice().sort((a, b) => (a.nombre_corto || '').localeCompare(b.nombre_corto || ''))
+    const teamOptions = list => list.map(t => `<option value="${t.id}">${esc(teamOptionLabel(t))}</option>`).join('')
+
     function populateTeamSelects() {
-      const opts = teams
-        .slice()
-        .sort((a, b) => (a.nombre_corto || '').localeCompare(b.nombre_corto || ''))
-        .map(t => `<option value="${t.id}">${esc(t.nombre_corto)} (${esc(t.abreviatura)})</option>`)
-        .join('')
+      const opts = teamOptions(sortedTeams())
 
       populateSeasonSelect()
       document.getElementById('roster-team-select').innerHTML =
@@ -612,8 +633,21 @@
       document.getElementById('team-select').innerHTML =
         '<option value="">Selecciona un equipo…</option>' + opts
       document.getElementById('game-home-select').innerHTML = opts
-      document.getElementById('game-away-select').innerHTML = opts
+      populateAwaySelect()
     }
+
+    // Visitante: solo equipos de la misma categoría que el local (si el schema
+    // tiene categorías). Conserva la selección si sigue siendo válida.
+    function populateAwaySelect(keepId = null) {
+      const sel = document.getElementById('game-away-select')
+      const prev = keepId ?? sel.value
+      const home = teams.find(t => t.id === document.getElementById('game-home-select').value)
+      const list = sortedTeams().filter(t => !competitions || !home || t.category_id === home.category_id)
+      sel.innerHTML = teamOptions(list)
+      if (prev && list.some(t => t.id === prev)) sel.value = prev
+    }
+
+    document.getElementById('game-home-select').addEventListener('change', () => populateAwaySelect())
 
     document.getElementById('roster-team-select').addEventListener('change', async e => {
       rosterTeamId = e.target.value || null
@@ -1166,7 +1200,15 @@
       editingGameId = id
       document.getElementById('games-form-title').textContent = 'Editar partido'
       document.getElementById('game-home-select').value  = g.home_team_id
-      document.getElementById('game-away-select').value  = g.away_team_id
+      populateAwaySelect(g.away_team_id)
+      // Un juego viejo con categorías distintas no está en la lista filtrada:
+      // se agrega su visitante para que el formulario lo muestre (guardar lo rechaza).
+      const awaySel = document.getElementById('game-away-select')
+      if (awaySel.value !== g.away_team_id) {
+        const away = teams.find(t => t.id === g.away_team_id)
+        if (away) awaySel.insertAdjacentHTML('beforeend', teamOptions([away]))
+        awaySel.value = g.away_team_id
+      }
       document.getElementById('game-semana-select').value = g.semana || '1'
       document.getElementById('game-status-select').value = g.status || 'scheduled'
       document.getElementById('game-kickoff-input').value = localDatetimeValue(g.kickoff)
@@ -1180,6 +1222,7 @@
       editingGameId = null
       document.getElementById('games-form-title').textContent = 'Crear partido'
       document.getElementById('game-home-select').selectedIndex = 0
+      populateAwaySelect()
       document.getElementById('game-away-select').selectedIndex = 0
       document.getElementById('game-semana-select').selectedIndex = 0
       document.getElementById('game-status-select').value = 'scheduled'
@@ -1212,6 +1255,15 @@
         errorEl.textContent = 'El equipo local y visitante no pueden ser el mismo.'
         errorEl.classList.add('form-error--visible')
         return
+      }
+      if (competitions) {
+        const home = teams.find(t => t.id === homeId), away = teams.find(t => t.id === awayId)
+        if (home?.category_id !== away?.category_id) {
+          const code = t => teamCategoryCode(t, competitions) ?? 'sin categoría'
+          errorEl.textContent = `Local y visitante deben ser de la misma categoría (${home?.abreviatura} es ${code(home)}, ${away?.abreviatura} es ${code(away)}).`
+          errorEl.classList.add('form-error--visible')
+          return
+        }
       }
 
       const body = {
@@ -1273,6 +1325,36 @@
       document.getElementById('team-color2-input').value  = team.color_texto || ''
       document.getElementById('team-color2-picker').value = c2
       document.getElementById('team-logo-input').value    = team.logo_url || ''
+      fillTeamCompetition(team)
+    })
+
+    // ── Categoría / conferencia del equipo ──────────────────────────────────
+    // La conferencia depende de la categoría elegida (la FK compuesta de la base
+    // rechaza una conferencia de otra categoría; aquí ni se ofrece).
+    function fillConferenceSelect(categoryId, selectedId = null) {
+      const cat = (competitions || []).find(c => c.id === categoryId)
+      const confs = cat?.conferences || []
+      const sel = document.getElementById('team-conference-select')
+      sel.innerHTML = '<option value="">Sin conferencia</option>' +
+        confs.map(c => `<option value="${c.id}">${esc(c.nombre)} (${esc(c.codigo)})</option>`).join('')
+      sel.value = confs.some(c => c.id === selectedId) ? selectedId : ''
+      sel.disabled = !confs.length
+    }
+
+    function fillTeamCompetition(team) {
+      const show = !!competitions
+      document.getElementById('team-category-field').hidden = !show
+      document.getElementById('team-conference-field').hidden = !show
+      if (!show) return
+      const catSel = document.getElementById('team-category-select')
+      catSel.innerHTML = '<option value="">Sin categoría</option>' +
+        competitions.map(c => `<option value="${c.id}">${esc(c.nombre)} (${esc(c.codigo)})</option>`).join('')
+      catSel.value = team.category_id || ''
+      fillConferenceSelect(team.category_id, team.conference_id)
+    }
+
+    document.getElementById('team-category-select').addEventListener('change', e => {
+      fillConferenceSelect(e.target.value || null)
     })
 
     document.getElementById('team-save-btn').addEventListener('click', async () => {
@@ -1293,14 +1375,31 @@
         return
       }
 
+      const patch = {
+        nombre_corto,
+        abreviatura,
+        color_principal: color_principal || null,
+        color_texto: color_texto || null,
+        logo_url: logo_url || null,
+      }
+      // Solo si el schema tiene categorías: en prod antes de migrar el PATCH no
+      // nombra columnas que no existen.
+      if (competitions) {
+        const team = teams.find(t => t.id === id)
+        const category_id = document.getElementById('team-category-select').value || null
+        const conference_id = category_id ? (document.getElementById('team-conference-select').value || null) : null
+        // Cambiar la categoría de un equipo con partidos cambia el slug (y la
+        // categoría) de esos partidos: se pide confirmación.
+        if (team && (team.category_id ?? null) !== category_id) {
+          const n = games.filter(g => g.home_team_id === id || g.away_team_id === id).length
+          if (n && !confirm(`${abreviatura} tiene ${n} partido${n === 1 ? '' : 's'}. Cambiar su categoría cambia la categoría y el identificador (slug) de esos partidos. ¿Continuar?`)) return
+        }
+        patch.category_id = category_id
+        patch.conference_id = conference_id
+      }
+
       try {
-        const updated = await sbWrite('PATCH', `teams?id=eq.${encodeURIComponent(id)}`, {
-          nombre_corto,
-          abreviatura,
-          color_principal: color_principal || null,
-          color_texto: color_texto || null,
-          logo_url: logo_url || null,
-        })
+        const updated = await sbWrite('PATCH', `teams?id=eq.${encodeURIComponent(id)}`, patch)
         teams = teams.map(t => t.id === id ? { ...t, ...updated } : t)
         populateTeamSelects()
         document.getElementById('team-select').value = id
@@ -1316,7 +1415,12 @@
     async function init() {
       populateSemanaSelect()
       try {
-        teams = await sbGet('teams?select=*&order=nombre_corto.asc')
+        ;[teams, competitions] = await Promise.all([
+          sbGet('teams?select=*&order=nombre_corto.asc'),
+          loadCompetitions(sbGet),
+        ])
+        // Sin teams.category_id (schema sin categorías) no hay nada que validar ni editar.
+        if (!teams.some(t => 'category_id' in t)) competitions = null
         populateTeamSelects()
       } catch (err) {
         console.error(err)
