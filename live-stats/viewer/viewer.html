@@ -1957,14 +1957,18 @@ function _driveEndPos(drive, teams) {
     const opp = last.possession === teams.home.name ? teams.away.name : teams.home.name;
     return { team: opp, yard: 0 };
   }
+  // Turnovers: the bar ends where the OFFENSE got to, not where the defense
+  // took the ball on the return. INT → the last snap's line of scrimmage;
+  // lost fumble → the spot of the fumble itself. (A pick-six/return would
+  // otherwise stretch the drive back across the field.)
   if (last.play_type === 'PASS' && last.pass_result === 'intercepted') {
-    return last.return_at || last.intercepted_at || last.field_pos;
+    return last.field_pos || last.intercepted_at;
   }
   if (last.fumble_recovery_team && last.fumble_recovery_team !== last.possession) {
-    return last.fumble_recovered_at || last.field_pos;
+    return last.fumble_at || last.field_pos;
   }
   if (last.fumble_2_recovery_team && last.fumble_2_recovery_team !== last.possession) {
-    return last.fumble_2_recovered_at || last.field_pos;
+    return last.fumble_2_at || last.fumble_at || last.field_pos;
   }
   if (last.play_type === 'KICK' && last.fg_ret_at) return last.fg_ret_at;
   if (last.play_type === 'PUNT' && last.punt_block_ret_at) return last.punt_block_ret_at;

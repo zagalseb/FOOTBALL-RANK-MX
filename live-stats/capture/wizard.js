@@ -11,6 +11,7 @@ let _penaltyKeyHandler = null  // closure for PENALTY_CODE input handling
 
 const KEYBOARD_CONTEXTS = {
   ADD_PLAY:        {},
+  COMMENT:         {},
   BY:              {},
   RESULT:          {},
   AT:              {},
@@ -92,7 +93,7 @@ const BUTTONS = [
   { label: 'Punt',      key: 'U', type: 'PUNT',      disabled: false },
   { label: 'Kick',      key: 'K', type: 'KICK',      disabled: false },
   { label: 'PAT Try',   key: 'A', type: 'PAT_TRY',   disabled: false },
-  { label: 'Comment',   key: 'C', type: 'COMMENT',   disabled: true  },
+  { label: 'Comment',   key: 'C', type: 'COMMENT',   disabled: false },
   { label: 'Snap Fumble', key: 'S', type: 'SNAP_FUMBLE', disabled: false },
   { label: 'Game CTRL', key: 'G', type: 'GAME_CTRL', disabled: false },
 ]
@@ -292,6 +293,7 @@ export function renderAddPlay() {
     a: () => _onPlayTypeSelected('PAT_TRY'),
     s: () => _onPlayTypeSelected('SNAP_FUMBLE'),
     g: () => _onPlayTypeSelected('GAME_CTRL'),
+    c: () => _onPlayTypeSelected('COMMENT'),
   }
 
   _renderProgress()
@@ -881,6 +883,24 @@ export function renderATField(config) {
   const container = _container()
   let rawInput = ''
 
+  // On-screen keypad (touch / narrow screens): side + up to 2 digits build rawInput
+  // ("PUE42"), so the operator never has to type the abbreviation. Tapping the
+  // yard box switches to the normal keyboard.
+  const homeAbbr = teams.home.abreviatura, awayAbbr = teams.away.abreviatura
+  const _coarse  = window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(max-width: 768px)').matches
+  let side   = (snapPos?.team === teams.away.name) ? 'away' : 'home'
+  let digits = ''
+  const _sideAbbr = () => (side === 'home' ? homeAbbr : awayAbbr)
+  const _rawFromKeypad = () => (digits ? `${_sideAbbr()}${digits}` : '')
+  // Typed text → keypad state, so both input methods stay in step.
+  function _syncKeypadFromRaw() {
+    const m = rawInput.toUpperCase().match(/^([A-Z]*)(\d*)$/)
+    if (!m) return
+    if (m[1] && m[1] === homeAbbr.toUpperCase()) side = 'home'
+    else if (m[1] && m[1] === awayAbbr.toUpperCase()) side = 'away'
+    digits = m[2].slice(0, 2)
+  }
+
   function _parse(raw) {
     return parseATInput(raw, teams)
   }
@@ -916,6 +936,8 @@ export function renderATField(config) {
     const box = document.getElementById('at-feedback-box')
     if (box) box.innerHTML = html
     document.getElementById('at-input')?.classList.toggle('at-input--td', td)
+    container.querySelectorAll('.at-side__btn').forEach(b =>
+      b.classList.toggle('at-side__btn--active', b.dataset.side === side))
   }
 
   function rebuild() {
@@ -946,16 +968,61 @@ export function renderATField(config) {
             value="${rawInput}" spellcheck="false">
         </div>
         <div id="at-feedback-box">${feedbackHTML}</div>
+        <div class="at-keypad-wrap">
+          <div class="at-side">
+            <button type="button" class="at-side__btn${side === 'home' ? ' at-side__btn--active' : ''}" data-side="home">HOME · ${homeAbbr}</button>
+            <button type="button" class="at-side__btn${side === 'away' ? ' at-side__btn--active' : ''}" data-side="away">AWAY · ${awayAbbr}</button>
+          </div>
+          <div class="at-keypad">
+            ${[1,2,3,4,5,6,7,8,9].map(n => `<button type="button" class="at-key" data-key="${n}">${n}</button>`).join('')}
+            <button type="button" class="at-key at-key--fn" data-key="back">⌫</button>
+            <button type="button" class="at-key" data-key="0">0</button>
+            <button type="button" class="at-key at-key--enter" data-key="enter">↵</button>
+          </div>
+        </div>
       </div>
     `
 
     const input = document.getElementById('at-input')
-    input.focus()
-    input.setSelectionRange(input.value.length, input.value.length)
+    if (_coarse) {
+      // Keypad is the default input; the system keyboard only opens when the
+      // yard box itself is tapped.
+      input.setAttribute('inputmode', 'none')
+      input.addEventListener('pointerdown', () => { input.setAttribute('inputmode', 'text') })
+      input.addEventListener('blur', () => { input.setAttribute('inputmode', 'none') })
+    } else {
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    }
     input.addEventListener('input', () => {
       rawInput = input.value.toUpperCase().slice(0, 6)
       if (input.value !== rawInput) input.value = rawInput
+      _syncKeypadFromRaw()
       _updateFeedback()
+    })
+
+    const _applyKeypad = () => {
+      rawInput = _rawFromKeypad()
+      input.value = rawInput
+      _updateFeedback()
+    }
+    container.querySelectorAll('.at-side__btn').forEach(b => {
+      b.addEventListener('pointerdown', (e) => e.preventDefault())   // keep focus/keyboard state
+      b.addEventListener('click', () => { side = b.dataset.side; _applyKeypad() })
+    })
+    container.querySelectorAll('.at-key').forEach(b => {
+      b.addEventListener('pointerdown', (e) => e.preventDefault())
+      b.addEventListener('click', () => {
+        const k = b.dataset.key
+        if (k === 'enter') {            // same as the Enter key: confirm a valid spot
+          const parsed = _parse(rawInput)
+          if (parsed) onComplete(parsed)
+          return
+        }
+        if (k === 'back')       digits = digits.slice(0, -1)
+        else if (digits.length < 2) digits += k
+        _applyKeypad()
+      })
     })
   }
 
@@ -1177,6 +1244,8 @@ function _renderPlayGrid() {
 }
 
 function _onPlayTypeSelected(type) {
+  // Comment is not a play type: it writes a note on the last captured play.
+  if (type === 'COMMENT') { _renderCommentScreen(); return }
   if (gameState.ended && type !== 'GAME_CTRL') return
   console.log('Play selected:', type)
   setPlayField('play_type', type)
@@ -1993,6 +2062,60 @@ function _renderSubmit(preview) {
   document.getElementById('btn-submit').addEventListener('click', () => _confirmSubmit(previewPlay))
   document.getElementById('btn-cancel').addEventListener('click', () => renderAddPlay())
   document.getElementById('btn-penalty').addEventListener('click', () => _startFlagCapture(previewPlay))
+}
+
+// ── Comment (main menu): note on the LAST captured play ──────────────────────
+// Same `note` field the Submit screen's "Nota" button writes (play_data.note),
+// for when the operator thinks of it after submitting ("falta video", "revisar").
+function _renderCommentScreen() {
+  _setContext('COMMENT')
+  const _esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const last = [...plays].reverse().find(p => p.play_type !== 'GAME_CTRL')
+  KEYBOARD_CONTEXTS.COMMENT = { Escape: () => renderAddPlay() }
+
+  if (!last) {
+    _container().innerHTML = `
+      <div class="wizard-area__title">Comment</div>
+      <div class="submit-play-text">Todavía no hay jugadas para comentar.</div>
+      <div class="submit-actions"><button class="submit-btn submit-btn--cancel" id="btn-comment-cancel">Volver <span class="submit-kbd">Esc</span></button></div>`
+    document.getElementById('btn-comment-cancel').addEventListener('click', () => renderAddPlay())
+    return
+  }
+
+  _container().innerHTML = `
+    <div class="submit-screen">
+      <div class="wizard-area__title">Comment · nota en la última jugada (#${last.seq ?? ''})</div>
+      <div class="submit-play-text">${_esc(formatPlay(last))}</div>
+      <div class="submit-note">
+        <textarea id="comment-input" class="submit-note__input" rows="4"
+          placeholder="Nota: qué falta o qué revisar después…" autocomplete="off">${_esc(last.note || '')}</textarea>
+      </div>
+      <div class="submit-actions">
+        <button class="submit-btn submit-btn--confirm" id="btn-comment-save">Guardar</button>
+        <button class="submit-btn submit-btn--cancel" id="btn-comment-cancel">Cancel <span class="submit-kbd">Esc</span></button>
+      </div>
+    </div>`
+
+  const input = document.getElementById('comment-input')
+  const save = () => {
+    const v = input.value.trim()
+    if (v) last.note = v; else delete last.note
+    savePlays()
+    syncPlayUpdate(last)
+    renderAddPlay()
+  }
+  // Enter in the box is a new line; Ctrl/Cmd+Enter or the Guardar button saves.
+  // The mobile ↵ bar (dispatched on document) saves too, via the context's Enter.
+  KEYBOARD_CONTEXTS.COMMENT.Enter = save
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation()
+    if (e.key === 'Escape') renderAddPlay()
+    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save() }
+  })
+  document.getElementById('btn-comment-save').addEventListener('click', save)
+  document.getElementById('btn-comment-cancel').addEventListener('click', () => renderAddPlay())
+  input.focus()
+  input.setSelectionRange(input.value.length, input.value.length)
 }
 
 // A flag enforced from the end of a touchdown play is enforced on the

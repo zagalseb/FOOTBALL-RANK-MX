@@ -1534,6 +1534,29 @@
       .reports-preview { padding: 12px; min-height: 60vh; }
     }
 
+    /* AT field: HOME/AWAY + numeric keypad (touch / narrow screens only) */
+    .at-keypad-wrap { display: none; }
+    @media (max-width: 768px), (pointer: coarse) {
+      .at-keypad-wrap { display: block; margin-top: 6px; }
+      .at-input { font-size: 28px; text-align: center; min-height: 56px; }
+      .at-side { display: flex; gap: 8px; margin-bottom: 10px; }
+      .at-side__btn {
+        flex: 1; min-height: 52px; border-radius: 10px; font-size: 15px; font-weight: 600;
+        background: var(--bg3); color: var(--text2); border: 1px solid var(--border2);
+        font-family: 'IBM Plex Sans', sans-serif;
+      }
+      .at-side__btn--active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+      .at-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .at-key {
+        min-height: 64px; border-radius: 10px; font-size: 26px; font-weight: 600;
+        background: var(--bg3); color: var(--text); border: 1px solid var(--border2);
+        font-family: 'IBM Plex Mono', monospace;
+      }
+      .at-key:active { background: var(--accent-bg); border-color: var(--accent); }
+      .at-key--fn { color: var(--text2); font-size: 22px; }
+      .at-key--enter { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 22px; }
+    }
+
     /* Mobile Enter bar + always-visible current category */
     .enter-bar { display: none; }
     @media (max-width: 768px), (pointer: coarse) {
