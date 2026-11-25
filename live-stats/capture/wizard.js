@@ -675,7 +675,7 @@ export function renderByMenu(config) {
       const dup = numCount[p.number] > 1
       return `<button class="player-btn${isSelected ? ' player-btn--selected' : ''}" data-number="${p.number}" data-ridx="${ri}">
         <span class="player-btn__num">${p.number}</span>
-        ${dup ? `<span class="player-btn__name">${_titleOf(p)}</span>` : ''}
+        ${(p.nombre || p.apellido || dup) ? `<span class="player-btn__name">${_titleOf(p)}</span>` : ''}
         ${hasInfo ? `<span class="player-btn__pos">${p.position || ''}</span>` : ''}
       </button>`
     }).join('')
@@ -841,13 +841,12 @@ export function renderATField(config) {
     return net > 0 ? `+${net} yds` : `${net} yds`
   }
 
-  function rebuild() {
+  function _feedbackHTML() {
     const parsed   = _parse(rawInput)
     const td       = parsed ? isTouchdown(teams, possession, parsed) : false
     const netLabel = parsed && !td ? _netYardsLabel(parsed) : ''
     const posLabel = parsed ? `${parsed.team} ${parsed.yard}` : ''
-
-    const feedbackHTML = rawInput
+    const html = rawInput
       ? td
         ? `<div class="at-feedback at-feedback--td">🏈 TOUCHDOWN</div>`
         : parsed
@@ -856,6 +855,20 @@ export function renderATField(config) {
       : `<div class="at-feedback at-feedback--hint">
             Escribe posición: <code>${teams.home.abreviatura}40</code> · <code>${teams.away.abreviatura}30</code> · o solo <code>40</code> para campo local
           </div>`
+    return { html, td }
+  }
+
+  // Only the feedback box + TD styling change while typing; the <input> element
+  // stays put, so the on-screen keyboard keeps its layout (letters -> numbers).
+  function _updateFeedback() {
+    const { html, td } = _feedbackHTML()
+    const box = document.getElementById('at-feedback-box')
+    if (box) box.innerHTML = html
+    document.getElementById('at-input')?.classList.toggle('at-input--td', td)
+  }
+
+  function rebuild() {
+    const { html: feedbackHTML, td } = _feedbackHTML()
 
     // Steps that say what the spot is for (penalty spots) also list the spots
     // already known, instead of the generic snap chip.
@@ -876,19 +889,27 @@ export function renderATField(config) {
         ${hintLine}
         <div class="at-input-row">
           <input id="at-input" class="at-input${td ? ' at-input--td' : ''}" type="text"
-            inputmode="text" autocomplete="off"
+            inputmode="text" autocomplete="off" autocapitalize="characters" autocorrect="off"
+            enterkeyhint="done" maxlength="6"
             placeholder="${teams.home.abreviatura}40 · ${teams.away.abreviatura}30 · 40"
             value="${rawInput}" spellcheck="false">
         </div>
-        ${feedbackHTML}
+        <div id="at-feedback-box">${feedbackHTML}</div>
       </div>
     `
 
     const input = document.getElementById('at-input')
     input.focus()
     input.setSelectionRange(input.value.length, input.value.length)
+    input.addEventListener('input', () => {
+      rawInput = input.value.toUpperCase().slice(0, 6)
+      if (input.value !== rawInput) input.value = rawInput
+      _updateFeedback()
+    })
   }
 
+  // Typing, Backspace and the on-screen keyboard are handled natively by the
+  // <input> ('input' event above). Only Enter needs intercepting here.
   _atKeyHandler = (e) => {
     const input = document.getElementById('at-input')
     if (!input) return
@@ -901,23 +922,8 @@ export function renderATField(config) {
       return
     }
 
-    // Let the browser handle typing naturally in the input, then sync rawInput
-    // We only intercept Enter above; everything else falls through to the input element.
-    // But since the AT context catches all events before the INPUT guard, we need to
-    // manually forward printable chars and Backspace.
-    if (e.key === 'Backspace') {
-      e.preventDefault()
-      rawInput = rawInput.slice(0, -1)
-      rebuild()
-      return
-    }
-
-    if (e.key.length === 1) {
-      e.preventDefault()
-      rawInput = (rawInput + e.key).slice(0, 6)  // max "CCM50" = 5 chars
-      rebuild()
-      return
-    }
+    // Desktop: if focus wandered off the field, send it back so keystrokes land.
+    if (document.activeElement !== input && (e.key.length === 1 || e.key === 'Backspace')) input.focus()
   }
 
   rebuild()
@@ -2213,6 +2219,8 @@ function _renderProgress() {
   el.innerHTML = `<div class="progress-bar">${
     items.join('<span class="progress-sep">›</span>')
   }</div>`
+
+  el.querySelector('.progress-step--active')?.scrollIntoView({ block: 'nearest', inline: 'center' })
 
   el.querySelectorAll('.progress-step--done[data-step]').forEach(btn => {
     btn.addEventListener('click', () => {

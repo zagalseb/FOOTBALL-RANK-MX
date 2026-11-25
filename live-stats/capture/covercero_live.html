@@ -655,6 +655,20 @@
       line-height: 1;
     }
 
+    .player-btn__name {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 11px;
+      line-height: 1.15;
+      color: var(--text);
+      text-align: center;
+      max-width: 100%;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      word-break: break-word;
+    }
+
     .player-btn__pos {
       font-family: 'IBM Plex Sans', sans-serif;
       font-size: 9px;
@@ -1489,9 +1503,41 @@
       .reports-preview { padding: 12px; min-height: 60vh; }
     }
 
-    @media (max-width: 380px) {
+    /* Mobile Enter bar + always-visible current category */
+    .enter-bar { display: none; }
+    @media (max-width: 768px), (pointer: coarse) {
       .by-grid { grid-template-columns: repeat(3, 1fr); }
+      .player-btn { min-height: 66px; }
+      .player-btn__name { font-size: 12px; }
+
+      /* Current step stays pinned at the top of the wizard */
+      #step-progress {
+        position: sticky; top: -14px; z-index: 5;
+        background: var(--bg); padding: 8px 0; margin: -8px 0 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .progress-step--active { font-size: 15px; padding: 8px 14px; }
+
+      .enter-bar {
+        display: block; position: fixed; left: 0; right: 0;
+        bottom: var(--kb, 0px); z-index: 60;
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+        background: var(--bg2); border-top: 1px solid var(--border2);
+      }
+      body.reports-open .enter-bar { display: none; }
+      .enter-bar__btn {
+        width: 100%; min-height: 52px; border: 0; border-radius: 10px;
+        background: var(--accent); color: #fff; font-size: 17px; font-weight: 600;
+        font-family: 'IBM Plex Sans', sans-serif;
+      }
+      .enter-bar__btn:active { opacity: 0.8; }
+      .wizard-area { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
     }
+
+    @media (max-width: 380px) {
+      .by-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
   </style>
 </head>
 <body>
@@ -1582,6 +1628,8 @@
 
   </div>
 
+  <div class="enter-bar" id="enter-bar"><button class="enter-bar__btn" id="enter-bar-btn" type="button">↵ Enter</button></div>
+
   <!-- REPORTS -->
   <div class="reports-view" id="reports-view">
     <div class="reports-config">
@@ -1669,6 +1717,25 @@
   </div>
 
   <script>
+    // Mobile Enter button: sends the same Enter the wizard already listens for.
+    // pointerdown is cancelled so the button never steals focus (keeps the keyboard open).
+    (function () {
+      const btn = document.getElementById('enter-bar-btn')
+      if (!btn) return
+      btn.addEventListener('pointerdown', (e) => e.preventDefault())
+      btn.addEventListener('click', () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }))
+      })
+      // Keep the bar just above the on-screen keyboard.
+      const vv = window.visualViewport
+      if (vv) {
+        const place = () => {
+          const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+          document.documentElement.style.setProperty('--kb', kb + 'px')
+        }
+        vv.addEventListener('resize', place); vv.addEventListener('scroll', place); place()
+      }
+    })()
     // Mobile: drawer for the plays sidebar; closes on tapping outside or on a play.
     document.addEventListener('click', (e) => {
       if (e.target.closest('#nav-sidebar-toggle')) { document.body.classList.toggle('sidebar-open'); return }
@@ -1965,6 +2032,7 @@
     function _showTab(tab) {
       document.getElementById('nav-tab-addplay').classList.toggle('nav-btn--active', tab === 'addplay')
       document.getElementById('nav-tab-reports').classList.toggle('nav-btn--active', tab === 'reports')
+      document.body.classList.toggle('reports-open', tab === 'reports')
       document.querySelector('.main').style.display   = tab === 'addplay' ? 'flex' : 'none'
       document.getElementById('reports-view').style.display = tab === 'reports' ? 'flex' : 'none'
       if (tab === 'reports') _redrawReportsCanvas()
