@@ -67,6 +67,27 @@ export function isTouchdown(teams, possession, atPos) {
 function _toGoal(possession, pos) {
   return pos.team === possession ? 100 - pos.yard : pos.yard
 }
+// Goal-to-go: when the line to gain would be past the goal line, the distance
+// IS the yards to the goal (1st & 4 at the opponent's 4, never 1st & 10).
+// distance is stored capped; for older captures that stored 10 there, display
+// helpers below still treat distance >= yards-to-goal as goal-to-go.
+export function capGoalToGo(state) {
+  if (!state || !state.possession || !state.field_pos) return
+  if (!(state.down >= 1) || !(state.distance > 0)) return
+  const toGoal = _toGoal(state.possession, state.field_pos)
+  if (toGoal > 0 && state.distance > toGoal) state.distance = toGoal
+}
+export function isGoalToGo(down, distance, possession, field_pos) {
+  if (!(down >= 1) || distance == null || !possession || !field_pos) return false
+  const toGoal = _toGoal(possession, field_pos)
+  return toGoal > 0 && distance >= toGoal
+}
+// "1st & 10", or "1st & Goal" when goal-to-go (distance stays numeric in the data).
+export function downDistLabel(down, distance, possession, field_pos, sep = '&') {
+  const labels = ['', '1st', '2nd', '3rd', '4th']
+  const d = isGoalToGo(down, distance, possession, field_pos) ? 'Goal' : distance
+  return `${labels[down] || down} ${sep} ${d}`
+}
 function _netTo(p, pos) {
   return _toGoal(p.possession, p.field_pos) - _toGoal(p.possession, pos)
 }
@@ -1155,9 +1176,8 @@ function _playersStr(val) {
   return _playerStr(val)
 }
 
-function _downDistStr(down, distance) {
-  const labels = ['', '1st', '2nd', '3rd', '4th']
-  return `${labels[down] || down} & ${distance}`
+function _downDistStr(down, distance, possession, field_pos) {
+  return downDistLabel(down, distance, possession, field_pos)
 }
 
 function _posStr(pos) {
@@ -1308,7 +1328,7 @@ function _formatPlayCore(play, noPlay = false) {
   } else if (down === 0) {
     situation = `at ${_posStr(field_pos)}`
   } else {
-    situation = `${_downDistStr(down, distance)} at ${_posStr(field_pos)}`
+    situation = `${_downDistStr(down, distance, play.possession, field_pos)} at ${_posStr(field_pos)}`
   }
 
   if (play_type === 'RUSH') {
@@ -1809,6 +1829,11 @@ function _formatPlayCore(play, noPlay = false) {
 // ── Game state advancement ────────────────────────────────────────────────────
 
 export function advanceGameState(state, play, teams) {
+  _advanceGameStateCore(state, play, teams)
+  capGoalToGo(state)
+}
+
+function _advanceGameStateCore(state, play, teams) {
   // The play's touchdown/net_yards/stats_count as computed at read time
   // (resolvePlay → flagOutcome, H-06), not as stored: a capture from before
   // the wizard wrote stats_count can still carry touchdown:true on a play an
@@ -2602,6 +2627,7 @@ export function advanceGameState(state, play, teams) {
 export function applyFlags(state, play, teams) {
   _applyFlag(state, play, 1, teams)
   _applyFlag(state, play, 2, teams)
+  capGoalToGo(state)
 }
 
 function _applyFlag(state, play, num, teams) {

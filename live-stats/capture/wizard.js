@@ -614,6 +614,33 @@ function _lastByFor(memKey, teamName, stateKey) {
   return null
 }
 
+// Positions suggested at the top of a BY step, by what is being captured.
+// null = no filter (unknown / ambiguous steps keep the full grid, as before).
+const _POS_OFF_RECEIVER = ['WR', 'TE', 'RB', 'FB']
+const _POS_DEFENSE      = ['DL', 'NT', 'LB', 'CB', 'FS', 'SS', 'DB', 'S', 'DE', 'DT']
+function _suggestedPositions(stateKey) {
+  const k = stateKey || ''
+  if (/(^|_)pass_by$/.test(k)) return ['QB']
+  if (/(^|_)rush_by$/.test(k)) return ['RB', 'FB', 'QB']
+  if (k === 'intended_for' || k === 'received_by') return _POS_OFF_RECEIVER
+  if (k === 'kicked_by' || k === 'punted_by') return ['K', 'P', 'PB']
+  if (['tackle_by', 'sack_by', 'broken_up_by', 'intercepted_by', 'qb_hurried_by',
+       'fumble_forced_by', 'fumble_2_forced_by'].includes(k) || /pressured_by$/.test(k)) return _POS_DEFENSE
+  return null
+}
+
+// Returns the roster row matching a stored player ref (player_id first, then
+// number + names, then a number that is unique in the roster), shaped like the
+// refs _selectPlayer persists. Falls back to the ref itself when nothing matches.
+function _resolveAgainstRoster(ref, roster) {
+  const row =
+    (ref.player_id && roster.find(p => p.id === ref.player_id)) ||
+    roster.find(p => p.number === ref.number && (p.nombre || '') === (ref.nombre || '') && (p.apellido || '') === (ref.apellido || '')) ||
+    (() => { const m = roster.filter(p => p.number === ref.number); return m.length === 1 ? m[0] : null })()
+  if (!row) return ref
+  return { ...(row.id ? { player_id: row.id } : {}), number: row.number, nombre: row.nombre || '', apellido: row.apellido || '', position: row.position || '' }
+}
+
 export function renderByMenu(config) {
   const { optional, multiple, onComplete, team, teamFrom, invertTeamFrom, rememberLast, stateKey } = config
   _setContext('BY')
@@ -651,7 +678,13 @@ export function renderByMenu(config) {
   const container = _container()
   // Edit mode must not pre-suggest or overwrite the memory.
   const memTeam = teamName ?? gameState.possession
-  const lastPick = (rememberLast && !multiple && !editMode) ? _lastByFor(rememberLast, memTeam, stateKey) : null
+  // The remembered player is re-resolved against the CURRENT roster: a ref saved
+  // earlier without name/player_id (roster not loaded back then, or typed by number)
+  // must not keep propagating nameless to every following play.
+  const _rawLast = (rememberLast && !multiple && !editMode) ? _lastByFor(rememberLast, memTeam, stateKey) : null
+  const lastPick = _rawLast ? _resolveAgainstRoster(_rawLast, roster) : null
+  const suggestPos = _suggestedPositions(stateKey)
+  let allOpen = false   // "Todos los jugadores" drawer stays as the operator left it
 
   // Numbers can repeat within a team (league rule). A repeated number is shown
   // with the player's name in the grid; a player with no name gets "#N (sin nombre)".
@@ -669,7 +702,7 @@ export function renderByMenu(config) {
       </span>
     `).join('')
 
-    const playerBtns = roster.map((p, ri) => {
+    const _btnHTML = (p, ri) => {
       const isSelected = selections.some(s => _sameAsRoster(s, p))
       const hasInfo = p.nombre || p.apellido || p.position
       const dup = numCount[p.number] > 1
@@ -678,7 +711,22 @@ export function renderByMenu(config) {
         ${(p.nombre || p.apellido || dup) ? `<span class="player-btn__name">${_titleOf(p)}</span>` : ''}
         ${hasInfo ? `<span class="player-btn__pos">${p.position || ''}</span>` : ''}
       </button>`
-    }).join('')
+    }
+    const _byNumber = (a, b) => (a.p.number - b.p.number) || (a.ri - b.ri)
+    const _all = roster.map((p, ri) => ({ p, ri })).sort(_byNumber)
+    const _sug = suggestPos
+      ? _all.filter(x => suggestPos.includes((x.p.position || '').toUpperCase()))
+      : []
+    // Suggested (by position, sorted by number) on top; everyone in a drawer below.
+    // Players with no position only appear in the drawer.
+    const playerBtns = _sug.length
+      ? `<div class="by-section-label">Sugeridos · ${suggestPos.join(' / ')}</div>
+         <div class="by-grid" id="by-grid">${_sug.map(x => _btnHTML(x.p, x.ri)).join('')}</div>
+         <details class="by-all" id="by-all"${allOpen ? ' open' : ''}>
+           <summary>Todos los jugadores (${_all.length})</summary>
+           <div class="by-grid">${_all.map(x => _btnHTML(x.p, x.ri)).join('')}</div>
+         </details>`
+      : `<div class="by-grid" id="by-grid">${_all.map(x => _btnHTML(x.p, x.ri)).join('')}</div>`
 
     const hint = notice
       ? `<div class="by-hint">${notice}</div>`
@@ -699,7 +747,7 @@ export function renderByMenu(config) {
         </div>
         ${pillsHTML ? `<div class="by-pills">${pillsHTML}</div>` : ''}
         ${hint}
-        <div class="by-grid" id="by-grid">${playerBtns}</div>
+        ${playerBtns}
         ${showContinue ? '<button class="btn-continue" id="btn-continue">Continuar →</button>' : ''}
       </div>
     `
@@ -708,6 +756,7 @@ export function renderByMenu(config) {
     // On touch screens focusing the input pops the keyboard over the grid
     if (!window.matchMedia('(pointer: coarse)').matches) input.focus()
     if (typedDigits) _highlightNum(parseInt(typedDigits, 10))
+    document.getElementById('by-all')?.addEventListener('toggle', (e) => { allOpen = e.target.open })
     const lastBtn = document.getElementById('btn-last')
     if (lastBtn) lastBtn.addEventListener('click', () => { onComplete({ ...lastPick }) })
 
@@ -734,6 +783,8 @@ export function renderByMenu(config) {
       b.classList.remove('player-btn--highlighted'))
     const btn = container.querySelector(`.player-btn[data-number="${num}"]`)
     if (btn) {
+      const det = btn.closest('details')
+      if (det && !det.open) { det.open = true; allOpen = true }
       btn.classList.add('player-btn--highlighted')
       btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
@@ -1896,19 +1947,48 @@ function _renderSubmit(preview) {
     Escape: () => renderAddPlay(),
     Enter:  () => _confirmSubmit(previewPlay),
     e:      () => _startFlagCapture(previewPlay),
+    n:      () => _openNote(),
   }
+
+  // Optional free-text note ("falta algo / revisar después"). Stored in the
+  // play's play_data as `note`; no DB column needed.
+  const _escAttr = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const existingNote = currentPlay.note || ''
 
   _container().innerHTML = `
     <div class="submit-screen">
       <div class="submit-play-text">${playText}</div>
       ${kickoffNotice}
+      <div class="submit-note" id="submit-note" style="${existingNote ? '' : 'display:none'}">
+        <textarea id="note-input" class="submit-note__input" rows="3"
+          placeholder="Nota: qué falta o qué revisar después…" autocomplete="off">${_escAttr(existingNote)}</textarea>
+      </div>
       <div class="submit-actions">
         <button class="submit-btn submit-btn--confirm" id="btn-submit">Submit <span class="submit-kbd">↵</span></button>
+        <button class="submit-btn submit-btn--note" id="btn-note">Nota <span class="submit-kbd">N</span></button>
         <button class="submit-btn submit-btn--penalty" id="btn-penalty">Penalty <span class="submit-kbd">E</span></button>
         <button class="submit-btn submit-btn--cancel" id="btn-cancel">Cancel <span class="submit-kbd">Esc</span></button>
       </div>
     </div>
   `
+
+  const noteBox = document.getElementById('submit-note')
+  const noteInput = document.getElementById('note-input')
+  function _openNote() {
+    noteBox.style.display = ''
+    noteInput.focus()
+    noteInput.setSelectionRange(noteInput.value.length, noteInput.value.length)
+  }
+  // Keys typed in the note must not reach the global shortcuts (Enter = submit, E = penalty…).
+  noteInput.addEventListener('keydown', (e) => {
+    e.stopPropagation()
+    if (e.key === 'Escape') noteInput.blur()
+  })
+  noteInput.addEventListener('input', () => {
+    const v = noteInput.value.trim()
+    setPlayField('note', v || undefined)
+  })
+  document.getElementById('btn-note').addEventListener('click', _openNote)
 
   document.getElementById('btn-submit').addEventListener('click', () => _confirmSubmit(previewPlay))
   document.getElementById('btn-cancel').addEventListener('click', () => renderAddPlay())
